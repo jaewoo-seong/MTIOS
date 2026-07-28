@@ -1,4 +1,4 @@
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import type {
   Agenda,
   AgentRun,
@@ -154,8 +154,8 @@ export const repository = {
     }
     const { id: _id, organizationId: _organizationId, createdAt: _createdAt, updatedAt: _updatedAt, ...values } = input;
     const [row] = await db.update(projects).set({ ...values, updatedAt: new Date() })
-      .where(eq(projects.id, id)).returning();
-    return row?.organizationId === MTI_ORGANIZATION_ID ? projectRow(row) : null;
+      .where(and(eq(projects.id, id), eq(projects.organizationId, MTI_ORGANIZATION_ID))).returning();
+    return row ? projectRow(row) : null;
   },
   async listAgendas(projectId: string) {
     if (!db) return store.agendas.filter((item) => item.projectId === projectId);
@@ -207,8 +207,8 @@ export const repository = {
     }
     const { id: _id, organizationId: _organizationId, createdAt: _createdAt, updatedAt: _updatedAt, ...values } = input;
     const [row] = await db.update(commands).set({ ...values, updatedAt: new Date() })
-      .where(eq(commands.id, id)).returning();
-    return row?.organizationId === MTI_ORGANIZATION_ID ? commandRow(row) : null;
+      .where(and(eq(commands.id, id), eq(commands.organizationId, MTI_ORGANIZATION_ID))).returning();
+    return row ? commandRow(row) : null;
   },
   async createRun(command: ExecutiveCommand) {
     if (!db) {
@@ -307,8 +307,8 @@ export const repository = {
     }
     const { id: _id, createdAt: _createdAt, updatedAt: _updatedAt, ...values } = input;
     const [row] = await db.update(reports).set({ ...values, updatedAt: new Date() })
-      .where(eq(reports.id, id)).returning();
-    return row?.organizationId === MTI_ORGANIZATION_ID ? reportRow(row) : null;
+      .where(and(eq(reports.id, id), eq(reports.organizationId, MTI_ORGANIZATION_ID))).returning();
+    return row ? reportRow(row) : null;
   },
   async listKnowledge() {
     if (!db) return store.knowledge;
@@ -336,8 +336,11 @@ export const repository = {
     }
     const { id: _id, createdAt: _createdAt, ...values } = input;
     const [row] = await db.update(knowledgeEntries).set(values)
-      .where(eq(knowledgeEntries.id, id)).returning();
-    return row?.organizationId === MTI_ORGANIZATION_ID ? knowledgeRow(row) : null;
+      .where(and(
+        eq(knowledgeEntries.id, id),
+        eq(knowledgeEntries.organizationId, MTI_ORGANIZATION_ID)
+      )).returning();
+    return row ? knowledgeRow(row) : null;
   },
   async listClientDatabases() {
     if (!db) return store.clientDatabases;
@@ -365,8 +368,11 @@ export const repository = {
     }
     const { id: _id, recordCount: _recordCount, createdAt: _createdAt, ...values } = input;
     const [row] = await db.update(clientDatabases).set({ ...values, updatedAt: new Date() })
-      .where(eq(clientDatabases.id, id)).returning();
-    return row?.organizationId === MTI_ORGANIZATION_ID ? clientDatabaseRow(row) : null;
+      .where(and(
+        eq(clientDatabases.id, id),
+        eq(clientDatabases.organizationId, MTI_ORGANIZATION_ID)
+      )).returning();
+    return row ? clientDatabaseRow(row) : null;
   },
   async listEvents(runId: string, after = 0) {
     if (!db) return store.events.filter((event) => event.runId === runId && event.sequence > after);
