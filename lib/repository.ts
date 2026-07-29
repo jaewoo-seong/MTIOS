@@ -1,20 +1,27 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, max } from "drizzle-orm";
 import type {
   Agenda,
   AgentRun,
   ClientDatabase,
+  ClientRecord,
+  DocumentFolder,
   ExecutiveCommand,
   KnowledgeEntry,
   Project,
   Report,
   ReviewDecision,
-  RunEvent
+  RunEvent,
+  WorkspaceDocument,
+  WorkspaceDocumentDetail
 } from "@/lib/domain";
 import { db } from "@/lib/db/client";
 import {
   agendas,
   clientDatabases,
+  clientRecords,
   commands,
+  documentFolders,
+  documents,
   knowledgeEntries,
   projects,
   reports,
@@ -24,6 +31,10 @@ import {
 
 export const MTI_ORGANIZATION_ID = "00000000-0000-4000-8000-000000000001";
 export const MTI_OPERATOR_ID = "00000000-0000-4000-8000-000000000002";
+
+type StoredDocument = WorkspaceDocumentDetail;
+
+export type ProjectActivityEvent = RunEvent & { runStatus: AgentRun["status"] };
 
 type Store = {
   projects: Project[];
@@ -35,10 +46,16 @@ type Store = {
   events: RunEvent[];
   runs: AgentRun[];
   reviewDecisions: ReviewDecision[];
+  folders: Omit<DocumentFolder, "documentCount">[];
+  documents: StoredDocument[];
+  records: ClientRecord[];
 };
 
-const globalStore = globalThis as typeof globalThis & { __businessOsStore?: Store };
-const store: Store = globalStore.__businessOsStore ?? {
+export const DEFAULT_FOLDERS = ["Inbox", "Project files", "Reports", "Reference"];
+
+const globalStore = globalThis as typeof globalThis & { __businessOsStore?: Partial<Store> };
+
+const emptyStore = (): Store => ({
   projects: [],
   agendas: [],
   commands: [],
@@ -47,8 +64,28 @@ const store: Store = globalStore.__businessOsStore ?? {
   clientDatabases: [],
   events: [],
   runs: [],
-  reviewDecisions: []
-};
+  reviewDecisions: [],
+  folders: DEFAULT_FOLDERS.map((name, index) => ({
+    id: `folder-${index}-${name.toLowerCase().replace(/\s+/g, "-")}`,
+    name,
+    system: index === 0,
+    createdAt: new Date().toISOString()
+  })),
+  documents: [],
+  records: []
+});
+
+/**
+ * Merge onto whatever is already on the global rather than replacing it. A store
+ * created by an earlier build of this module is missing any collection added
+ * since, and reading one of those would throw on first access.
+ */
+const store: Store = Object.assign(emptyStore(), globalStore.__businessOsStore ?? {});
+for (const [key, value] of Object.entries(emptyStore()) as [keyof Store, unknown][]) {
+  if (!Array.isArray(store[key])) {
+    (store as Record<keyof Store, unknown>)[key] = value;
+  }
+}
 globalStore.__businessOsStore = store;
 
 const now = () => new Date().toISOString();
@@ -375,11 +412,322 @@ export const repository = {
     return row ? clientDatabaseRow(row) : null;
   },
   async listEvents(runId: string, after = 0) {
-    if (!db) return store.events.filter((event) => event.runId === runId && event.sequence > after);
-    const rows = await db.select().from(runEvents).where(eq(runEvents.runId, runId));
-    return rows.filter((event) => event.sequence > after).map((event) => ({
+    if (!db) {
+      return store.events
+        .filter((event) => event.runId === runId && event.sequence > after)
+        .sort((a, b) => a.sequence - b.sequence);
+    }
+    const rows = await db.select().from(runEvents)
+      .where(and(eq(runEvents.runId, runId), gt(runEvents.sequence, after)))
+      .orderBy(asc(runEvents.sequence));
+    return rows.map((event) => ({
       id: event.id, runId: event.runId, sequence: event.sequence,
       type: event.type, message: event.message, createdAt: iso(event.createdAt)
     }));
+  },
+
+  /** Appends the next event for a run. Sequence is derived so callers never collide. */
+  async appendEvent(runId: string, input: Pick<RunEvent, "type" | "message">) {
+    if (!db) {
+      const last = store.events
+        .filter((event) => event.runId === runId)
+        .reduce((max, event) => Math.max(max, event.sequence), 0);
+      const event: RunEvent = {
+        id: crypto.randomUUID(), runId, sequence: last + 1,
+        type: input.type, message: input.message, createdAt: now()
+      };
+      store.events.push(event);
+      return event;
+    }
+    const [{ value: last } = { value: 0 }] = await db
+      .select({ value: max(runEvents.sequence) })
+      .from(runEvents)
+      .where(eq(runEvents.runId, runId));
+    const [row] = await db.insert(runEvents).values({
+      runId, sequence: (last ?? 0) + 1, type: input.type, message: input.message
+    }).returning();
+    return {
+      id: row.id, runId: row.runId, sequence: row.sequence,
+      type: row.type, message: row.message, createdAt: iso(row.createdAt)
+    };
+  },
+
+  /** Runs belonging to a project, newest first — drives the project activity stream. */
+  async listRunsForProject(projectId: string) {
+    if (!db) {
+      return store.runs
+        .filter((run) => run.projectId === projectId)
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    }
+    const rows = await db.select({ run: runs, projectId: commands.projectId })
+      .from(runs)
+      .innerJoin(commands, eq(runs.commandId, commands.id))
+      .where(and(eq(commands.projectId, projectId), eq(commands.organizationId, MTI_ORGANIZATION_ID)))
+      .orderBy(desc(runs.createdAt));
+    return rows.map((row) => ({
+      id: row.run.id, commandId: row.run.commandId, projectId: row.projectId,
+      status: row.run.status as AgentRun["status"], workflowRunId: row.run.triggerRunId,
+      progress: row.run.progress, createdAt: iso(row.run.createdAt), updatedAt: iso(row.run.updatedAt)
+    }));
+  },
+
+  /**
+   * Flattened, chronologically ordered event feed across every run in a project.
+   * `after` is an ISO timestamp cursor so the caller can poll for only what is new.
+   */
+  async listProjectEvents(projectId: string, after?: string): Promise<ProjectActivityEvent[]> {
+    const projectRuns = await repository.listRunsForProject(projectId);
+    if (projectRuns.length === 0) return [];
+    const perRun = await Promise.all(
+      projectRuns.map(async (run) => {
+        const events = await repository.listEvents(run.id);
+        return events.map((event) => ({ ...event, runStatus: run.status }));
+      })
+    );
+    return perRun
+      .flat()
+      .filter((event) => (after ? event.createdAt > after : true))
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.sequence - b.sequence);
+  },
+
+  async listFolders(): Promise<DocumentFolder[]> {
+    if (!db) {
+      return store.folders.map((folder) => ({
+        ...folder,
+        documentCount: store.documents.filter((item) => item.folderId === folder.id).length
+      }));
+    }
+    await ensureDefaultFolders();
+    const rows = await db.select().from(documentFolders)
+      .where(eq(documentFolders.organizationId, MTI_ORGANIZATION_ID))
+      .orderBy(asc(documentFolders.position), asc(documentFolders.createdAt));
+    const counts = await db.select({ folderId: documents.folderId, value: count() })
+      .from(documents)
+      .where(eq(documents.organizationId, MTI_ORGANIZATION_ID))
+      .groupBy(documents.folderId);
+    const byFolder = new Map(counts.map((row) => [row.folderId, Number(row.value)]));
+    return rows.map((row) => ({
+      id: row.id, name: row.name, system: row.system,
+      documentCount: byFolder.get(row.id) ?? 0, createdAt: iso(row.createdAt)
+    }));
+  },
+
+  async createFolder(name: string): Promise<DocumentFolder> {
+    if (!db) {
+      const existing = store.folders.find((folder) => folder.name.toLowerCase() === name.toLowerCase());
+      if (existing) return { ...existing, documentCount: 0 };
+      const folder = { id: crypto.randomUUID(), name, system: false, createdAt: now() };
+      store.folders.push(folder);
+      return { ...folder, documentCount: 0 };
+    }
+    const [row] = await db.insert(documentFolders)
+      .values({ organizationId: MTI_ORGANIZATION_ID, name, position: 100 })
+      .onConflictDoNothing()
+      .returning();
+    if (row) {
+      return { id: row.id, name: row.name, system: row.system, documentCount: 0, createdAt: iso(row.createdAt) };
+    }
+    const folders = await repository.listFolders();
+    const existing = folders.find((folder) => folder.name.toLowerCase() === name.toLowerCase());
+    if (!existing) throw new Error("Could not create folder.");
+    return existing;
+  },
+
+  /** Never selects `markdown` — document bodies must not ride along in list payloads. */
+  async listDocuments(): Promise<WorkspaceDocument[]> {
+    if (!db) return store.documents.map(stripMarkdown).sort(byUpdatedDesc);
+    const rows = await db.select(DOCUMENT_COLUMNS).from(documents)
+      .where(eq(documents.organizationId, MTI_ORGANIZATION_ID))
+      .orderBy(desc(documents.updatedAt));
+    return rows.map(documentSummaryRow);
+  },
+
+  async getDocument(id: string): Promise<WorkspaceDocumentDetail | undefined> {
+    if (!db) return store.documents.find((item) => item.id === id);
+    const [row] = await db.select().from(documents).where(eq(documents.id, id)).limit(1);
+    if (!row || row.organizationId !== MTI_ORGANIZATION_ID) return undefined;
+    return { ...documentRow(row), markdown: row.markdown };
+  },
+
+  async createDocument(
+    input: Omit<WorkspaceDocumentDetail, "id" | "createdAt" | "updatedAt">
+  ): Promise<WorkspaceDocumentDetail> {
+    if (!db) {
+      const document: StoredDocument = {
+        id: crypto.randomUUID(), createdAt: now(), updatedAt: now(), ...input
+      };
+      store.documents.unshift(document);
+      return document;
+    }
+    const [row] = await db.insert(documents)
+      .values({ organizationId: MTI_ORGANIZATION_ID, ...input })
+      .returning();
+    return { ...documentRow(row), markdown: row.markdown };
+  },
+
+  async updateDocument(
+    id: string,
+    input: Partial<Pick<WorkspaceDocumentDetail, "folderId" | "title" | "projectId" | "markdown">>
+  ) {
+    // Body edits change the word count, so recompute it rather than letting the
+    // stored figure drift away from the content.
+    const values = input.markdown === undefined
+      ? input
+      : { ...input, wordCount: (input.markdown.trim().match(/\S+/g) ?? []).length };
+
+    if (!db) {
+      const document = store.documents.find((item) => item.id === id);
+      if (!document) return null;
+      Object.assign(document, values, { id, updatedAt: now() });
+      return stripMarkdown(document);
+    }
+    const [row] = await db.update(documents).set({ ...values, updatedAt: new Date() })
+      .where(and(eq(documents.id, id), eq(documents.organizationId, MTI_ORGANIZATION_ID)))
+      .returning();
+    return row ? documentRow(row) : null;
+  },
+
+  async listRecords(databaseId: string): Promise<ClientRecord[]> {
+    if (!db) {
+      return store.records
+        .filter((record) => record.databaseId === databaseId)
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    }
+    const rows = await db.select().from(clientRecords)
+      .where(eq(clientRecords.databaseId, databaseId))
+      .orderBy(desc(clientRecords.createdAt));
+    return rows.map((row) => ({
+      id: row.id, databaseId: row.databaseId,
+      data: row.data as Record<string, string>, createdAt: iso(row.createdAt)
+    }));
+  },
+
+  async createRecords(databaseId: string, rows: Array<Record<string, string>>): Promise<ClientRecord[]> {
+    if (rows.length === 0) return [];
+    if (!db) {
+      const created = rows.map((data) => ({
+        id: crypto.randomUUID(), databaseId, data, createdAt: now()
+      }));
+      store.records.push(...created);
+      return created;
+    }
+    const inserted = await db.insert(clientRecords)
+      .values(rows.map((data) => ({ databaseId, data })))
+      .returning();
+    return inserted.map((row) => ({
+      id: row.id, databaseId: row.databaseId,
+      data: row.data as Record<string, string>, createdAt: iso(row.createdAt)
+    }));
+  },
+
+  async deleteRecord(id: string) {
+    if (!db) {
+      const index = store.records.findIndex((record) => record.id === id);
+      if (index === -1) return false;
+      store.records.splice(index, 1);
+      return true;
+    }
+    const rows = await db.delete(clientRecords).where(eq(clientRecords.id, id)).returning({ id: clientRecords.id });
+    return rows.length > 0;
+  },
+
+  async deleteClientDatabase(id: string) {
+    if (!db) {
+      const index = store.clientDatabases.findIndex((item) => item.id === id);
+      if (index === -1) return false;
+      store.clientDatabases.splice(index, 1);
+      store.records = store.records.filter((record) => record.databaseId !== id);
+      return true;
+    }
+    const rows = await db.delete(clientDatabases)
+      .where(and(eq(clientDatabases.id, id), eq(clientDatabases.organizationId, MTI_ORGANIZATION_ID)))
+      .returning({ id: clientDatabases.id });
+    return rows.length > 0;
+  },
+
+  async deleteKnowledge(id: string) {
+    if (!db) {
+      const index = store.knowledge.findIndex((entry) => entry.id === id);
+      if (index === -1) return false;
+      store.knowledge.splice(index, 1);
+      return true;
+    }
+    const rows = await db.delete(knowledgeEntries)
+      .where(and(eq(knowledgeEntries.id, id), eq(knowledgeEntries.organizationId, MTI_ORGANIZATION_ID)))
+      .returning({ id: knowledgeEntries.id });
+    return rows.length > 0;
+  },
+
+  async deleteDocument(id: string) {
+    if (!db) {
+      const index = store.documents.findIndex((item) => item.id === id);
+      if (index === -1) return false;
+      store.documents.splice(index, 1);
+      return true;
+    }
+    const rows = await db.delete(documents)
+      .where(and(eq(documents.id, id), eq(documents.organizationId, MTI_ORGANIZATION_ID)))
+      .returning({ id: documents.id });
+    return rows.length > 0;
   }
 };
+
+/** Column set for list reads — everything except the markdown body. */
+const DOCUMENT_COLUMNS = {
+  id: documents.id,
+  folderId: documents.folderId,
+  projectId: documents.projectId,
+  title: documents.title,
+  filename: documents.filename,
+  mimeType: documents.mimeType,
+  sourceKind: documents.sourceKind,
+  sizeBytes: documents.sizeBytes,
+  pageCount: documents.pageCount,
+  wordCount: documents.wordCount,
+  storageKey: documents.storageKey,
+  createdAt: documents.createdAt,
+  updatedAt: documents.updatedAt
+} as const;
+
+type DocumentSummaryRow = {
+  [K in keyof typeof DOCUMENT_COLUMNS]: (typeof documents.$inferSelect)[K];
+};
+
+const documentSummaryRow = (row: DocumentSummaryRow): WorkspaceDocument => ({
+  ...row,
+  sourceKind: row.sourceKind as WorkspaceDocument["sourceKind"],
+  createdAt: iso(row.createdAt),
+  updatedAt: iso(row.updatedAt)
+});
+
+const documentRow = (row: typeof documents.$inferSelect): WorkspaceDocument => ({
+  id: row.id,
+  folderId: row.folderId,
+  projectId: row.projectId,
+  title: row.title,
+  filename: row.filename,
+  mimeType: row.mimeType,
+  sourceKind: row.sourceKind as WorkspaceDocument["sourceKind"],
+  sizeBytes: row.sizeBytes,
+  pageCount: row.pageCount,
+  wordCount: row.wordCount,
+  storageKey: row.storageKey,
+  createdAt: iso(row.createdAt),
+  updatedAt: iso(row.updatedAt)
+});
+
+const stripMarkdown = ({ markdown: _markdown, ...rest }: StoredDocument): WorkspaceDocument => rest;
+const byUpdatedDesc = (a: WorkspaceDocument, b: WorkspaceDocument) => b.updatedAt.localeCompare(a.updatedAt);
+
+/** The default folder set is created on first read so a fresh database is never empty. */
+async function ensureDefaultFolders() {
+  if (!db) return;
+  const [existing] = await db.select({ value: count() }).from(documentFolders)
+    .where(eq(documentFolders.organizationId, MTI_ORGANIZATION_ID));
+  if (Number(existing?.value ?? 0) > 0) return;
+  await db.insert(documentFolders).values(
+    DEFAULT_FOLDERS.map((name, index) => ({
+      organizationId: MTI_ORGANIZATION_ID, name, system: index === 0, position: index
+    }))
+  ).onConflictDoNothing();
+}

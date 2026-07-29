@@ -16,3 +16,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ da
   if (!database) return notFound("client database");
   return NextResponse.json({ data: database });
 }
+
+export async function DELETE(_: Request, { params }: { params: Promise<{ databaseId: string }> }) {
+  const { databaseId } = await params;
+  const deleted = await repository.deleteClientDatabase(databaseId);
+  if (!deleted) return notFound("client database");
+  return new NextResponse(null, { status: 204 });
+}

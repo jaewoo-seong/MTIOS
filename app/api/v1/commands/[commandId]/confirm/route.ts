@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { notFound } from "@/lib/http";
 import { repository } from "@/lib/repository";
+import { startLocalRun } from "@/lib/workflows/local-run";
 import { dispatchCommand } from "@/lib/workflows/trigger";
 
 export async function POST(_: Request, { params }: { params: Promise<{ commandId: string }> }) {
@@ -13,6 +14,9 @@ export async function POST(_: Request, { params }: { params: Promise<{ commandId
   const run = await repository.createRun(command);
   const dispatch = await dispatchCommand(command.id, run.id);
   await repository.updateRun(run.id, { workflowRunId: dispatch.workflowRunId });
+  if (dispatch.mode === "local") {
+    await startLocalRun(command, run.id);
+  }
   return NextResponse.json({
     data: command,
     run,

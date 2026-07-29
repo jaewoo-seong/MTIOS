@@ -2,16 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Archive,
   BookOpen,
   Bot,
-  ChevronRight,
   CircleAlert,
   Database,
   FileText,
   FolderKanban,
   Loader2,
-  Paperclip,
   Plus,
   Search,
   Send,
@@ -19,7 +16,13 @@ import {
   Sparkles,
   X
 } from "lucide-react";
-import type { Agenda, ExecutiveCommand, Project, Report } from "@/lib/domain";
+import type { Agenda, ExecutiveCommand, Project, Report, WorkspaceDocument } from "@/lib/domain";
+import { ClientDataView } from "@/components/client-data-view";
+import { DocumentsView } from "@/components/documents-view";
+import { KnowledgeView } from "@/components/knowledge-view";
+import { LiveActivity } from "@/components/live-activity";
+import { SearchPalette } from "@/components/search-palette";
+import { Modal } from "@/components/ui/modal";
 
 type PageId = "agent" | "projects" | "documents" | "data" | "knowledge" | "settings";
 
@@ -91,10 +94,24 @@ export function BusinessOS() {
   const [selectedProject, setSelectedProject] = useState<(Project & { agendas: Agenda[] }) | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [errors, setErrors] = useState<Array<{ id: number; message: string }>>([]);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [focusDocumentId, setFocusDocumentId] = useState<string | null>(null);
   const [command, setCommand] = useState("");
   const [pendingCommand, setPendingCommand] = useState<ExecutiveCommand | null>(null);
   const [commandBusy, setCommandBusy] = useState(false);
+
+  /** Errors accumulate so a failed batch reports every failure, not just the last. */
+  const pushError = useCallback((message: string) => {
+    setErrors((current) =>
+      current.some((entry) => entry.message === message)
+        ? current
+        : [...current, { id: Date.now() + Math.random(), message }].slice(-4)
+    );
+  }, []);
+  const dismissError = useCallback((id: number) => {
+    setErrors((current) => current.filter((entry) => entry.id !== id));
+  }, []);
 
   const loadProjects = useCallback(async () => {
     const payload = await api<{ data: Project[] }>("/api/v1/projects");
@@ -109,9 +126,9 @@ export function BusinessOS() {
 
   useEffect(() => {
     Promise.all([loadProjects(), loadReports()])
-      .catch((reason: Error) => setError(reason.message))
+      .catch((reason: Error) => pushError(reason.message))
       .finally(() => setLoading(false));
-  }, [loadProjects, loadReports]);
+  }, [loadProjects, loadReports, pushError]);
 
   useEffect(() => {
     if (!selectedProjectId) {
@@ -120,8 +137,8 @@ export function BusinessOS() {
     }
     api<{ data: Project & { agendas: Agenda[] } }>(`/api/v1/projects/${selectedProjectId}`)
       .then((payload) => setSelectedProject(payload.data))
-      .catch((reason: Error) => setError(reason.message));
-  }, [selectedProjectId, projects]);
+      .catch((reason: Error) => pushError(reason.message));
+  }, [selectedProjectId, projects, pushError]);
 
   const counts = useMemo(() => ({
     active: projects.filter((project) => project.status === "active").length,
@@ -130,10 +147,26 @@ export function BusinessOS() {
     savedReports: reports.filter((report) => report.status === "saved").length
   }), [projects, reports]);
 
+  const navCounts: Partial<Record<PageId, number>> = {
+    projects: projects.filter((project) => project.status === "active").length,
+    documents: reports.filter((report) => report.status !== "saved").length
+  };
+
+  // ⌘K / Ctrl+K opens search from anywhere, as the top bar advertises.
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setSearchOpen(true);
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   async function submitCommand() {
     if (!command.trim()) return;
     setCommandBusy(true);
-    setError(null);
     try {
       const payload = await api<{ data: ExecutiveCommand }>("/api/v1/commands", {
         method: "POST",
@@ -145,7 +178,7 @@ export function BusinessOS() {
       });
       setPendingCommand(payload.data);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Command failed");
+      pushError(reason instanceof Error ? reason.message : "Command failed");
     } finally {
       setCommandBusy(false);
     }
@@ -159,7 +192,7 @@ export function BusinessOS() {
       if (page === "projects" && selectedProjectId) {
         await api(`/api/v1/projects/${selectedProjectId}/agendas`, {
           method: "POST",
-          body: JSON.stringify({ title: command.slice(0, 80), instruction: command })
+          body: JSON.stringify({ title: agendaTitle(command), instruction: command })
         });
         const projectPayload = await api<{ data: Project & { agendas: Agenda[] } }>(
           `/api/v1/projects/${selectedProjectId}`
@@ -169,7 +202,7 @@ export function BusinessOS() {
       setPendingCommand(null);
       setCommand("");
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Confirmation failed");
+      pushError(reason instanceof Error ? reason.message : "Confirmation failed");
     } finally {
       setCommandBusy(false);
     }
@@ -188,14 +221,17 @@ export function BusinessOS() {
         <nav>
           {navItems.map((item) => {
             const Icon = item.icon;
+            const count = navCounts[item.id];
             return (
               <button
                 className={page === item.id ? "nav-item active" : "nav-item"}
                 key={item.id}
+                aria-current={page === item.id ? "page" : undefined}
                 onClick={() => setPage(item.id)}
               >
-                <Icon size={16} />
+                <Icon size={16} aria-hidden />
                 <span>{item.label}</span>
+                {count !== undefined && count > 0 && <span className="nav-count">{count}</span>}
               </button>
             );
           })}
@@ -216,16 +252,35 @@ export function BusinessOS() {
             <p>{pageCopy[page].subtitle}</p>
           </div>
           <div className="topbar-actions">
-            <button className="icon-text"><Search size={15} /> Search</button>
-            <button className="primary" onClick={() => setCreateOpen(true)}><Plus size={15} /> Create project</button>
+            <button className="search-trigger" onClick={() => setSearchOpen(true)}>
+              <Search size={15} aria-hidden /> Search
+              <kbd>⌘K</kbd>
+            </button>
+            <button className="primary" onClick={() => setCreateOpen(true)}><Plus size={15} aria-hidden /> Create project</button>
           </div>
         </header>
 
         <section className="workspace">
-          {error && <div className="error-banner"><CircleAlert size={15} />{error}<button onClick={() => setError(null)}><X size={14} /></button></div>}
+          {errors.length > 0 && (
+            <div className="error-stack">
+              {errors.map((entry) => (
+                <div className="error-banner" role="alert" key={entry.id}>
+                  <CircleAlert size={15} aria-hidden />
+                  {entry.message}
+                  <button onClick={() => dismissError(entry.id)} aria-label="Dismiss error"><X size={14} aria-hidden /></button>
+                </div>
+              ))}
+            </div>
+          )}
           {loading ? <LoadingState /> : (
             <>
-              {page === "agent" && <AgentView counts={counts} hasProjects={projects.length > 0} onCreate={() => setCreateOpen(true)} />}
+              {page === "agent" && (
+                <AgentView
+                  counts={counts}
+                  hasProjects={projects.length > 0}
+                  onCreate={() => setCreateOpen(true)}
+                />
+              )}
               {page === "projects" && (
                 <ProjectsView
                   projects={projects}
@@ -233,28 +288,59 @@ export function BusinessOS() {
                   selectedId={selectedProjectId}
                   onSelect={setSelectedProjectId}
                   onCreate={() => setCreateOpen(true)}
+                  onOpenDocument={(documentId) => {
+                    setFocusDocumentId(documentId);
+                    setPage("documents");
+                  }}
                 />
               )}
-              {page === "documents" && <DocumentsView reports={reports} />}
-              {page === "data" && <EmptyModule icon={Database} title="No client databases" text="Create a database or import a CSV to begin organizing client and operational records." action="Create database" />}
-              {page === "knowledge" && <EmptyModule icon={BookOpen} title="No approved memory" text="Proposed findings will appear here after they pass a review gate." action="Propose memory" />}
+              {page === "documents" && (
+                <DocumentsView
+                  onError={pushError}
+                  projects={projects}
+                  focusDocumentId={focusDocumentId}
+                  onFocusHandled={() => setFocusDocumentId(null)}
+                />
+              )}
+              {page === "data" && <ClientDataView onError={pushError} />}
+              {page === "knowledge" && <KnowledgeView onError={pushError} />}
               {page === "settings" && <SettingsView />}
             </>
           )}
         </section>
+
+        <ExecutiveCommand
+          page={page}
+          value={command}
+          pending={pendingCommand}
+          busy={commandBusy}
+          disabled={page === "projects" && !selectedProjectId}
+          onChange={setCommand}
+          onSubmit={submitCommand}
+          onConfirm={confirmCommand}
+          onAdjust={() => setPendingCommand(null)}
+        />
       </main>
 
-      <ExecutiveCommand
-        page={page}
-        value={command}
-        pending={pendingCommand}
-        busy={commandBusy}
-        disabled={page === "projects" && !selectedProjectId}
-        onChange={setCommand}
-        onSubmit={submitCommand}
-        onConfirm={confirmCommand}
-        onAdjust={() => setPendingCommand(null)}
-      />
+      {searchOpen && (
+        <SearchPalette
+          onClose={() => setSearchOpen(false)}
+          onSelect={(hit) => {
+            setSearchOpen(false);
+            if (hit.kind === "document" && hit.documentId) {
+              setFocusDocumentId(hit.documentId);
+              setPage("documents");
+            } else if (hit.kind === "knowledge") {
+              setPage("knowledge");
+            } else if (hit.kind === "database") {
+              setPage("data");
+            } else if (hit.projectId) {
+              setSelectedProjectId(hit.projectId);
+              setPage("projects");
+            }
+          }}
+        />
+      )}
 
       {createOpen && (
         <CreateProjectDialog
@@ -283,10 +369,10 @@ function AgentView({ counts, hasProjects, onCreate }: {
   return (
     <div className="agent-view">
       <div className="metrics">
-        <Metric label="Active projects" value={counts.active} />
-        <Metric label="Archived projects" value={counts.archived} />
-        <Metric label="Working outputs" value={counts.workingReports} />
-        <Metric label="Saved reports" value={counts.savedReports} />
+        <Metric label="Active projects" value={counts.active} note="In flight" />
+        <Metric label="Working outputs" value={counts.workingReports} note="Drafts in progress" attention />
+        <Metric label="Saved reports" value={counts.savedReports} note="Released" />
+        <Metric label="Archived projects" value={counts.archived} note="Closed" />
       </div>
       {!hasProjects ? (
         <EmptyModule
@@ -312,16 +398,33 @@ function AgentView({ counts, hasProjects, onCreate }: {
   );
 }
 
-function Metric({ label, value }: { label: string; value: number }) {
-  return <div className="metric"><span>{label}</span><strong>{value}</strong></div>;
+function Metric({ label, value, note, attention = false }: {
+  label: string;
+  value: number;
+  note?: string;
+  attention?: boolean;
+}) {
+  return (
+    <div className={attention && value > 0 ? "metric attention" : "metric"}>
+      <span>{label}</span>
+      <strong>{value.toLocaleString()}</strong>
+      {note && (
+        <span className="metric-note">
+          {attention && value > 0 && <span className="pill warn">needs you</span>}
+          {note}
+        </span>
+      )}
+    </div>
+  );
 }
 
-function ProjectsView({ projects, project, selectedId, onSelect, onCreate }: {
+function ProjectsView({ projects, project, selectedId, onSelect, onCreate, onOpenDocument }: {
   projects: Project[];
   project: (Project & { agendas: Agenda[] }) | null;
   selectedId: string | null;
   onSelect: (id: string) => void;
   onCreate: () => void;
+  onOpenDocument: (documentId: string) => void;
 }) {
   if (projects.length === 0) {
     return <EmptyModule icon={FolderKanban} title="No projects" text="Create a project to establish context, constraints, agendas, and output requirements." action="Create project" onAction={onCreate} />;
@@ -341,13 +444,29 @@ function ProjectsView({ projects, project, selectedId, onSelect, onCreate }: {
         <div className="project-center">
           <section className="project-title">
             <div><span className="eyebrow">Project command center</span><h2>{project.name}</h2><p>{project.objective}</p></div>
-            <span className="status">{project.status}</span>
+            <span className={`pill ${project.status === "active" ? "good" : project.status === "archived" ? "" : "warn"}`}>
+              {project.status}
+            </span>
           </section>
           <div className="project-context">
             <ContextBlock label="Context" value={project.context} />
             <ContextBlock label="Scope" value={project.scope} />
-            <ContextBlock label="Constraints" value={project.constraints.join("\n")} />
-            <ContextBlock label="Budget" value={project.budgetCents === null ? "" : formatMoney(project.budgetCents)} />
+            <div>
+              <span>Constraints</span>
+              {project.constraints.length === 0 ? (
+                <p>Not set</p>
+              ) : (
+                <ul className="constraint-list">
+                  {project.constraints.map((constraint) => <li key={constraint}>{constraint}</li>)}
+                </ul>
+              )}
+            </div>
+            <div>
+              <span>Budget</span>
+              {project.budgetCents === null
+                ? <p>Not set</p>
+                : <span className="budget-figure">{formatMoney(project.budgetCents)}</span>}
+            </div>
           </div>
           <div className="project-columns">
             <section className="surface agenda-surface">
@@ -357,53 +476,100 @@ function ProjectsView({ projects, project, selectedId, onSelect, onCreate }: {
               ) : (
                 <div className="agenda-list">
                   {project.agendas.map((agenda) => (
-                    <div className="agenda-row" key={agenda.id}>
-                      <span className={`agenda-dot ${agenda.status}`} />
-                      <div><strong>{agenda.title}</strong><p>{agenda.instruction}</p></div>
-                      <span>{agenda.status}</span>
-                    </div>
+                    <AgendaRow key={agenda.id} agenda={agenda} />
                   ))}
                 </div>
               )}
             </section>
-            <section className="surface">
-              <div className="surface-header"><h2>Execution now</h2></div>
-              <div className="empty-inline">No runs are active.</div>
-            </section>
+            <LiveActivity projectId={project.id} />
           </div>
-          <section className="surface">
-            <div className="surface-header"><h2>Report outputs</h2></div>
-            <div className="empty-inline">Outputs produced by this project will appear here as editable reports.</div>
-          </section>
+          <ProjectFiles projectId={project.id} onOpenDocument={onOpenDocument} />
         </div>
       )}
     </div>
   );
 }
 
-function ContextBlock({ label, value }: { label: string; value: string }) {
-  return <div><span>{label}</span><p>{value || "Not set"}</p></div>;
-}
+/**
+ * The title is derived from the instruction, so printing both is redundant.
+ * The full instruction is available on expand instead.
+ */
+function AgendaRow({ agenda }: { agenda: Agenda }) {
+  const [expanded, setExpanded] = useState(false);
+  const truncated = agenda.instruction.trim() !== agenda.title.trim();
 
-function DocumentsView({ reports }: { reports: Report[] }) {
-  const working = reports.filter((report) => report.status !== "saved");
-  const saved = reports.filter((report) => report.status === "saved");
   return (
-    <div className="documents-layout">
-      <aside className="document-folders">
-        <button className="active"><FolderKanban size={15} />Project folders<span>{working.length}</span></button>
-        <button><Archive size={15} />Saved reports<span>{saved.length}</span></button>
-      </aside>
-      <section className="surface">
-        <div className="surface-header"><h2>Project folders</h2></div>
-        {working.length === 0 ? <div className="empty-inline">No working reports.</div> : working.map((report) => <ReportRow key={report.id} report={report} />)}
-      </section>
-    </div>
+    <button
+      className="agenda-row"
+      onClick={() => truncated && setExpanded((value) => !value)}
+      aria-expanded={truncated ? expanded : undefined}
+      style={{ cursor: truncated ? "pointer" : "default" }}
+    >
+      <span className={`agenda-dot ${agenda.status}`} />
+      <div>
+        <strong>{agenda.title}</strong>
+        {expanded && <p className="agenda-instruction">{agenda.instruction}</p>}
+      </div>
+      <span className={`pill ${agenda.status === "completed" ? "good" : agenda.status === "blocked" ? "crit" : agenda.status === "review" ? "warn" : ""}`}>
+        {agenda.status}
+      </span>
+    </button>
   );
 }
 
-function ReportRow({ report }: { report: Report }) {
-  return <div className="report-row"><FileText size={18} /><div><strong>{report.title}</strong><span>{report.summary}</span></div><span>{report.status}</span><ChevronRight size={15} /></div>;
+/** Documents attached to this project, so uploads are grounded in real work. */
+function ProjectFiles({ projectId, onOpenDocument }: {
+  projectId: string;
+  onOpenDocument: (documentId: string) => void;
+}) {
+  const [files, setFiles] = useState<WorkspaceDocument[] | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    fetch("/api/v1/documents")
+      .then((response) => (response.ok ? response.json() : Promise.reject(new Error("failed"))))
+      .then((payload: { data: WorkspaceDocument[] }) => {
+        if (live) setFiles(payload.data.filter((document) => document.projectId === projectId));
+      })
+      .catch(() => { if (live) setFiles([]); });
+    return () => { live = false; };
+  }, [projectId]);
+
+  return (
+    <section className="surface">
+      <div className="surface-header">
+        <h2>Project files</h2>
+        <span>{files === null ? "…" : `${files.length} attached`}</span>
+      </div>
+      {files === null ? (
+        <div className="empty-inline">Loading files…</div>
+      ) : files.length === 0 ? (
+        <div className="empty-inline">
+          No files attached. Open a document and set its project to ground the agent in real BOMs and quotations.
+        </div>
+      ) : (
+        <ul className="document-list">
+          {files.map((file) => (
+            <li key={file.id}>
+              <div className="document-row" style={{ cursor: "default" }}>
+                <button className="document-open" onClick={() => onOpenDocument(file.id)}>
+                  <span className={`kind-badge ${file.sourceKind}`}>{file.sourceKind}</span>
+                  <span className="document-meta">
+                    <strong>{file.title}</strong>
+                    <span>{file.filename} · {file.wordCount.toLocaleString()} words</span>
+                  </span>
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function ContextBlock({ label, value }: { label: string; value: string }) {
+  return <div><span>{label}</span><p>{value || "Not set"}</p></div>;
 }
 
 function SettingsView() {
@@ -474,11 +640,16 @@ function ExecutiveCommand({ page, value, pending, busy, disabled, onChange, onSu
           }}
         />
         <div className="command-actions">
-          <button className="icon-only" title="Attach context"><Paperclip size={15} /></button>
           {config.actions.map((action) => <button key={action} className="command-chip" onClick={() => onChange(action)}>{action}</button>)}
           <div className="spacer" />
-          <button className="send" onClick={onSubmit} disabled={disabled || busy || !value.trim()}>
-            {busy ? <Loader2 size={15} className="spin" /> : <Send size={15} />}
+          <button
+            className="send"
+            onClick={onSubmit}
+            disabled={disabled || busy || !value.trim()}
+            aria-label={busy ? "Sending instruction" : "Send instruction"}
+            title="Send instruction (⌘↵)"
+          >
+            {busy ? <Loader2 size={15} className="spin" aria-hidden /> : <Send size={15} aria-hidden />}
           </button>
         </div>
       </div>
@@ -489,12 +660,12 @@ function ExecutiveCommand({ page, value, pending, busy, disabled, onChange, onSu
 function CreateProjectDialog({ onClose, onCreated }: { onClose: () => void; onCreated: (project: Project) => void }) {
   const [form, setForm] = useState({ name: "", objective: "", context: "", scope: "", constraints: "", budget: "" });
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     setBusy(true);
-    setError(null);
+    setFormError(null);
     try {
       const payload = await api<{ data: Project }>("/api/v1/projects", {
         method: "POST",
@@ -509,29 +680,63 @@ function CreateProjectDialog({ onClose, onCreated }: { onClose: () => void; onCr
       });
       onCreated(payload.data);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not create project");
+      setFormError(reason instanceof Error ? reason.message : "Could not create project");
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <div className="dialog-backdrop" role="presentation">
-      <form className="dialog" onSubmit={submit}>
-        <div className="dialog-head"><div><span className="eyebrow">New project</span><h2>Create durable project context</h2></div><button type="button" className="icon-only" onClick={onClose}><X size={17} /></button></div>
-        {error && <div className="field-error">{error}</div>}
-        <div className="form-grid">
-          <label>Project name<input required minLength={2} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label>
-          <label>Budget (USD)<input type="number" min="0" value={form.budget} onChange={(event) => setForm({ ...form, budget: event.target.value })} /></label>
-          <label className="span-2">Objective<textarea required minLength={10} rows={3} value={form.objective} onChange={(event) => setForm({ ...form, objective: event.target.value })} /></label>
-          <label>Context<textarea rows={4} value={form.context} onChange={(event) => setForm({ ...form, context: event.target.value })} /></label>
-          <label>Scope<textarea rows={4} value={form.scope} onChange={(event) => setForm({ ...form, scope: event.target.value })} /></label>
-          <label className="span-2">Constraints <span>One per line</span><textarea rows={4} value={form.constraints} onChange={(event) => setForm({ ...form, constraints: event.target.value })} /></label>
+    <Modal labelledBy="create-project-title" onClose={onClose} className="dialog" dismissOnBackdrop={false}>
+      <form onSubmit={submit}>
+        <div className="dialog-head">
+          <div>
+            <span className="eyebrow">New project</span>
+            <h2 id="create-project-title">Create durable project context</h2>
+          </div>
+          <button type="button" className="icon-only" onClick={onClose} aria-label="Close dialog">
+            <X size={17} aria-hidden />
+          </button>
         </div>
-        <div className="dialog-actions"><button type="button" className="secondary" onClick={onClose}>Cancel</button><button className="primary" disabled={busy}>{busy && <Loader2 size={14} className="spin" />}Create project</button></div>
+        {formError && <div className="field-error" role="alert">{formError}</div>}
+        <div className="form-grid">
+          <label>Project name <em aria-hidden>required</em>
+            <input required minLength={2} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
+          </label>
+          <label>Budget (USD)
+            <input type="number" min="0" inputMode="decimal" placeholder="Optional" value={form.budget} onChange={(event) => setForm({ ...form, budget: event.target.value })} />
+          </label>
+          <label className="span-2">Objective <em aria-hidden>required</em>
+            <textarea required minLength={10} rows={3} value={form.objective} onChange={(event) => setForm({ ...form, objective: event.target.value })} />
+          </label>
+          <label>Context
+            <textarea rows={4} value={form.context} onChange={(event) => setForm({ ...form, context: event.target.value })} />
+          </label>
+          <label>Scope
+            <textarea rows={4} value={form.scope} onChange={(event) => setForm({ ...form, scope: event.target.value })} />
+          </label>
+          <label className="span-2">Constraints <span>One per line</span>
+            <textarea rows={4} value={form.constraints} onChange={(event) => setForm({ ...form, constraints: event.target.value })} />
+          </label>
+        </div>
+        <div className="dialog-actions">
+          <button type="button" className="secondary" onClick={onClose}>Cancel</button>
+          <button className="primary" disabled={busy}>{busy && <Loader2 size={14} className="spin" aria-hidden />}Create project</button>
+        </div>
       </form>
-    </div>
+    </Modal>
   );
+}
+
+/** Derives a readable agenda title: first sentence, trimmed on a word boundary. */
+function agendaTitle(instruction: string) {
+  const clean = instruction.trim().replace(/\s+/g, " ");
+  const sentence = clean.split(/(?<=[.!?])\s/)[0] ?? clean;
+  const candidate = sentence.replace(/[.!?]+$/, "");
+  if (candidate.length <= 80) return candidate;
+  const cut = candidate.slice(0, 80);
+  const boundary = cut.lastIndexOf(" ");
+  return `${(boundary > 40 ? cut.slice(0, boundary) : cut).trimEnd()}…`;
 }
 
 function formatMoney(cents: number) {

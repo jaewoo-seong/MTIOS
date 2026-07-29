@@ -89,6 +89,37 @@ export interface Report {
   updatedAt: string;
 }
 
+export type DocumentSourceKind = "pdf" | "docx" | "html" | "csv" | "markdown" | "text" | "json" | "unknown";
+
+export interface DocumentFolder {
+  id: string;
+  name: string;
+  system: boolean;
+  documentCount: number;
+  createdAt: string;
+}
+
+export interface WorkspaceDocument {
+  id: string;
+  folderId: string;
+  projectId: string | null;
+  title: string;
+  filename: string;
+  mimeType: string;
+  sourceKind: DocumentSourceKind;
+  sizeBytes: number;
+  pageCount: number | null;
+  wordCount: number;
+  storageKey: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** A document plus its converted markdown body — only fetched when a document is opened. */
+export interface WorkspaceDocumentDetail extends WorkspaceDocument {
+  markdown: string;
+}
+
 export interface KnowledgeEntry {
   id: string;
   collection: string;
@@ -105,4 +136,25 @@ export interface ClientDatabase {
   description: string;
   recordCount: number;
   createdAt: string;
+}
+
+export interface ClientRecord {
+  id: string;
+  databaseId: string;
+  /** Column values keyed by header name — the schema is defined by the import. */
+  data: Record<string, string>;
+  createdAt: string;
+}
+
+export type SearchKind = "document" | "project" | "agenda" | "knowledge" | "database";
+
+export interface SearchHit {
+  id: string;
+  kind: SearchKind;
+  title: string;
+  /** Matching text around the first hit, for display under the title. */
+  excerpt: string;
+  /** Where selecting this hit should navigate to. */
+  projectId?: string | null;
+  documentId?: string | null;
 }

@@ -19,3 +19,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ kn
   if (!entry) return notFound("knowledge");
   return NextResponse.json({ data: entry });
 }
+
+export async function DELETE(_: Request, { params }: { params: Promise<{ knowledgeId: string }> }) {
+  const { knowledgeId } = await params;
+  const deleted = await repository.deleteKnowledge(knowledgeId);
+  if (!deleted) return notFound("knowledge");
+  return new NextResponse(null, { status: 204 });
+}

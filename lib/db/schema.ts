@@ -159,6 +159,32 @@ export const reports = pgTable("reports", {
   ...timestamps
 });
 
+export const documentFolders = pgTable("document_folders", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  name: text("name").notNull(),
+  system: boolean("system").default(false).notNull(),
+  position: integer("position").default(0).notNull(),
+  ...timestamps
+}, (table) => [uniqueIndex("document_folder_org_name").on(table.organizationId, table.name)]);
+
+export const documents = pgTable("documents", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  folderId: uuid("folder_id").references(() => documentFolders.id, { onDelete: "cascade" }).notNull(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }),
+  title: text("title").notNull(),
+  filename: text("filename").notNull(),
+  mimeType: text("mime_type").default("application/octet-stream").notNull(),
+  sourceKind: text("source_kind").default("unknown").notNull(),
+  sizeBytes: bigint("size_bytes", { mode: "number" }).default(0).notNull(),
+  pageCount: integer("page_count"),
+  wordCount: integer("word_count").default(0).notNull(),
+  markdown: text("markdown").default("").notNull(),
+  storageKey: text("storage_key"),
+  ...timestamps
+});
+
 export const storageObjects = pgTable("storage_objects", {
   id: uuid("id").defaultRandom().primaryKey(),
   organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
