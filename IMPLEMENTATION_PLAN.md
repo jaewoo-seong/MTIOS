@@ -1021,7 +1021,7 @@ versions, test results, credentials still required, and unresolved risks.
 
 - Status: application implementation completed and verified locally;
   production deployment gates remain open and are documented below.
-- Implementation commit: `PHASE_12_IMPLEMENTATION_COMMIT`.
+- Implementation commit: `b98df3a`.
 - Migration: `drizzle/0013_melted_franklin_richards.sql`.
 - Delivered:
   - Persistent per-user interface locale, timezone, date format, number format,
