@@ -1116,3 +1116,34 @@ versions, test results, credentials still required, and unresolved risks.
     export, Gmail OAuth/read/draft, backup restore, and alert-delivery tests.
   - Review and rotate production secrets, and replace any provider key ever
     exposed in chat or logs.
+
+### 2026-07-29 - Semantic Retrieval Deployment Follow-up
+
+- Status: semantic retrieval implementation deployed; production provider
+  activation is pending NVIDIA credentials.
+- Implementation commits:
+  - `628177f` adds batched LiteLLM embeddings, lazy chunk-vector persistence,
+    cosine reranking, and provider-failure fallback.
+  - `41e8d8c` makes each persisted context pack report
+    `multilingual_embedding` only when vectors were used and
+    `lexical_fallback` otherwise.
+- Railway app deployment `a6f2ef80-40c5-467c-9c85-5d16ae76eeb5` succeeded
+  from commit `41e8d8c`.
+- Validation:
+  - `npm run typecheck` passed.
+  - `npm test` passed with 87 tests across 16 files.
+  - `npm run build` passed.
+  - Production Korean context-pack creation passed with six scoped citations.
+  - Production pack `ab27f2c4-a96f-4541-9e2b-2f284c3fa74c` correctly reported
+    `lexical_fallback` because the LiteLLM service has no configured NVIDIA
+    embedding provider.
+- Activation required:
+  - Add a rotated `NVIDIA_API_KEY` to the Railway LiteLLM service.
+  - Select and configure one multilingual NVIDIA embedding model and matching
+    vector dimension before backfill. NVIDIA's current multilingual
+    `nvidia/llama-nemotron-embed-1b-v2` supports Korean and configurable
+    dimensions; the existing PostgreSQL column is 1536 dimensions, which is
+    not one of that model's documented output sizes.
+  - After model selection, migrate the vector column if needed, configure the
+    full `nvidia_nim/...` LiteLLM model identifier, run a live pack test, and
+    verify stored vectors plus `multilingual_embedding` pack metadata.
