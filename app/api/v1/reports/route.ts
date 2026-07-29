@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { parseJson } from "@/lib/http";
 import { repository } from "@/lib/repository";
+import { currentSession } from "@/lib/auth";
 
 const schema = z.object({
   projectId: z.string().uuid().nullable().default(null),
@@ -15,6 +16,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const actor = await currentSession();
   const parsed = await parseJson(request, schema);
   if (parsed.error) return parsed.error;
   return NextResponse.json({
@@ -23,6 +25,6 @@ export async function POST(request: Request) {
       title: parsed.data.title,
       summary: parsed.data.summary ?? "",
       content: parsed.data.content ?? ""
-    })
+    }, actor.userId)
   }, { status: 201 });
 }

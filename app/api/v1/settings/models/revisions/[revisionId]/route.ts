@@ -3,12 +3,14 @@ import { z } from "zod";
 import { parseJson } from "@/lib/http";
 import { requestEmbedding, requestLiteLLM, requestReranking } from "@/lib/ai/litellm";
 import { listModelRouteRevisions, setModelRevisionState } from "@/lib/settings";
+import { currentSession } from "@/lib/auth";
 
 const schema = z.object({
   action: z.enum(["test", "approve", "activate", "rollback"])
 });
 
 export async function POST(request: Request, { params }: { params: Promise<{ revisionId: string }> }) {
+  await currentSession({ admin: true });
   const parsed = await parseJson(request, schema);
   if (parsed.error) return parsed.error;
   const { revisionId } = await params;

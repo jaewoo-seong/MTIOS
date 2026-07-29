@@ -17,6 +17,10 @@ import {
   type ResearchProviderDefinition
 } from "@/lib/research/providers";
 import { MTI_ORGANIZATION_ID } from "@/lib/repository";
+import {
+  providerQuotaAvailable,
+  recordExternalProviderUsage
+} from "@/lib/ai/usage";
 
 export type NormalizedEvidence = {
   id: string;
@@ -201,6 +205,16 @@ export async function runResearchQuery(input: {
       fallbackFrom = definition.key;
       continue;
     }
+    const quota = await providerQuotaAvailable(definition.key, "research");
+    if (!quota.available) {
+      issues.push({
+        provider: definition.key,
+        state: "quota_exhausted",
+        message: `${definition.name} configured quota is exhausted.`
+      });
+      fallbackFrom = definition.key;
+      continue;
+    }
     used += 1;
     costCents += definition.costCents;
     const provider = providers.find((item) => item.key === definition.key);
@@ -212,6 +226,7 @@ export async function runResearchQuery(input: {
       input.query,
       input.language ?? "en",
       fallbackFrom,
+      { projectId: input.projectId, runId: input.runId ?? null },
       options
     );
     if (result.issue) {
@@ -262,6 +277,7 @@ async function queryProvider(
   query: string,
   language: string,
   fallbackFrom: string | null,
+  scope: { projectId: string; runId: string | null },
   options: {
     fetcher?: Fetcher;
     sleep?: (milliseconds: number) => Promise<void>;
@@ -283,6 +299,12 @@ async function queryProvider(
   let lastErrorMessage = "Provider request failed.";
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     try {
+      await recordExternalProviderUsage({
+        provider: provider.key,
+        route: "research",
+        projectId: scope.projectId,
+        runId: scope.runId
+      });
       const response = await executeAdapter(provider, query, language, fetcher);
       if (response.status === 429 || response.status === 503) {
         const retryAfterMs = parseRetryAfter(response.headers.get("retry-after"), attempt);

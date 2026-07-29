@@ -9,6 +9,7 @@ import {
   FileText,
   FolderKanban,
   Loader2,
+  LogOut,
   Mail,
   Plus,
   Search,
@@ -36,6 +37,11 @@ import { LiveActivity } from "@/components/live-activity";
 import { SearchPalette } from "@/components/search-palette";
 import { Modal } from "@/components/ui/modal";
 import { useI18n, type RegionalPreferences } from "@/lib/i18n";
+import {
+  AdminUsersSettings,
+  AiAnalyticsSettings,
+  PasswordSettings
+} from "@/components/account-settings";
 
 type PageId = "agent" | "projects" | "documents" | "data" | "knowledge" | "settings";
 type ProjectDetail = Project & {
@@ -43,6 +49,10 @@ type ProjectDetail = Project & {
   milestones: Milestone[];
   records: ProjectRecord[];
   deliverables: Deliverable[];
+};
+type AppSession = {
+  user: { id: string; name: string; email: string; role: "admin" | "member" };
+  forcePasswordChange: boolean;
 };
 
 const navItems: Array<{ id: PageId; label: string; icon: typeof Bot }> = [
@@ -121,6 +131,7 @@ export function BusinessOS() {
   const [pendingCommand, setPendingCommand] = useState<ExecutiveCommand | null>(null);
   const [commandBusy, setCommandBusy] = useState(false);
   const [agendaWorkType, setAgendaWorkType] = useState<AgendaWorkType>("custom");
+  const [session, setSession] = useState<AppSession | null>(null);
 
   /** Errors accumulate so a failed batch reports every failure, not just the last. */
   const pushError = useCallback((message: string) => {
@@ -147,10 +158,23 @@ export function BusinessOS() {
   }, []);
 
   useEffect(() => {
-    Promise.all([loadProjects(), loadReports()])
+    Promise.all([
+      loadProjects(),
+      loadReports(),
+      api<{ data: AppSession }>("/api/v1/auth/session").then((payload) => setSession(payload.data))
+    ])
       .catch((reason: Error) => pushError(reason.message))
       .finally(() => setLoading(false));
   }, [loadProjects, loadReports, pushError]);
+
+  useEffect(() => {
+    const refresh = window.setInterval(() => {
+      api<{ data: AppSession }>("/api/v1/auth/session")
+        .then((payload) => setSession(payload.data))
+        .catch(() => window.location.assign("/login"));
+    }, 30 * 60 * 1000);
+    return () => window.clearInterval(refresh);
+  }, []);
 
   useEffect(() => {
     if (!selectedProjectId) {
@@ -288,9 +312,14 @@ export function BusinessOS() {
         <div className="workspace-identity">
           <span className="live-dot" />
           <div>
-            <strong>MTI Korea</strong>
-            <span>{t("Single workspace")}</span>
+            <strong>{session?.user.name ?? "MTI Korea"}</strong>
+            <span>{session?.user.role ?? t("Single workspace")}</span>
           </div>
+          <button
+            className="icon-button"
+            title="Sign out"
+            onClick={() => void api("/api/v1/auth/logout", { method: "POST" }).finally(() => window.location.assign("/login"))}
+          ><LogOut size={14} /></button>
         </div>
       </aside>
 
@@ -354,7 +383,7 @@ export function BusinessOS() {
               )}
               {page === "data" && <ClientDataView onError={pushError} />}
               {page === "knowledge" && <KnowledgeView onError={pushError} />}
-              {page === "settings" && <SettingsView onError={pushError} />}
+              {page === "settings" && <SettingsView onError={pushError} role={session?.user.role ?? "member"} />}
             </>
           )}
         </section>
@@ -668,15 +697,24 @@ function ContextBlock({ label, value }: { label: string; value: string }) {
   return <div><span>{label}</span><p>{value || t("Not set")}</p></div>;
 }
 
-function SettingsView({ onError }: { onError: (message: string) => void }) {
+function SettingsView({ onError, role }: {
+  onError: (message: string) => void;
+  role: "admin" | "member";
+}) {
   const { t } = useI18n();
   return (
     <div className="settings-grid">
       <PreferenceSettings onError={onError} />
-      <ModelSettings onError={onError} />
-      <McpSettings onError={onError} />
-      <section className="surface"><div className="surface-header"><h2>{t("Review policy")}</h2></div><Setting label={t("External sends")} value={t("Approval required")} /><Setting label={t("Destructive writes")} value={t("Approval required")} /><Setting label={t("High-cost actions")} value={t("Approval required")} /></section>
-      <GmailSettings onError={onError} />
+      <PasswordSettings onError={onError} />
+      {role === "admin" && (
+        <>
+          <AdminUsersSettings onError={onError} />
+          <AiAnalyticsSettings onError={onError} />
+          <ModelSettings onError={onError} />
+          <McpSettings onError={onError} />
+          <section className="surface"><div className="surface-header"><h2>{t("Review policy")}</h2></div><Setting label={t("External sends")} value={t("Approval required")} /><Setting label={t("Destructive writes")} value={t("Approval required")} /><Setting label={t("High-cost actions")} value={t("Approval required")} /></section>
+        </>
+      )}
     </div>
   );
 }

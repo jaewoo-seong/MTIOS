@@ -5,8 +5,10 @@ import { db } from "@/lib/db/client";
 import { modelCalls } from "@/lib/db/schema";
 import { desc } from "drizzle-orm";
 import { listModelRouteRevisions } from "@/lib/settings";
+import { currentSession } from "@/lib/auth";
 
 export async function GET() {
+  await currentSession({ admin: true });
   const environment = process.env.NODE_ENV === "production" ? "production" : "development";
   const testingMode = process.env.ALLOW_TESTING_MODELS === "true";
   const [health, recentCalls, revisions] = await Promise.all([

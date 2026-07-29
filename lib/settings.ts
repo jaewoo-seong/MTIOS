@@ -39,11 +39,11 @@ const state = globalThis as typeof globalThis & {
 state.__mtiPreferences ??= defaultPreferences;
 state.__mtiModelRevisions ??= [];
 
-export async function getWorkspacePreferences(): Promise<WorkspacePreferences> {
+export async function getWorkspacePreferences(userId = MTI_OPERATOR_ID): Promise<WorkspacePreferences> {
   if (!db) return state.__mtiPreferences!;
   const [row] = await db.select().from(userPreferences).where(and(
     eq(userPreferences.organizationId, MTI_ORGANIZATION_ID),
-    eq(userPreferences.userId, MTI_OPERATOR_ID)
+    eq(userPreferences.userId, userId)
   )).limit(1);
   return row ? {
     locale: row.locale as WorkspacePreferences["locale"],
@@ -54,14 +54,14 @@ export async function getWorkspacePreferences(): Promise<WorkspacePreferences> {
   } : defaultPreferences;
 }
 
-export async function updateWorkspacePreferences(input: WorkspacePreferences) {
+export async function updateWorkspacePreferences(input: WorkspacePreferences, userId = MTI_OPERATOR_ID) {
   if (!db) {
     state.__mtiPreferences = input;
     return input;
   }
   const [row] = await db.insert(userPreferences).values({
     organizationId: MTI_ORGANIZATION_ID,
-    userId: MTI_OPERATOR_ID,
+    userId,
     ...input
   }).onConflictDoUpdate({
     target: [userPreferences.organizationId, userPreferences.userId],

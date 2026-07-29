@@ -10,7 +10,8 @@ export const modelRoutes = [
   "worker_translation",
   "worker_fast",
   "multilingual_embedding",
-  "multilingual_reranking"
+  "multilingual_reranking",
+  "premium_fallback"
 ] as const;
 export type ModelRoute = typeof modelRoutes[number];
 

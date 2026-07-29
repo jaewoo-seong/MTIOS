@@ -1,10 +1,16 @@
 import { NextResponse } from "next/server";
-import { requestLiteLLM } from "@/lib/ai/litellm";
+import { requestLiteLLM, type ModelRoute } from "@/lib/ai/litellm";
 import { modelRequestSchema, resolveModelPolicy } from "@/lib/ai/model-policy";
 import { parseJson } from "@/lib/http";
 import { isValidWorkflowRequest } from "@/lib/internal-auth";
 import { repository } from "@/lib/repository";
 import { getActiveModelPolicy } from "@/lib/settings";
+import {
+  approvedPremiumFallback,
+  createPremiumApproval,
+  evaluateFreeRoute,
+  recordProviderUsage
+} from "@/lib/ai/usage";
 
 export async function POST(request: Request) {
   if (!isValidWorkflowRequest(request)) {
@@ -18,9 +24,30 @@ export async function POST(request: Request) {
     parsed.data.maxCostMicros,
     await getActiveModelPolicy(parsed.data.model)
   );
+  let selectedRoute: ModelRoute = parsed.data.model;
+  if (parsed.data.runId && policy.candidates.some((candidate) => candidate.pricingClass === "free")) {
+    const quota = await evaluateFreeRoute(parsed.data.model, policy.candidates);
+    if (!quota.available) {
+      const approved = await approvedPremiumFallback(parsed.data.runId, parsed.data.model);
+      if (approved) {
+        selectedRoute = "premium_fallback";
+      } else {
+        const approval = await createPremiumApproval({
+          runId: parsed.data.runId,
+          route: parsed.data.model,
+          maximumCostMicros: policy.maxCostMicros,
+          reason: "All configured free providers reached quota or are unavailable."
+        });
+        return NextResponse.json({
+          error: "premium_approval_required",
+          approvalId: approval.id
+        }, { status: 402 });
+      }
+    }
+  }
   try {
     const structuredOutput = parsed.data.structuredOutput ?? policy.structuredOutput;
-    const response = await requestLiteLLM(parsed.data.model, parsed.data.messages, {
+    const response = await requestLiteLLM(selectedRoute, parsed.data.messages, {
       maxCostMicros: policy.maxCostMicros,
       responseFormat: structuredOutput ? { type: "json_object" } : undefined
     });
@@ -52,7 +79,7 @@ export async function POST(request: Request) {
       const selected = policy.candidates.find((candidate) =>
         candidate.provider === payload.provider
       ) ?? policy.candidates[0];
-      await repository.recordModelCall({
+      const recorded = await repository.recordModelCall({
         runId: parsed.data.runId,
         route: parsed.data.model,
         model: payload.model ?? null,
@@ -68,6 +95,15 @@ export async function POST(request: Request) {
         structuredOutputValid,
         requestBudgetMicros: policy.maxCostMicros
       });
+      await recordProviderUsage({
+        runId: parsed.data.runId,
+        modelCallId: recorded.id,
+        provider: payload.provider ?? selected?.provider ?? "unknown",
+        model: payload.model ?? null,
+        route: parsed.data.model,
+        projectId: recorded.projectId ?? null,
+        userId: recorded.userId ?? null
+      });
     }
     return NextResponse.json(response);
   } catch (reason) {
@@ -81,6 +117,21 @@ export async function POST(request: Request) {
         requestBudgetMicros: policy.maxCostMicros,
         error: reason instanceof Error ? reason.message : "Model request failed."
       });
+      if (selectedRoute !== "premium_fallback" &&
+          policy.candidates.some((candidate) => candidate.pricingClass === "free")) {
+        const approval = await createPremiumApproval({
+          runId: parsed.data.runId,
+          route: parsed.data.model,
+          maximumCostMicros: policy.maxCostMicros,
+          reason: reason instanceof Error
+            ? `All free provider attempts failed: ${reason.message}`
+            : "All free provider attempts failed."
+        });
+        return NextResponse.json({
+          error: "premium_approval_required",
+          approvalId: approval.id
+        }, { status: 402 });
+      }
     }
     throw reason;
   }

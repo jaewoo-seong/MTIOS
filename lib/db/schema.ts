@@ -43,6 +43,14 @@ export const users = pgTable("users", {
   id: uuid("id").defaultRandom().primaryKey(),
   name: text("name").notNull(),
   email: text("email").notNull().unique(),
+  passwordHash: text("password_hash"),
+  status: text("status").default("active").notNull(),
+  forcePasswordChange: boolean("force_password_change").default(true).notNull(),
+  temporaryPasswordExpiresAt: timestamp("temporary_password_expires_at", { withTimezone: true }),
+  failedLoginAttempts: integer("failed_login_attempts").default(0).notNull(),
+  lockedUntil: timestamp("locked_until", { withTimezone: true }),
+  lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
+  passwordChangedAt: timestamp("password_changed_at", { withTimezone: true }),
   ...timestamps
 });
 
@@ -50,9 +58,38 @@ export const memberships = pgTable("memberships", {
   id: uuid("id").defaultRandom().primaryKey(),
   organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
   userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
-  role: text("role").default("owner").notNull(),
+  role: text("role").default("member").notNull(),
   ...timestamps
 }, (table) => [uniqueIndex("membership_org_user").on(table.organizationId, table.userId)]);
+
+export const userSessions = pgTable("user_sessions", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  tokenHash: text("token_hash").notNull().unique(),
+  lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).defaultNow().notNull(),
+  idleExpiresAt: timestamp("idle_expires_at", { withTimezone: true }).notNull(),
+  absoluteExpiresAt: timestamp("absolute_expires_at", { withTimezone: true }).notNull(),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
+}, (table) => [
+  index("user_session_user_active_idx").on(table.userId, table.revokedAt, table.idleExpiresAt)
+]);
+
+export const authenticationEvents = pgTable("authentication_events", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }),
+  userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+  email: text("email"),
+  event: text("event").notNull(),
+  success: boolean("success").default(false).notNull(),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
+}, (table) => [index("authentication_event_user_time_idx").on(table.userId, table.createdAt)]);
 
 export const userPreferences = pgTable("user_preferences", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -111,6 +148,7 @@ export const agendas = pgTable("agendas", {
   workType: agendaWorkType("work_type").default("custom").notNull(),
   status: agendaStatus("status").default("queued").notNull(),
   revision: integer("revision").default(1).notNull(),
+  createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
   ...timestamps
 });
 
@@ -161,6 +199,7 @@ export const commands = pgTable("commands", {
   clarification: text("clarification"),
   context: jsonb("context").$type<Record<string, unknown>>().default({}).notNull(),
   idempotencyKey: text("idempotency_key").unique(),
+  createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
   ...timestamps
 });
 
@@ -197,6 +236,9 @@ export const runEvents = pgTable("run_events", {
 export const modelCalls = pgTable("model_calls", {
   id: uuid("id").defaultRandom().primaryKey(),
   runId: uuid("run_id").references(() => runs.id, { onDelete: "cascade" }).notNull(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }),
+  userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+  agentType: text("agent_type"),
   route: text("route").notNull(),
   provider: text("provider"),
   model: text("model"),
@@ -213,6 +255,78 @@ export const modelCalls = pgTable("model_calls", {
   error: text("error"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
 });
+
+export const providerQuotaPolicies = pgTable("provider_quota_policies", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  provider: text("provider").notNull(),
+  route: text("route").default("*").notNull(),
+  period: text("period").notNull(),
+  allowance: integer("allowance").notNull(),
+  timezone: text("timezone").default("UTC").notNull(),
+  enforcement: text("enforcement").default("block_and_fallback").notNull(),
+  active: boolean("active").default(true).notNull(),
+  createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+  ...timestamps
+}, (table) => [
+  uniqueIndex("provider_quota_policy_scope_idx").on(
+    table.organizationId, table.provider, table.route, table.period
+  )
+]);
+
+export const providerUsageEvents = pgTable("provider_usage_events", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }),
+  userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+  runId: uuid("run_id").references(() => runs.id, { onDelete: "set null" }),
+  modelCallId: uuid("model_call_id").references(() => modelCalls.id, { onDelete: "set null" }),
+  provider: text("provider").notNull(),
+  model: text("model"),
+  route: text("route").notNull(),
+  quantity: integer("quantity").default(1).notNull(),
+  source: text("source").default("observed").notNull(),
+  occurredAt: timestamp("occurred_at", { withTimezone: true }).defaultNow().notNull()
+}, (table) => [
+  index("provider_usage_window_idx").on(table.organizationId, table.provider, table.occurredAt)
+]);
+
+export const modelPricingSnapshots = pgTable("model_pricing_snapshots", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  provider: text("provider").notNull(),
+  model: text("model").notNull(),
+  inputMicrosPerMillionTokens: bigint("input_micros_per_million_tokens", { mode: "number" }).default(0).notNull(),
+  outputMicrosPerMillionTokens: bigint("output_micros_per_million_tokens", { mode: "number" }).default(0).notNull(),
+  currency: text("currency").default("USD").notNull(),
+  effectiveAt: timestamp("effective_at", { withTimezone: true }).defaultNow().notNull(),
+  source: text("source").default("admin").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
+}, (table) => [
+  uniqueIndex("model_pricing_snapshot_idx").on(table.provider, table.model, table.effectiveAt)
+]);
+
+export const premiumModelApprovals = pgTable("premium_model_approvals", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }),
+  runId: uuid("run_id").references(() => runs.id, { onDelete: "cascade" }).notNull(),
+  route: text("route").notNull(),
+  proposedProvider: text("proposed_provider").notNull(),
+  proposedModel: text("proposed_model").notNull(),
+  estimatedInputTokens: integer("estimated_input_tokens").default(0).notNull(),
+  estimatedOutputTokens: integer("estimated_output_tokens").default(0).notNull(),
+  maximumCostMicros: bigint("maximum_cost_micros", { mode: "number" }).notNull(),
+  reason: text("reason").notNull(),
+  status: text("status").default("pending").notNull(),
+  requestedBy: uuid("requested_by").references(() => users.id, { onDelete: "set null" }),
+  decidedBy: uuid("decided_by").references(() => users.id, { onDelete: "set null" }),
+  decidedAt: timestamp("decided_at", { withTimezone: true }),
+  decisionNote: text("decision_note"),
+  resumeToken: text("resume_token").notNull().unique(),
+  ...timestamps
+}, (table) => [
+  uniqueIndex("premium_model_approval_run_route_idx").on(table.runId, table.route)
+]);
 
 export const modelRouteRevisions = pgTable("model_route_revisions", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -263,6 +377,7 @@ export const reports = pgTable("reports", {
   content: text("content").default("").notNull(),
   status: reportStatus("status").default("working").notNull(),
   revision: integer("revision").default(1).notNull(),
+  createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
   ...timestamps
 });
 
@@ -318,6 +433,7 @@ export const documents = pgTable("documents", {
   wordCount: integer("word_count").default(0).notNull(),
   markdown: text("markdown").default("").notNull(),
   storageKey: text("storage_key"),
+  createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
   ...timestamps
 });
 
@@ -431,6 +547,7 @@ export const reviews = pgTable("reviews", {
   subjectId: uuid("subject_id").notNull(),
   status: reviewStatus("status").default("pending").notNull(),
   reason: text("reason"),
+  createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
   ...timestamps
 });
 

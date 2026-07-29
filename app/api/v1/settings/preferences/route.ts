@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { parseJson } from "@/lib/http";
 import { getWorkspacePreferences, updateWorkspacePreferences } from "@/lib/settings";
+import { currentSession } from "@/lib/auth";
 
 const schema = z.object({
   locale: z.enum(["en", "ko"]),
@@ -12,11 +13,13 @@ const schema = z.object({
 });
 
 export async function GET() {
-  return NextResponse.json({ data: await getWorkspacePreferences() });
+  const session = await currentSession();
+  return NextResponse.json({ data: await getWorkspacePreferences(session.userId) });
 }
 
 export async function PATCH(request: Request) {
   const parsed = await parseJson(request, schema);
   if (parsed.error) return parsed.error;
-  return NextResponse.json({ data: await updateWorkspacePreferences(parsed.data) });
+  const session = await currentSession();
+  return NextResponse.json({ data: await updateWorkspacePreferences(parsed.data, session.userId) });
 }

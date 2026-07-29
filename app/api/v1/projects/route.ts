@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { parseJson } from "@/lib/http";
 import { repository } from "@/lib/repository";
+import { currentSession } from "@/lib/auth";
 
 const createProjectSchema = z.object({
   name: z.string().trim().min(2).max(120),
@@ -30,6 +31,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const actor = await currentSession();
   const parsed = await parseJson(request, createProjectSchema);
   if (parsed.error) return parsed.error;
   return NextResponse.json({
@@ -45,6 +47,6 @@ export async function POST(request: Request) {
       outputRequirements: parsed.data.outputRequirements ?? [],
       outputLanguage: parsed.data.outputLanguage,
       permissions: parsed.data.permissions
-    })
+    }, actor.userId)
   }, { status: 201 });
 }

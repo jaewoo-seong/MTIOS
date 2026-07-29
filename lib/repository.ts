@@ -326,7 +326,7 @@ export const repository = {
   async createProject(input:
     Omit<Project, "id" | "organizationId" | "status" | "createdAt" | "updatedAt" | "permissions" | "reviewGates" | "outputRequirements" | "outputLanguage" | "budgetCurrency">
     & Partial<Pick<Project, "permissions" | "reviewGates" | "outputRequirements" | "outputLanguage" | "budgetCurrency">>
-  ) {
+  , actorId = MTI_OPERATOR_ID) {
     const governance = {
       permissions: input.permissions ?? {
         externalSend: "review_required" as const,
@@ -353,7 +353,7 @@ export const repository = {
     }
     const [row] = await db.insert(projects).values({
       organizationId: MTI_ORGANIZATION_ID,
-      ownerId: MTI_OPERATOR_ID,
+      ownerId: actorId,
       ...governance,
       ...input
     }).returning();
@@ -391,7 +391,7 @@ export const repository = {
       .limit(1);
     return row?.organizationId === MTI_ORGANIZATION_ID ? agendaRow(row.agenda) : undefined;
   },
-  async createAgenda(projectId: string, input: Pick<Agenda, "title" | "instruction"> & Partial<Pick<Agenda, "workType">>) {
+  async createAgenda(projectId: string, input: Pick<Agenda, "title" | "instruction"> & Partial<Pick<Agenda, "workType">>, actorId = MTI_OPERATOR_ID) {
     if (!db) {
       const agenda: Agenda = {
         id: crypto.randomUUID(), projectId, status: "queued",
@@ -401,12 +401,12 @@ export const repository = {
       store.agendas.unshift(agenda);
       return agenda;
     }
-    const [row] = await db.insert(agendas).values({ projectId, ...input }).returning();
+    const [row] = await db.insert(agendas).values({ projectId, createdBy: actorId, ...input }).returning();
     return agendaRow(row);
   },
   async createCommand(input: Pick<ExecutiveCommand, "page" | "projectId" | "instruction"> & {
     context?: CommandContext;
-  }) {
+  }, actorId = MTI_OPERATOR_ID) {
     const needsClarification = input.instruction.trim().split(/\s+/).length < 8;
     const status = needsClarification ? "needs_clarification" : "awaiting_confirmation";
     const clarification = needsClarification
@@ -424,7 +424,7 @@ export const repository = {
     const [row] = await db.insert(commands).values({
       organizationId: MTI_ORGANIZATION_ID, ...input,
       context: input.context ?? { page: input.page, projectId: input.projectId },
-      status, clarification
+      status, clarification, createdBy: actorId
     }).returning();
     return commandRow(row);
   },
@@ -598,15 +598,26 @@ export const repository = {
         attemptCount: input.attemptCount ?? 1,
         structuredOutputValid: input.structuredOutputValid ?? null,
         requestBudgetMicros: input.requestBudgetMicros ?? null,
-        error: input.error ?? null
+        error: input.error ?? null,
+        projectId: null,
+        userId: null,
+        agentType: input.route.startsWith("executive") ? "executive" : "worker"
       };
       store.modelUsage.push(row);
       return row;
     }
     return db.transaction(async (tx) => {
       const costMicros = input.costMicros ?? 0;
+      const [scope] = await tx.select({
+        projectId: commands.projectId,
+        userId: commands.createdBy
+      }).from(runs).innerJoin(commands, eq(commands.id, runs.commandId))
+        .where(eq(runs.id, input.runId)).limit(1);
       const [row] = await tx.insert(modelCalls).values({
         runId: input.runId,
+        projectId: scope?.projectId ?? null,
+        userId: scope?.userId ?? null,
+        agentType: input.route.startsWith("executive") ? "executive" : "worker",
         route: input.route,
         model: input.model ?? null,
         provider: input.provider ?? null,
@@ -681,7 +692,7 @@ export const repository = {
       progress: row.progress, createdAt: iso(row.createdAt), updatedAt: iso(row.updatedAt)
     };
   },
-  async createReviewDecision(reviewId: string, input: Pick<ReviewDecision, "decision" | "note">) {
+  async createReviewDecision(reviewId: string, input: Pick<ReviewDecision, "decision" | "note">, actorId = MTI_OPERATOR_ID) {
     const decision: ReviewDecision = { id: crypto.randomUUID(), reviewId, createdAt: now(), ...input };
     if (!db) {
       store.reviewDecisions.unshift(decision);
@@ -696,7 +707,7 @@ export const repository = {
       id: decision.id,
       organizationId: MTI_ORGANIZATION_ID,
       reviewId,
-      userId: MTI_OPERATOR_ID,
+      userId: actorId,
       decision: input.decision,
       note: input.note
     }).returning();
@@ -724,7 +735,7 @@ export const repository = {
     const [row] = await db.select().from(reports).where(eq(reports.id, id)).limit(1);
     return row?.organizationId === MTI_ORGANIZATION_ID ? reportRow(row) : undefined;
   },
-  async createReport(input: Pick<Report, "projectId" | "title" | "summary" | "content">) {
+  async createReport(input: Pick<Report, "projectId" | "title" | "summary" | "content">, actorId = MTI_OPERATOR_ID) {
     if (!db) {
       const report: Report = {
         id: crypto.randomUUID(), status: "working", createdAt: now(), updatedAt: now(), ...input
@@ -733,7 +744,7 @@ export const repository = {
       return report;
     }
     const [row] = await db.insert(reports).values({
-      organizationId: MTI_ORGANIZATION_ID, ...input
+      organizationId: MTI_ORGANIZATION_ID, createdBy: actorId, ...input
     }).returning();
     return reportRow(row);
   },

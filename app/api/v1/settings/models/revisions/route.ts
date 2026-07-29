@@ -4,6 +4,7 @@ import { modelRoutes } from "@/lib/ai/litellm";
 import { modelRoutePolicies } from "@/lib/ai/model-policy";
 import { parseJson } from "@/lib/http";
 import { createModelRouteRevision, listModelRouteRevisions } from "@/lib/settings";
+import { currentSession } from "@/lib/auth";
 
 const routeSchema = z.enum(modelRoutes);
 const candidateSchema = z.object({
@@ -21,6 +22,7 @@ const schema = z.object({
 });
 
 export async function GET(request: Request) {
+  await currentSession({ admin: true });
   const route = new URL(request.url).searchParams.get("route");
   const parsedRoute = route ? routeSchema.safeParse(route) : null;
   if (route && !parsedRoute?.success) {
@@ -30,6 +32,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  await currentSession({ admin: true });
   const parsed = await parseJson(request, schema);
   if (parsed.error) return parsed.error;
   const base = modelRoutePolicies[parsed.data.route];

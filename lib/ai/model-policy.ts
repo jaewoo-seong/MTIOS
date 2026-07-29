@@ -51,7 +51,8 @@ export const modelRoutePolicies: Record<ModelRoute, ModelRoutePolicy> = {
   worker_translation: { purpose: "English and Korean translation", maxCostMicros: 80_000, structuredOutput: false, candidates: workerCandidates },
   worker_fast: { purpose: "Fast classification", maxCostMicros: 30_000, structuredOutput: true, candidates: workerCandidates },
   multilingual_embedding: { purpose: "Multilingual embeddings", maxCostMicros: 10_000, structuredOutput: false, candidates: workerCandidates },
-  multilingual_reranking: { purpose: "Multilingual reranking", maxCostMicros: 20_000, structuredOutput: false, candidates: workerCandidates }
+  multilingual_reranking: { purpose: "Multilingual reranking", maxCostMicros: 20_000, structuredOutput: false, candidates: workerCandidates },
+  premium_fallback: { purpose: "Admin-approved premium fallback", maxCostMicros: 300_000, structuredOutput: true, candidates: [haiku] }
 };
 
 export const modelRequestSchema = z.object({

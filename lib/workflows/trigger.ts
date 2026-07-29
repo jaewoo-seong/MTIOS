@@ -5,7 +5,11 @@ type TriggerDispatch = {
   mode: "managed" | "local";
 };
 
-export async function dispatchCommand(commandId: string, runId: string): Promise<TriggerDispatch> {
+export async function dispatchCommand(
+  commandId: string,
+  runId: string,
+  idempotencyKey = commandId
+): Promise<TriggerDispatch> {
   const secret = process.env.TRIGGER_SECRET_KEY;
 
   if (!secret) {
@@ -13,7 +17,7 @@ export async function dispatchCommand(commandId: string, runId: string): Promise
   }
 
   const handle = await tasks.trigger("executive-agent-workflow", { commandId, runId }, {
-    idempotencyKey: commandId
+    idempotencyKey
   });
   return { workflowRunId: handle.id, mode: "managed" };
 }

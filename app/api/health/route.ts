@@ -12,7 +12,8 @@ export async function GET() {
     redis: "not_configured",
     storage: "not_configured",
     litellm: "not_configured",
-    documentConversion: "not_configured"
+    documentConversion: "not_configured",
+    authentication: "not_configured"
   };
   let status = 200;
   if (sql) {
@@ -64,6 +65,12 @@ export async function GET() {
     }
   }
   if (process.env.NODE_ENV === "production" && checks.documentConversion !== "ok") {
+    status = 503;
+  }
+  checks.authentication = (process.env.AUTH_SESSION_SECRET?.length ?? 0) >= 32
+    ? "ok"
+    : "not_configured";
+  if (process.env.NODE_ENV === "production" && checks.authentication !== "ok") {
     status = 503;
   }
   return NextResponse.json({

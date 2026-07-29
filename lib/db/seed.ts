@@ -2,6 +2,7 @@ import { agentDefinitions, memberships, organizations, userPreferences, users } 
 import { requireDatabase } from "@/lib/db/client";
 import { MTI_OPERATOR_ID, MTI_ORGANIZATION_ID } from "@/lib/repository";
 import { and, eq } from "drizzle-orm";
+import { hashPassword } from "@/lib/auth";
 
 const executiveToolScopes = [
   "project:read", "knowledge:read", "plan:create", "task:delegate",
@@ -30,8 +31,27 @@ export async function seedDefaultWorkspace() {
   await database.insert(memberships).values({
     organizationId: MTI_ORGANIZATION_ID,
     userId: MTI_OPERATOR_ID,
-    role: "owner"
+    role: "admin"
   }).onConflictDoNothing();
+  await database.update(memberships).set({
+    role: "admin",
+    updatedAt: new Date()
+  }).where(and(
+    eq(memberships.organizationId, MTI_ORGANIZATION_ID),
+    eq(memberships.userId, MTI_OPERATOR_ID)
+  ));
+  const bootstrapPassword = process.env.ADMIN_BOOTSTRAP_PASSWORD ?? process.env.APP_BASIC_AUTH_PASSWORD;
+  const [operator] = await database.select({
+    passwordHash: users.passwordHash
+  }).from(users).where(eq(users.id, MTI_OPERATOR_ID)).limit(1);
+  if (!operator?.passwordHash && bootstrapPassword) {
+    await database.update(users).set({
+      passwordHash: await hashPassword(bootstrapPassword),
+      forcePasswordChange: true,
+      temporaryPasswordExpiresAt: new Date(Date.now() + 72 * 60 * 60 * 1000),
+      updatedAt: new Date()
+    }).where(eq(users.id, MTI_OPERATOR_ID));
+  }
   await database.insert(userPreferences).values({
     organizationId: MTI_ORGANIZATION_ID,
     userId: MTI_OPERATOR_ID

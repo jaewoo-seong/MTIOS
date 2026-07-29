@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { parseJson } from "@/lib/http";
 import { repository } from "@/lib/repository";
+import { currentSession } from "@/lib/auth";
 
 const schema = z.object({
   page: z.string().trim().min(1).max(60),
@@ -18,6 +19,7 @@ const schema = z.object({
 });
 
 export async function POST(request: Request) {
+  const actor = await currentSession();
   const parsed = await parseJson(request, schema);
   if (parsed.error) return parsed.error;
   const command = await repository.createCommand({
@@ -28,6 +30,6 @@ export async function POST(request: Request) {
       page: parsed.data.page,
       projectId: parsed.data.projectId ?? null
     }
-  });
+  }, actor.userId);
   return NextResponse.json({ data: command }, { status: 201 });
 }

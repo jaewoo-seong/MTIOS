@@ -7,7 +7,8 @@ import {
   deadLetters,
   workflowPlans,
   workflowStates,
-  workerRuns
+  workerRuns,
+  premiumModelApprovals
 } from "@/lib/db/schema";
 import { MTI_ORGANIZATION_ID, repository } from "@/lib/repository";
 
@@ -223,6 +224,14 @@ export async function reconcileWorkflowTerminal(input: {
   error?: string;
   payload?: Record<string, unknown>;
 }) {
+  if (db && input.status === "failed") {
+    const [pendingPremium] = await db.select({ id: premiumModelApprovals.id })
+      .from(premiumModelApprovals).where(and(
+        eq(premiumModelApprovals.runId, input.runId),
+        eq(premiumModelApprovals.status, "pending")
+      )).limit(1);
+    if (pendingPremium) return;
+  }
   const commandStatus = input.status === "completed" ? "review_required" : input.status;
   await repository.updateCommand(input.commandId, { status: commandStatus });
   await repository.updateRun(input.runId, {
