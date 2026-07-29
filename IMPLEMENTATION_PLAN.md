@@ -514,8 +514,7 @@ versions, test results, credentials still required, and unresolved risks.
 ### 2026-07-29 - Phase 2 Completed
 
 - Status: completed and verified locally.
-- Implementation commit: recorded after verification in the follow-up
-  completion-log commit.
+- Implementation commit: `48658aa`.
 - Migration: `drizzle/0003_melodic_vision.sql`.
 - Delivered:
   - Workspace, project, agenda, and task/run-addressable context layers.
