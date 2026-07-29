@@ -18,6 +18,7 @@ const workerToolScopes = [
 
 export async function seedDefaultWorkspace() {
   const database = requireDatabase();
+  const bootstrapEmail = process.env.ADMIN_BOOTSTRAP_EMAIL?.trim().toLowerCase() || "operator@mti.local";
   await database.insert(organizations).values({
     id: MTI_ORGANIZATION_ID,
     name: "MTI Korea",
@@ -26,8 +27,12 @@ export async function seedDefaultWorkspace() {
   await database.insert(users).values({
     id: MTI_OPERATOR_ID,
     name: "Default operator",
-    email: "operator@mti.local"
+    email: bootstrapEmail
   }).onConflictDoNothing();
+  await database.update(users).set({
+    email: bootstrapEmail,
+    updatedAt: new Date()
+  }).where(eq(users.id, MTI_OPERATOR_ID));
   await database.insert(memberships).values({
     organizationId: MTI_ORGANIZATION_ID,
     userId: MTI_OPERATOR_ID,
