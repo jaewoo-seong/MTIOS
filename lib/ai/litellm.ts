@@ -1,9 +1,28 @@
 type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
-type ModelRoute = "executive_reasoning" | "executive_review" | "worker_research" | "worker_structured" | "worker_fast";
+export const modelRoutes = [
+  "executive_reasoning",
+  "executive_review",
+  "worker_research",
+  "worker_creative",
+  "worker_writing",
+  "worker_editing",
+  "worker_structured",
+  "worker_translation",
+  "worker_fast",
+  "multilingual_embedding",
+  "multilingual_reranking"
+] as const;
+export type ModelRoute = typeof modelRoutes[number];
+
+export type ModelRequestOptions = {
+  maxCostMicros?: number;
+  responseFormat?: { type: "json_object" };
+};
 
 export async function requestLiteLLM(
   model: ModelRoute,
-  messages: ChatMessage[]
+  messages: ChatMessage[],
+  options: ModelRequestOptions = {}
 ) {
   const baseUrl = process.env.LITELLM_BASE_URL;
   const apiKey = process.env.LITELLM_API_KEY;
@@ -17,7 +36,16 @@ export async function requestLiteLLM(
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json"
     },
-    body: JSON.stringify({ model, messages, temperature: 0.2 })
+    body: JSON.stringify({
+      model,
+      messages,
+      temperature: 0.2,
+      ...(options.responseFormat ? { response_format: options.responseFormat } : {}),
+      metadata: {
+        route: model,
+        max_cost_micros: options.maxCostMicros
+      }
+    })
   });
 
   if (!response.ok) {
@@ -51,12 +79,15 @@ export async function requestEmbedding(input: string): Promise<number[]> {
 export async function requestModel(
   model: ModelRoute,
   messages: ChatMessage[],
-  telemetry?: { runId?: string }
+  telemetry?: { runId?: string; maxCostMicros?: number; structuredOutput?: boolean }
 ) {
   const internalUrl = process.env.BUSINESS_OS_INTERNAL_URL;
   const callbackSecret = process.env.WORKFLOW_CALLBACK_SECRET;
   if (!internalUrl || !callbackSecret) {
-    return requestLiteLLM(model, messages);
+    return requestLiteLLM(model, messages, {
+      maxCostMicros: telemetry?.maxCostMicros,
+      responseFormat: telemetry?.structuredOutput ? { type: "json_object" } : undefined
+    });
   }
 
   const response = await fetch(`${internalUrl.replace(/\/$/, "")}/api/internal/model`, {
@@ -65,7 +96,13 @@ export async function requestModel(
       Authorization: `Bearer ${callbackSecret}`,
       "Content-Type": "application/json"
     },
-    body: JSON.stringify({ model, messages, runId: telemetry?.runId })
+    body: JSON.stringify({
+      model,
+      messages,
+      runId: telemetry?.runId,
+      maxCostMicros: telemetry?.maxCostMicros,
+      structuredOutput: telemetry?.structuredOutput
+    })
   });
   if (!response.ok) {
     throw new Error(`Internal model request failed with status ${response.status}`);

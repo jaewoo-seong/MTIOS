@@ -75,6 +75,9 @@ type Store = {
     id: string; runId: string; route: string; model: string | null;
     provider: string | null; inputTokens: number; outputTokens: number;
     costMicros: number; latencyMs: number; error: string | null;
+    fallbackReason: string | null; licensingStatus: string; environment: string;
+    attemptCount: number; structuredOutputValid: boolean | null;
+    requestBudgetMicros: number | null;
   }>;
 };
 
@@ -567,6 +570,11 @@ export const repository = {
     costMicros?: number;
     latencyMs?: number;
     fallbackReason?: string | null;
+    licensingStatus?: string;
+    environment?: string;
+    attemptCount?: number;
+    structuredOutputValid?: boolean | null;
+    requestBudgetMicros?: number;
     error?: string | null;
   }) {
     if (!db) {
@@ -580,6 +588,12 @@ export const repository = {
         outputTokens: input.outputTokens ?? 0,
         costMicros: input.costMicros ?? 0,
         latencyMs: input.latencyMs ?? 0,
+        fallbackReason: input.fallbackReason ?? null,
+        licensingStatus: input.licensingStatus ?? "unverified",
+        environment: input.environment ?? "development",
+        attemptCount: input.attemptCount ?? 1,
+        structuredOutputValid: input.structuredOutputValid ?? null,
+        requestBudgetMicros: input.requestBudgetMicros ?? null,
         error: input.error ?? null
       };
       store.modelUsage.push(row);
@@ -597,6 +611,11 @@ export const repository = {
         costMicros,
         latencyMs: input.latencyMs ?? 0,
         fallbackReason: input.fallbackReason ?? null,
+        licensingStatus: input.licensingStatus ?? "unverified",
+        environment: input.environment ?? "development",
+        attemptCount: input.attemptCount ?? 1,
+        structuredOutputValid: input.structuredOutputValid ?? null,
+        requestBudgetMicros: input.requestBudgetMicros ?? null,
         error: input.error ?? null
       }).returning();
       if (costMicros > 0) {

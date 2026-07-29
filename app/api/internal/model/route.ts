@@ -1,42 +1,52 @@
 import { NextResponse } from "next/server";
-import { z } from "zod";
 import { requestLiteLLM } from "@/lib/ai/litellm";
+import { modelRequestSchema, resolveModelPolicy } from "@/lib/ai/model-policy";
 import { parseJson } from "@/lib/http";
 import { isValidWorkflowRequest } from "@/lib/internal-auth";
 import { repository } from "@/lib/repository";
-
-const schema = z.object({
-  model: z.enum([
-    "executive_reasoning",
-    "executive_review",
-    "worker_research",
-    "worker_structured",
-    "worker_fast"
-  ]),
-  messages: z.array(z.object({
-    role: z.enum(["system", "user", "assistant"]),
-    content: z.string().min(1).max(100000)
-  })).min(1).max(100),
-  runId: z.string().uuid().optional()
-});
 
 export async function POST(request: Request) {
   if (!isValidWorkflowRequest(request)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
-  const parsed = await parseJson(request, schema);
+  const parsed = await parseJson(request, modelRequestSchema);
   if (parsed.error) return parsed.error;
   const startedAt = Date.now();
+  const policy = resolveModelPolicy(parsed.data.model, parsed.data.maxCostMicros);
   try {
-    const response = await requestLiteLLM(parsed.data.model, parsed.data.messages);
+    const structuredOutput = parsed.data.structuredOutput ?? policy.structuredOutput;
+    const response = await requestLiteLLM(parsed.data.model, parsed.data.messages, {
+      maxCostMicros: policy.maxCostMicros,
+      responseFormat: structuredOutput ? { type: "json_object" } : undefined
+    });
     if (parsed.data.runId) {
       const payload = response as {
         model?: string;
         provider?: string;
         usage?: { prompt_tokens?: number; completion_tokens?: number; cost?: number };
-        _hidden_params?: { response_cost?: number; fallback_reason?: string };
+        choices?: Array<{ message?: { content?: string } }>;
+        _hidden_params?: {
+          response_cost?: number; fallback_reason?: string; api_base?: string;
+          model_id?: string;
+        };
       };
       const cost = payload.usage?.cost ?? payload._hidden_params?.response_cost ?? 0;
+      const costMicros = Math.max(0, Math.round(cost * 1_000_000));
+      if (costMicros > policy.maxCostMicros) {
+        throw new Error(`Model call exceeded route budget for ${parsed.data.model}.`);
+      }
+      let structuredOutputValid: boolean | null = null;
+      if (structuredOutput) {
+        try {
+          JSON.parse(payload.choices?.[0]?.message?.content ?? "");
+          structuredOutputValid = true;
+        } catch {
+          structuredOutputValid = false;
+        }
+      }
+      const selected = policy.candidates.find((candidate) =>
+        candidate.provider === payload.provider
+      ) ?? policy.candidates[0];
       await repository.recordModelCall({
         runId: parsed.data.runId,
         route: parsed.data.model,
@@ -44,9 +54,14 @@ export async function POST(request: Request) {
         provider: payload.provider ?? null,
         inputTokens: payload.usage?.prompt_tokens ?? 0,
         outputTokens: payload.usage?.completion_tokens ?? 0,
-        costMicros: Math.max(0, Math.round(cost * 1_000_000)),
+        costMicros,
         latencyMs: Date.now() - startedAt,
-        fallbackReason: payload._hidden_params?.fallback_reason ?? null
+        fallbackReason: payload._hidden_params?.fallback_reason ?? null,
+        licensingStatus: selected.licensingStatus,
+        environment: policy.environment,
+        attemptCount: payload._hidden_params?.fallback_reason ? 2 : 1,
+        structuredOutputValid,
+        requestBudgetMicros: policy.maxCostMicros
       });
     }
     return NextResponse.json(response);
@@ -56,6 +71,9 @@ export async function POST(request: Request) {
         runId: parsed.data.runId,
         route: parsed.data.model,
         latencyMs: Date.now() - startedAt,
+        licensingStatus: policy.candidates[0].licensingStatus,
+        environment: policy.environment,
+        requestBudgetMicros: policy.maxCostMicros,
         error: reason instanceof Error ? reason.message : "Model request failed."
       });
     }

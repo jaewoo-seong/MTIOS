@@ -191,6 +191,11 @@ export const modelCalls = pgTable("model_calls", {
   costMicros: bigint("cost_micros", { mode: "number" }).default(0).notNull(),
   latencyMs: integer("latency_ms").default(0).notNull(),
   fallbackReason: text("fallback_reason"),
+  licensingStatus: text("licensing_status").default("unverified").notNull(),
+  environment: text("environment").default("development").notNull(),
+  attemptCount: integer("attempt_count").default(1).notNull(),
+  structuredOutputValid: boolean("structured_output_valid"),
+  requestBudgetMicros: bigint("request_budget_micros", { mode: "number" }),
   error: text("error"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
 });

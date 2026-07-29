@@ -968,3 +968,51 @@ versions, test results, credentials still required, and unresolved risks.
     review-required by design.
   - Large complex PDFs require production timeout, memory, and concurrency
     load tests in Phase 12.
+
+### 2026-07-29 - Phase 11 Completed
+
+- Status: implementation completed and verified locally; provider credentials
+  and live routing require Railway smoke testing.
+- Implementation commit: `PHASE_11_IMPLEMENTATION_COMMIT`.
+- Migration: `drizzle/0012_breezy_hannibal_king.sql`.
+- Delivered:
+  - LiteLLM remains the only provider gateway.
+  - Role-specific routes for executive reasoning/review, research, creative
+    ideation, writing, editing, structured extraction, translation, fast
+    classification, multilingual embeddings, and multilingual reranking.
+  - Claude Haiku Executive routes, NVIDIA worker routes, and OpenRouter free
+    testing fallbacks configured through environment-owned model IDs.
+  - Explicit ordered candidates, route cost ceilings, structured-output
+    requests and validation telemetry, retries, cooldown/circuit behavior, and
+    production approval gates.
+  - Free NVIDIA and OpenRouter endpoints are testing-only by default.
+    `NVIDIA_PRODUCTION_APPROVED=true` is required after commercial-use,
+    retention, privacy, regional, and reliability review.
+  - Durable model-call telemetry for actual provider/model, token counts,
+    provider cost, latency, fallback reason, errors, attempt count, structured
+    output validity, request budget, environment, and licensing status.
+  - Read-only model settings API exposing route purpose, candidate order,
+    configured model, pricing class, approval status, and active environment.
+  - Specialized workflow workers now use specialized model routes.
+- Validation:
+  - `npm run typecheck` passed.
+  - `npm test` passed with 77 tests across 14 files.
+  - `npm run build` passed.
+  - Drizzle migration generation passed.
+  - Route coverage, fallback order, production blocking, explicit NVIDIA
+    promotion, budget caps, request validation, and worker-route mapping tested.
+- Deployment: not deployed in this phase. Add rotated provider credentials and
+  full LiteLLM model IDs on Railway, run migration, then exercise primary,
+  fallback, budget rejection, invalid structured output, embeddings, and
+  reranking against live providers.
+- Credentials required:
+  - `NVIDIA_API_KEY`
+  - Rotated `OPENROUTER_API_KEY`; never reuse the previously exposed key
+  - Production fallback provider key when selected
+- Remaining risks:
+  - Free endpoint availability, quotas, retention, licensing, and model aliases
+    can change without notice and require a current provider review.
+  - No worker route is production-enabled until NVIDIA is explicitly approved
+    or a paid production candidate is configured.
+  - Provider-reported cost and fallback metadata require live LiteLLM
+    verification.

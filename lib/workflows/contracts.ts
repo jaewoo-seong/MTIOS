@@ -69,20 +69,27 @@ export const workerResultSchema = z.object({
 export type WorkerResult = z.infer<typeof workerResultSchema>;
 
 export const workerCatalog: Record<WorkerType, {
-  modelRoute: "worker_research" | "worker_structured" | "worker_fast";
+  modelRoute:
+    | "worker_research"
+    | "worker_creative"
+    | "worker_writing"
+    | "worker_editing"
+    | "worker_structured"
+    | "worker_translation"
+    | "worker_fast";
   systemPrompt: string;
 }> = {
   research: { modelRoute: "worker_research", systemPrompt: "Research claims. Preserve sources and uncertainty." },
   company_intelligence: { modelRoute: "worker_research", systemPrompt: "Analyze company facts, identity, evidence, and gaps." },
   marketing_strategy: { modelRoute: "worker_structured", systemPrompt: "Develop evidence-based marketing strategy and alternatives." },
-  ideation: { modelRoute: "worker_fast", systemPrompt: "Generate distinct ideas, evaluation criteria, and tradeoffs." },
-  content_writing: { modelRoute: "worker_structured", systemPrompt: "Draft content using approved claims, voice, and constraints." },
-  editing: { modelRoute: "worker_fast", systemPrompt: "Edit for accuracy, structure, consistency, and audience." },
+  ideation: { modelRoute: "worker_creative", systemPrompt: "Generate distinct ideas, evaluation criteria, and tradeoffs." },
+  content_writing: { modelRoute: "worker_writing", systemPrompt: "Draft content using approved claims, voice, and constraints." },
+  editing: { modelRoute: "worker_editing", systemPrompt: "Edit for accuracy, structure, consistency, and audience." },
   extraction: { modelRoute: "worker_structured", systemPrompt: "Extract requested fields without inventing missing values." },
   data_enrichment: { modelRoute: "worker_structured", systemPrompt: "Propose sourced enrichment; never mutate client data directly." },
   document_generation: { modelRoute: "worker_structured", systemPrompt: "Create structured document content and explicit sections." },
-  email_drafting: { modelRoute: "worker_fast", systemPrompt: "Draft email only. Never send. Flag claims needing review." },
-  translation: { modelRoute: "worker_fast", systemPrompt: "Translate faithfully while preserving technical terminology." },
+  email_drafting: { modelRoute: "worker_writing", systemPrompt: "Draft email only. Never send. Flag claims needing review." },
+  translation: { modelRoute: "worker_translation", systemPrompt: "Translate faithfully while preserving technical terminology." },
   quality_review: { modelRoute: "worker_structured", systemPrompt: "Review evidence, contradictions, omissions, and approval needs." }
 };
 

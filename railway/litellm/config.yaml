@@ -1,30 +1,59 @@
 model_list:
   - model_name: executive_reasoning
-    litellm_params:
-      model: openrouter/anthropic/claude-haiku-4.5
+    litellm_params: &executive
+      model: os.environ/EXECUTIVE_MODEL
       api_key: os.environ/OPENROUTER_API_KEY
   - model_name: executive_review
-    litellm_params:
-      model: openrouter/anthropic/claude-haiku-4.5
-      api_key: os.environ/OPENROUTER_API_KEY
+    litellm_params: *executive
+
   - model_name: worker_research
-    litellm_params:
+    litellm_params: &nvidia_worker
+      model: os.environ/NVIDIA_WORKER_MODEL
+      api_key: os.environ/NVIDIA_API_KEY
+  - model_name: worker_research
+    litellm_params: &openrouter_free
       model: openrouter/openrouter/free
       api_key: os.environ/OPENROUTER_API_KEY
+  - model_name: worker_creative
+    litellm_params: *nvidia_worker
+  - model_name: worker_creative
+    litellm_params: *openrouter_free
+  - model_name: worker_writing
+    litellm_params: *nvidia_worker
+  - model_name: worker_writing
+    litellm_params: *openrouter_free
+  - model_name: worker_editing
+    litellm_params: *nvidia_worker
+  - model_name: worker_editing
+    litellm_params: *openrouter_free
   - model_name: worker_structured
-    litellm_params:
-      model: openrouter/openrouter/free
-      api_key: os.environ/OPENROUTER_API_KEY
+    litellm_params: *nvidia_worker
+  - model_name: worker_structured
+    litellm_params: *openrouter_free
+  - model_name: worker_translation
+    litellm_params: *nvidia_worker
+  - model_name: worker_translation
+    litellm_params: *openrouter_free
   - model_name: worker_fast
+    litellm_params: *nvidia_worker
+  - model_name: worker_fast
+    litellm_params: *openrouter_free
+
+  - model_name: multilingual_embedding
     litellm_params:
-      model: openrouter/openrouter/free
-      api_key: os.environ/OPENROUTER_API_KEY
+      model: os.environ/NVIDIA_EMBEDDING_MODEL
+      api_key: os.environ/NVIDIA_API_KEY
+  - model_name: multilingual_reranking
+    litellm_params:
+      model: os.environ/NVIDIA_RERANKING_MODEL
+      api_key: os.environ/NVIDIA_API_KEY
 
 router_settings:
   allowed_fails: 2
+  cooldown_time: 60
   num_retries: 2
   retry_after: 5
-  routing_strategy: least-busy
+  routing_strategy: simple-shuffle
 
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY
