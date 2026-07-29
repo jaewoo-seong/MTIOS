@@ -53,6 +53,15 @@ const navItems: Array<{ id: PageId; label: string; icon: typeof Bot }> = [
   { id: "settings", label: "Settings", icon: Settings }
 ];
 
+const koreanLabels: Record<PageId, string> = {
+  agent: "총괄 에이전트",
+  projects: "프로젝트",
+  documents: "문서",
+  data: "고객 및 데이터",
+  knowledge: "지식 베이스",
+  settings: "설정"
+};
+
 const pageCopy: Record<PageId, { title: string; subtitle: string; command: string; actions: string[] }> = {
   agent: {
     title: "Executive Agent",
@@ -119,6 +128,7 @@ export function BusinessOS() {
   const [pendingCommand, setPendingCommand] = useState<ExecutiveCommand | null>(null);
   const [commandBusy, setCommandBusy] = useState(false);
   const [agendaWorkType, setAgendaWorkType] = useState<AgendaWorkType>("custom");
+  const [locale, setLocale] = useState<"en" | "ko">("en");
 
   /** Errors accumulate so a failed batch reports every failure, not just the last. */
   const pushError = useCallback((message: string) => {
@@ -144,7 +154,12 @@ export function BusinessOS() {
   }, []);
 
   useEffect(() => {
-    Promise.all([loadProjects(), loadReports()])
+    Promise.all([
+      loadProjects(),
+      loadReports(),
+      api<{ data: { locale: "en" | "ko" } }>("/api/v1/settings/preferences")
+        .then((payload) => setLocale(payload.data.locale))
+    ])
       .catch((reason: Error) => pushError(reason.message))
       .finally(() => setLoading(false));
   }, [loadProjects, loadReports, pushError]);
@@ -276,7 +291,7 @@ export function BusinessOS() {
                 onClick={() => setPage(item.id)}
               >
                 <Icon size={16} aria-hidden />
-                <span>{item.label}</span>
+                <span>{locale === "ko" ? koreanLabels[item.id] : item.label}</span>
                 {count !== undefined && count > 0 && <span className="nav-count">{count}</span>}
               </button>
             );
@@ -294,15 +309,15 @@ export function BusinessOS() {
       <main className="main">
         <header className="topbar">
           <div>
-            <h1>{pageCopy[page].title}</h1>
+            <h1>{locale === "ko" ? koreanLabels[page] : pageCopy[page].title}</h1>
             <p>{pageCopy[page].subtitle}</p>
           </div>
           <div className="topbar-actions">
             <button className="search-trigger" onClick={() => setSearchOpen(true)}>
-              <Search size={15} aria-hidden /> Search
+              <Search size={15} aria-hidden /> {locale === "ko" ? "검색" : "Search"}
               <kbd>⌘K</kbd>
             </button>
-            <button className="primary" onClick={() => setCreateOpen(true)}><Plus size={15} aria-hidden /> Create project</button>
+            <button className="primary" onClick={() => setCreateOpen(true)}><Plus size={15} aria-hidden /> {locale === "ko" ? "프로젝트 만들기" : "Create project"}</button>
           </div>
         </header>
 
@@ -351,7 +366,7 @@ export function BusinessOS() {
               )}
               {page === "data" && <ClientDataView onError={pushError} />}
               {page === "knowledge" && <KnowledgeView onError={pushError} />}
-              {page === "settings" && <SettingsView onError={pushError} />}
+              {page === "settings" && <SettingsView onError={pushError} onLocaleChange={setLocale} />}
             </>
           )}
         </section>
@@ -657,14 +672,174 @@ function ContextBlock({ label, value }: { label: string; value: string }) {
   return <div><span>{label}</span><p>{value || "Not set"}</p></div>;
 }
 
-function SettingsView({ onError }: { onError: (message: string) => void }) {
+function SettingsView({ onError, onLocaleChange }: {
+  onError: (message: string) => void;
+  onLocaleChange: (locale: "en" | "ko") => void;
+}) {
   return (
     <div className="settings-grid">
-      <section className="surface"><div className="surface-header"><h2>Workspace</h2></div><Setting label="Organization" value="MTI Korea" /><Setting label="Operator mode" value="Single workspace · no login" /></section>
-      <section className="surface"><div className="surface-header"><h2>Infrastructure</h2></div><Setting label="Application" value="Railway" /><Setting label="Workflows" value="Trigger.dev managed" /><Setting label="Model gateway" value="LiteLLM" /></section>
+      <PreferenceSettings onError={onError} onLocaleChange={onLocaleChange} />
+      <ModelSettings onError={onError} />
+      <McpSettings onError={onError} />
       <section className="surface"><div className="surface-header"><h2>Review policy</h2></div><Setting label="External sends" value="Approval required" /><Setting label="Destructive writes" value="Approval required" /><Setting label="High-cost actions" value="Approval required" /></section>
       <GmailSettings onError={onError} />
     </div>
+  );
+}
+
+type Preferences = {
+  locale: "en" | "ko";
+  timezone: string;
+  dateFormat: "short" | "medium" | "long";
+  numberFormat: "locale";
+  currency: "USD" | "KRW";
+};
+
+function PreferenceSettings({ onError, onLocaleChange }: {
+  onError: (message: string) => void;
+  onLocaleChange: (locale: "en" | "ko") => void;
+}) {
+  const [value, setValue] = useState<Preferences | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    api<{ data: Preferences }>("/api/v1/settings/preferences")
+      .then((payload) => setValue(payload.data))
+      .catch((error: Error) => onError(error.message));
+  }, [onError]);
+  async function save() {
+    if (!value) return;
+    setBusy(true);
+    try {
+      const payload = await api<{ data: Preferences }>("/api/v1/settings/preferences", {
+        method: "PATCH", body: JSON.stringify(value)
+      });
+      setValue(payload.data);
+      onLocaleChange(payload.data.locale);
+      document.documentElement.lang = payload.data.locale;
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "Preferences could not be saved.");
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <section className="surface settings-wide">
+      <div className="surface-header"><h2>Language & regional</h2></div>
+      {!value ? <div className="empty-inline">Loading preferences…</div> : (
+        <div className="settings-form">
+          <label>Interface language<select value={value.locale} onChange={(event) => setValue({ ...value, locale: event.target.value as Preferences["locale"] })}><option value="en">English</option><option value="ko">한국어</option></select></label>
+          <label>Timezone<input value={value.timezone} onChange={(event) => setValue({ ...value, timezone: event.target.value })} /></label>
+          <label>Date format<select value={value.dateFormat} onChange={(event) => setValue({ ...value, dateFormat: event.target.value as Preferences["dateFormat"] })}><option value="short">Short</option><option value="medium">Medium</option><option value="long">Long</option></select></label>
+          <label>Currency<select value={value.currency} onChange={(event) => setValue({ ...value, currency: event.target.value as Preferences["currency"] })}><option value="USD">USD</option><option value="KRW">KRW</option></select></label>
+          <button className="primary" onClick={() => void save()} disabled={busy}>{busy && <Loader2 size={14} className="spin" />}Save preferences</button>
+        </div>
+      )}
+    </section>
+  );
+}
+
+type ModelSettingsPayload = {
+  environment: string;
+  gateway: string;
+  health: string;
+  recentCalls: Array<{ route: string; provider: string | null; model: string | null; costMicros: number; latencyMs: number; error: string | null }>;
+  revisions: Array<{ id: string; route: string; version: number; status: string; testStatus: string }>;
+  routes: Array<{
+    route: string; purpose: string; maxCostMicros: number; structuredOutput: boolean;
+    candidates: Array<{ order: number; provider: "openrouter" | "nvidia"; model: string; modelEnv: string; pricingClass: "paid" | "free"; productionApproved: boolean; licensingStatus: "approved" | "testing_only" | "unverified"; enabled: boolean }>;
+  }>;
+};
+
+function ModelSettings({ onError }: { onError: (message: string) => void }) {
+  const [value, setValue] = useState<ModelSettingsPayload | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const lastSuccessful = value?.recentCalls.find((call) => !call.error);
+  const load = useCallback(() => api<ModelSettingsPayload>("/api/v1/settings/models").then(setValue), []);
+  useEffect(() => { load().catch((error: Error) => onError(error.message)); }, [load, onError]);
+  async function stage(route: ModelSettingsPayload["routes"][number]) {
+    setBusy(route.route);
+    try {
+      await api("/api/v1/settings/models/revisions", {
+        method: "POST",
+        body: JSON.stringify({
+          route: route.route,
+          maxCostMicros: route.maxCostMicros,
+          structuredOutput: route.structuredOutput,
+          candidates: route.candidates.map(({ provider, modelEnv, pricingClass, productionApproved, licensingStatus }) => ({
+            provider, modelEnv, pricingClass, productionApproved, licensingStatus
+          }))
+        })
+      });
+      await load();
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "Route revision could not be staged.");
+    } finally {
+      setBusy(null);
+    }
+  }
+  async function transition(id: string, action: "test" | "approve" | "activate" | "rollback") {
+    setBusy(id);
+    try {
+      await api(`/api/v1/settings/models/revisions/${id}`, {
+        method: "POST", body: JSON.stringify({ action })
+      });
+      await load();
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "Route revision could not be updated.");
+    } finally {
+      setBusy(null);
+    }
+  }
+  return (
+    <section className="surface settings-wide">
+      <div className="surface-header"><h2>Model routing</h2><span>{value ? `${value.gateway} · ${value.environment} · ${value.health}` : "Loading…"}</span></div>
+      {!value ? <div className="empty-inline">Loading model routes…</div> : (
+        <div className="settings-table" role="table">
+          {value.routes.map((route) => (
+            <div className="model-route-row" role="row" key={route.route}>
+              <div><strong>{route.route}</strong><span>{route.purpose} · limit ${(route.maxCostMicros / 1_000_000).toFixed(2)}</span></div>
+              <div>
+                {route.candidates.map((candidate) => <span className={candidate.enabled ? "pill good" : "pill warn"} key={`${candidate.order}-${candidate.provider}`}>{candidate.order}. {candidate.provider} · {candidate.model} · {candidate.licensingStatus}</span>)}
+                <button className="secondary" disabled={busy !== null} onClick={() => void stage(route)}>Stage revision</button>
+              </div>
+            </div>
+          ))}
+          {value.revisions.map((revision) => (
+            <div className="model-route-row" key={revision.id}>
+              <div><strong>{revision.route} v{revision.version}</strong><span>{revision.status} · test {revision.testStatus}</span></div>
+              <div>
+                {revision.testStatus !== "passed" && <button className="secondary" disabled={busy !== null} onClick={() => void transition(revision.id, "test")}>Test</button>}
+                {revision.testStatus === "passed" && revision.status === "draft" && <button className="secondary" disabled={busy !== null} onClick={() => void transition(revision.id, "approve")}>Approve</button>}
+                {revision.status === "approved" && <button className="primary" disabled={busy !== null} onClick={() => void transition(revision.id, "activate")}>Activate</button>}
+                {revision.status === "active" && <button className="secondary" disabled={busy !== null} onClick={() => void transition(revision.id, "rollback")}>Rollback</button>}
+              </div>
+            </div>
+          ))}
+          {lastSuccessful && (
+            <div className="model-route-row">
+              <div><strong>Last successful model</strong><span>{lastSuccessful.route}</span></div>
+              <div><span className="pill good">{lastSuccessful.provider ?? "unknown"} · {lastSuccessful.model ?? "unknown"} · {lastSuccessful.latencyMs} ms · ${(lastSuccessful.costMicros / 1_000_000).toFixed(4)}</span></div>
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function McpSettings({ onError }: { onError: (message: string) => void }) {
+  const [tools, setTools] = useState<Array<{ id: string; name: string; riskLevel: string; approvalRequirement: string; active: boolean }>>([]);
+  useEffect(() => {
+    api<{ data: typeof tools }>("/api/v1/mcp/tools").then((payload) => setTools(payload.data))
+      .catch((error: Error) => onError(error.message));
+  }, [onError]);
+  return (
+    <section className="surface settings-wide">
+      <div className="surface-header"><h2>MCP tools</h2><span>{tools.length} allowed</span></div>
+      {tools.length === 0 ? <div className="empty-inline">No MCP tools available.</div> : tools.map((tool) => (
+        <Setting key={tool.id} label={tool.name} value={`${tool.riskLevel} · ${tool.approvalRequirement}`} />
+      ))}
+    </section>
   );
 }
 
@@ -844,7 +1019,7 @@ function ExecutiveCommand({
 function CreateProjectDialog({ onClose, onCreated }: { onClose: () => void; onCreated: (project: Project) => void }) {
   const [form, setForm] = useState({
     name: "", objective: "", context: "", scope: "", constraints: "", budget: "",
-    reviewGates: "", outputRequirements: ""
+    reviewGates: "", outputRequirements: "", outputLanguage: "en"
   });
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -865,6 +1040,7 @@ function CreateProjectDialog({ onClose, onCreated }: { onClose: () => void; onCr
           budgetCents: form.budget ? Math.round(Number(form.budget) * 100) : null,
           reviewGates: form.reviewGates.split("\n").map((item) => item.trim()).filter(Boolean),
           outputRequirements: form.outputRequirements.split("\n").map((item) => item.trim()).filter(Boolean),
+          outputLanguage: form.outputLanguage,
           permissions: {
             externalSend: "review_required",
             clientDataWrite: "review_required",
@@ -899,6 +1075,13 @@ function CreateProjectDialog({ onClose, onCreated }: { onClose: () => void; onCr
           </label>
           <label>Budget (USD)
             <input type="number" min="0" inputMode="decimal" placeholder="Optional" value={form.budget} onChange={(event) => setForm({ ...form, budget: event.target.value })} />
+          </label>
+          <label>Output language
+            <select value={form.outputLanguage} onChange={(event) => setForm({ ...form, outputLanguage: event.target.value })}>
+              <option value="en">English</option>
+              <option value="ko">한국어</option>
+              <option value="bilingual">English + 한국어</option>
+            </select>
           </label>
           <label className="span-2">Objective <em aria-hidden>required</em>
             <textarea required minLength={10} rows={3} value={form.objective} onChange={(event) => setForm({ ...form, objective: event.target.value })} />

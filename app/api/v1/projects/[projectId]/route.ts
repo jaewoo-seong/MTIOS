@@ -12,6 +12,7 @@ const updateProjectSchema = z.object({
   budgetCents: z.number().int().nonnegative().nullable().optional(),
   reviewGates: z.array(z.string().trim().min(1).max(160)).optional(),
   outputRequirements: z.array(z.string().trim().min(1).max(300)).optional(),
+  outputLanguage: z.enum(["en", "ko", "bilingual"]).optional(),
   permissions: z.object({
     externalSend: z.enum(["review_required", "blocked"]),
     clientDataWrite: z.enum(["review_required", "blocked"]),

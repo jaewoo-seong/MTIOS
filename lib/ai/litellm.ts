@@ -76,6 +76,28 @@ export async function requestEmbedding(input: string): Promise<number[]> {
   return embedding;
 }
 
+export async function requestReranking(query: string, documents: string[]) {
+  const baseUrl = process.env.LITELLM_BASE_URL;
+  const apiKey = process.env.LITELLM_API_KEY;
+  if (!baseUrl || !apiKey) throw new Error("LiteLLM is not configured.");
+  const response = await fetch(`${baseUrl.replace(/\/$/, "")}/rerank`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model: "multilingual_reranking",
+      query,
+      documents
+    })
+  });
+  if (!response.ok) {
+    throw new Error(`LiteLLM reranking request failed with status ${response.status}`);
+  }
+  return response.json();
+}
+
 export async function requestModel(
   model: ModelRoute,
   messages: ChatMessage[],

@@ -527,6 +527,21 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 
 /* ── Settings ─────────────────────────────────────────────────────────── */
 .settings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: var(--sp-3); }
+.settings-wide { grid-column: 1 / -1; }
+.settings-form { display: grid; grid-template-columns: repeat(4, minmax(140px, 1fr)); gap: var(--sp-3); padding: var(--sp-4); }
+.settings-form label { display: grid; gap: var(--sp-1); color: var(--ink-mute); font-size: var(--t-meta); }
+.settings-form input, .settings-form select {
+  height: var(--ctl-h); padding: 0 var(--sp-2); border: 1px solid var(--line-strong);
+  border-radius: var(--r-md); background: var(--surface);
+}
+.settings-form button { align-self: end; }
+.settings-table { max-height: 440px; overflow: auto; }
+.model-route-row { display: grid; grid-template-columns: minmax(210px, .8fr) minmax(320px, 2fr); gap: var(--sp-4); padding: var(--sp-3) var(--sp-4); border-top: 1px solid var(--line); }
+.model-route-row:first-child { border-top: 0; }
+.model-route-row > div { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); min-width: 0; }
+.model-route-row > div:first-child { display: grid; gap: 2px; }
+.model-route-row strong { font-family: var(--mono); font-size: var(--t-meta); overflow-wrap: anywhere; }
+.model-route-row span:not(.pill) { color: var(--ink-mute); font-size: var(--t-meta); }
 .setting { display: flex; justify-content: space-between; gap: var(--sp-4); padding: var(--sp-3) var(--sp-4); border-bottom: 1px solid var(--line); font-size: var(--t-meta); }
 .setting:last-child { border-bottom: 0; }
 .setting span { color: var(--ink-mute); }
@@ -667,6 +682,11 @@ button:disabled { cursor: not-allowed; opacity: .45; }
   .doc-modal-head { flex-wrap: wrap; gap: var(--sp-2); }
   .doc-page { padding: var(--sp-5) var(--sp-4); border: 0; }
   .doc-modal-body, .doc-page-scroll { padding: 0 0 var(--sp-7); background: var(--surface); }
+}
+
+@media (max-width: 1100px) {
+  .settings-form { grid-template-columns: repeat(2, minmax(140px, 1fr)); }
+  .model-route-row { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 760px) {

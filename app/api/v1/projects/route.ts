@@ -12,6 +12,7 @@ const createProjectSchema = z.object({
   budgetCents: z.number().int().nonnegative().nullable().default(null),
   reviewGates: z.array(z.string().trim().min(1).max(160)).default([]),
   outputRequirements: z.array(z.string().trim().min(1).max(300)).default([]),
+  outputLanguage: z.enum(["en", "ko", "bilingual"]).default("en"),
   permissions: z.object({
     externalSend: z.enum(["review_required", "blocked"]),
     clientDataWrite: z.enum(["review_required", "blocked"]),
@@ -40,6 +41,7 @@ export async function POST(request: Request) {
       budgetCents: parsed.data.budgetCents ?? null,
       reviewGates: parsed.data.reviewGates ?? [],
       outputRequirements: parsed.data.outputRequirements ?? [],
+      outputLanguage: parsed.data.outputLanguage,
       permissions: parsed.data.permissions
     })
   }, { status: 201 });

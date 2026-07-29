@@ -68,10 +68,11 @@ export const workerAgentTask = task({
   },
   run: async (payload: WorkerPayload) => {
     const worker = workerCatalog[payload.task.workerType];
+    const outputLanguage = projectOutputLanguage(payload.context);
     const response = await requestModel(worker.modelRoute, [
       {
         role: "system",
-        content: workerResultJsonInstruction(payload.task)
+        content: `${workerResultJsonInstruction(payload.task)}\n${languageInstruction(outputLanguage)}`
       },
       {
         role: "user",
@@ -113,6 +114,7 @@ export const executiveAgentWorkflow = task({
       runId
     });
     const { command, context } = loaded;
+    const outputLanguage = projectOutputLanguage(context);
     await callWorkflowApp({
       action: "progress", commandId, runId,
       commandStatus: "planning", runStatus: "planning", progress: 10
@@ -125,7 +127,8 @@ export const executiveAgentWorkflow = task({
           "Create an execution plan using the smallest suitable worker set.",
           "Return JSON only matching:",
           '{"objective":"string","reportTitle":"string","tasks":[{"key":"stable-key","workerType":"research|company_intelligence|marketing_strategy|ideation|content_writing|editing|extraction|data_enrichment|document_generation|email_drafting|translation|quality_review","instruction":"string","expectedOutput":"string","toolScopes":["string"],"budgetCents":0,"reviewRequired":false}],"reviewRecommendation":"string","estimatedCostCents":0}',
-          "Use unique stable task keys. Limit tasks to 20. Never authorize external sends or direct client-data writes."
+          "Use unique stable task keys. Limit tasks to 20. Never authorize external sends or direct client-data writes.",
+          languageInstruction(outputLanguage)
         ].join("\n")
       },
       { role: "user", content: JSON.stringify({ instruction: command.instruction, context }) }
@@ -154,7 +157,7 @@ export const executiveAgentWorkflow = task({
     const reviewResponse = await requestModel("executive_review", [
       {
         role: "system",
-        content: "Review the worker outputs and produce a decision-ready report in markdown with executive summary, findings, sources, risks, recommendations, and next actions."
+        content: `Review the worker outputs and produce a decision-ready report in markdown with executive summary, findings, sources, risks, recommendations, and next actions.\n${languageInstruction(outputLanguage)}`
       },
       {
         role: "user",
@@ -175,3 +178,21 @@ export const executiveAgentWorkflow = task({
     return report;
   }
 });
+
+function projectOutputLanguage(context: unknown): "en" | "ko" | "bilingual" {
+  if (!context || typeof context !== "object") return "en";
+  const project = (context as { project?: { outputLanguage?: unknown } }).project;
+  return project?.outputLanguage === "ko" || project?.outputLanguage === "bilingual"
+    ? project.outputLanguage
+    : "en";
+}
+
+function languageInstruction(language: "en" | "ko" | "bilingual") {
+  if (language === "ko") {
+    return "Write user-facing output in Korean. Preserve source-language quotations and technical terms where accuracy requires them.";
+  }
+  if (language === "bilingual") {
+    return "Write user-facing output bilingually, English first and Korean second. Preserve source-language evidence.";
+  }
+  return "Write user-facing output in English. Preserve source-language evidence without forced translation.";
+}

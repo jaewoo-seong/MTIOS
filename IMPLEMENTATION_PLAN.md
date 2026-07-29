@@ -1016,3 +1016,55 @@ versions, test results, credentials still required, and unresolved risks.
     or a paid production candidate is configured.
   - Provider-reported cost and fallback metadata require live LiteLLM
     verification.
+
+### 2026-07-29 - Phase 12 Completed
+
+- Status: application implementation completed and verified locally;
+  production deployment gates remain open and are documented below.
+- Implementation commit: `PHASE_12_IMPLEMENTATION_COMMIT`.
+- Migration: `drizzle/0013_melted_franklin_richards.sql`.
+- Delivered:
+  - Persistent per-user interface locale, timezone, date format, number format,
+    and currency preferences.
+  - Per-project English, Korean, or bilingual output language captured during
+    project creation and enforced in Executive planning, worker output, and
+    final report prompts while preserving source-language evidence.
+  - Korean-capable shell navigation, search and project commands, Korean-safe
+    fonts, and immediate locale application without reload.
+  - Live Settings model surface showing environment, LiteLLM health, route
+    purpose, budget, structured-output policy, ordered candidates, actual
+    model IDs, pricing class, approval/licensing state, and latest successful
+    call telemetry.
+  - Guarded model route revisions with immutable versions, live model tests,
+    approval-before-activation, single active revision, history, and rollback.
+  - Active model revisions now control application route budgets and candidate
+    policy while calls still pass only through LiteLLM.
+  - MCP Settings visibility for allowed tools, risk, and approval policy;
+    Gmail connection and revocation state remain visible beside it.
+  - Production smoke coverage expanded to model settings, preferences, MCP
+    catalog, and document conversion.
+  - Railway deployment order, secrets, model approval rules, health gates, and
+    end-to-end production smoke checklist documented.
+- Validation:
+  - `npm run typecheck` passed.
+  - `npm test` passed with 80 tests across 15 files.
+  - `npm run build` passed with 37 application routes.
+  - Drizzle migration generation passed.
+  - Production build browser QA passed for Settings layout, live empty/provider
+    states, MCP inventory, preference persistence, and Korean shell switching.
+- Deployment: not deployed in this phase. Run the Railway production gate in
+  `railway/README.md`; the app intentionally reports missing providers instead
+  of treating them as healthy.
+- Credentials required:
+  - Phase 11 provider credentials and explicit NVIDIA production approval
+  - Existing Railway, Trigger.dev, Gmail, MCP, storage, and conversion secrets
+- Remaining production blockers:
+  - Live Railway migration and all service health checks have not been run
+    against this commit.
+  - Trigger.dev production workflow, live LiteLLM primary/fallback/embedding/
+    reranking, Gmail, MCP, OCR, exports, SSE reconnect, backup/restore, and
+    alerting still require production smoke tests.
+  - Korean localization currently covers the shell, regional settings, project
+    output policy, and generated deliverables. Secondary module copy and every
+    validation/error string still need a complete translation catalog before
+    claiming a fully localized Korean interface.

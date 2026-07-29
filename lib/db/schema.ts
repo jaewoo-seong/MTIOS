@@ -54,6 +54,18 @@ export const memberships = pgTable("memberships", {
   ...timestamps
 }, (table) => [uniqueIndex("membership_org_user").on(table.organizationId, table.userId)]);
 
+export const userPreferences = pgTable("user_preferences", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  locale: text("locale").default("en").notNull(),
+  timezone: text("timezone").default("America/Indiana/Indianapolis").notNull(),
+  dateFormat: text("date_format").default("medium").notNull(),
+  numberFormat: text("number_format").default("locale").notNull(),
+  currency: text("currency").default("USD").notNull(),
+  ...timestamps
+}, (table) => [uniqueIndex("user_preference_org_user").on(table.organizationId, table.userId)]);
+
 export const projects = pgTable("projects", {
   id: uuid("id").defaultRandom().primaryKey(),
   organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
@@ -75,6 +87,7 @@ export const projects = pgTable("projects", {
   }).notNull(),
   reviewGates: jsonb("review_gates").$type<string[]>().default([]).notNull(),
   outputRequirements: jsonb("output_requirements").$type<string[]>().default([]).notNull(),
+  outputLanguage: text("output_language").default("en").notNull(),
   status: projectStatus("status").default("active").notNull(),
   ...timestamps
 });
@@ -199,6 +212,36 @@ export const modelCalls = pgTable("model_calls", {
   error: text("error"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
 });
+
+export const modelRouteRevisions = pgTable("model_route_revisions", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  route: text("route").notNull(),
+  version: integer("version").notNull(),
+  configuration: jsonb("configuration").$type<{
+    purpose: string;
+    maxCostMicros: number;
+    structuredOutput: boolean;
+    candidates: Array<{
+      provider: "openrouter" | "nvidia";
+      modelEnv: string;
+      pricingClass: "paid" | "free";
+      productionApproved: boolean;
+      licensingStatus: "approved" | "testing_only" | "unverified";
+    }>;
+  }>().notNull(),
+  status: text("status").default("draft").notNull(),
+  testStatus: text("test_status").default("not_tested").notNull(),
+  testError: text("test_error"),
+  createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+  approvedBy: uuid("approved_by").references(() => users.id, { onDelete: "set null" }),
+  approvedAt: timestamp("approved_at", { withTimezone: true }),
+  activatedAt: timestamp("activated_at", { withTimezone: true }),
+  supersedesId: uuid("supersedes_id"),
+  ...timestamps
+}, (table) => [
+  uniqueIndex("model_route_revision_version").on(table.organizationId, table.route, table.version)
+]);
 
 export const toolCalls = pgTable("tool_calls", {
   id: uuid("id").defaultRandom().primaryKey(),

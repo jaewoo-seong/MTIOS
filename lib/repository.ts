@@ -180,6 +180,7 @@ const projectRow = (row: typeof projects.$inferSelect): Project => ({
   permissions: row.permissions,
   reviewGates: row.reviewGates ?? [],
   outputRequirements: row.outputRequirements ?? [],
+  outputLanguage: row.outputLanguage as Project["outputLanguage"],
   createdAt: iso(row.createdAt),
   updatedAt: iso(row.updatedAt)
 });
@@ -322,8 +323,8 @@ export const repository = {
     return row?.organizationId === MTI_ORGANIZATION_ID ? projectRow(row) : undefined;
   },
   async createProject(input:
-    Omit<Project, "id" | "organizationId" | "status" | "createdAt" | "updatedAt" | "permissions" | "reviewGates" | "outputRequirements">
-    & Partial<Pick<Project, "permissions" | "reviewGates" | "outputRequirements">>
+    Omit<Project, "id" | "organizationId" | "status" | "createdAt" | "updatedAt" | "permissions" | "reviewGates" | "outputRequirements" | "outputLanguage">
+    & Partial<Pick<Project, "permissions" | "reviewGates" | "outputRequirements" | "outputLanguage">>
   ) {
     const governance = {
       permissions: input.permissions ?? {
@@ -332,7 +333,8 @@ export const repository = {
         destructiveAction: "review_required" as const
       },
       reviewGates: input.reviewGates ?? [],
-      outputRequirements: input.outputRequirements ?? []
+      outputRequirements: input.outputRequirements ?? [],
+      outputLanguage: input.outputLanguage ?? "en"
     };
     if (!db) {
       const project: Project = {

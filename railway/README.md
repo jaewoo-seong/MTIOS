@@ -45,3 +45,40 @@ Build `document-conversion` from
 Give the service Railway bucket variables so page previews and extracted
 images remain private objects. Its image includes English/Korean Tesseract and
 Noto CJK fonts for Korean OCR and exports.
+
+## Model routing
+
+Configure full LiteLLM model identifiers, not short provider aliases:
+
+- `EXECUTIVE_MODEL`
+- `NVIDIA_WORKER_MODEL`
+- `NVIDIA_EMBEDDING_MODEL`
+- `NVIDIA_RERANKING_MODEL`
+- `OPENROUTER_FREE_MODEL`
+
+Keep `NVIDIA_PRODUCTION_APPROVED=false` until commercial use, retention,
+privacy, regional availability, quota, and reliability have been reviewed.
+OpenRouter free remains testing-only. Rotate any credential ever pasted into a
+chat or log before deployment.
+
+## Production gate
+
+Deployment order:
+
+1. Provision PostgreSQL, Redis, bucket, LiteLLM, MCP tools, and document
+   conversion services on Railway private networking.
+2. Set app and service variables. Generate distinct workflow, MCP, document
+   conversion, Gmail encryption, LiteLLM, and Basic Auth secrets.
+3. Run `npm run db:deploy` once against production PostgreSQL.
+4. Deploy Trigger.dev production tasks and verify production concurrency.
+5. Deploy the app, require `/api/health` status `ok`, then run
+   `npm run test:production`.
+6. Test one Executive call, worker fallback, embedding, reranking, MCP read,
+   Korean PDF conversion, Gmail OAuth/read/draft, report export, SSE reconnect,
+   approval, and rollback.
+7. Confirm budgets, audit logs, signed object URLs, backup/restore, alerts, and
+   secret rotation before admitting business data.
+
+The build is not production-ready while any health dependency is
+`not_configured`, worker routes lack a production-approved candidate, provider
+terms remain unreviewed, or the production smoke sequence has not passed.

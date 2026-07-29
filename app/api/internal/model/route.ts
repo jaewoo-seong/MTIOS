@@ -4,6 +4,7 @@ import { modelRequestSchema, resolveModelPolicy } from "@/lib/ai/model-policy";
 import { parseJson } from "@/lib/http";
 import { isValidWorkflowRequest } from "@/lib/internal-auth";
 import { repository } from "@/lib/repository";
+import { getActiveModelPolicy } from "@/lib/settings";
 
 export async function POST(request: Request) {
   if (!isValidWorkflowRequest(request)) {
@@ -12,7 +13,11 @@ export async function POST(request: Request) {
   const parsed = await parseJson(request, modelRequestSchema);
   if (parsed.error) return parsed.error;
   const startedAt = Date.now();
-  const policy = resolveModelPolicy(parsed.data.model, parsed.data.maxCostMicros);
+  const policy = resolveModelPolicy(
+    parsed.data.model,
+    parsed.data.maxCostMicros,
+    await getActiveModelPolicy(parsed.data.model)
+  );
   try {
     const structuredOutput = parsed.data.structuredOutput ?? policy.structuredOutput;
     const response = await requestLiteLLM(parsed.data.model, parsed.data.messages, {

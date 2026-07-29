@@ -21,7 +21,7 @@ async function expectJson(path, expectedStatus, authenticated = false) {
 }
 
 const health = await expectJson("/api/health", 200);
-for (const dependency of ["database", "redis", "storage", "litellm"]) {
+for (const dependency of ["database", "redis", "storage", "litellm", "documentConversion"]) {
   if (health.checks?.[dependency] !== "ok") {
     throw new Error(`${dependency} health check is not ok.`);
   }
@@ -31,6 +31,18 @@ await expectJson("/", 401);
 const projects = await expectJson("/api/v1/projects", 200, true);
 if (!Array.isArray(projects.data)) {
   throw new Error("Projects API returned an invalid shape.");
+}
+const modelSettings = await expectJson("/api/v1/settings/models", 200, true);
+if (modelSettings.gateway !== "LiteLLM" || modelSettings.health !== "ok") {
+  throw new Error("Model routing settings are not healthy.");
+}
+const preferences = await expectJson("/api/v1/settings/preferences", 200, true);
+if (!["en", "ko"].includes(preferences.data?.locale)) {
+  throw new Error("Workspace locale settings returned an invalid shape.");
+}
+const tools = await expectJson("/api/v1/mcp/tools", 200, true);
+if (!Array.isArray(tools.data) || tools.data.length === 0) {
+  throw new Error("MCP tool catalog is unavailable.");
 }
 
 console.log("Production smoke test passed.");

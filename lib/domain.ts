@@ -56,6 +56,7 @@ export interface Project {
   permissions: ProjectPermissions;
   reviewGates: string[];
   outputRequirements: string[];
+  outputLanguage: "en" | "ko" | "bilingual";
   status: ProjectStatus;
   createdAt: string;
   updatedAt: string;

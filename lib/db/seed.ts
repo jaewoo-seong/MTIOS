@@ -1,4 +1,4 @@
-import { agentDefinitions, memberships, organizations, users } from "@/lib/db/schema";
+import { agentDefinitions, memberships, organizations, userPreferences, users } from "@/lib/db/schema";
 import { requireDatabase } from "@/lib/db/client";
 import { MTI_OPERATOR_ID, MTI_ORGANIZATION_ID } from "@/lib/repository";
 import { and, eq } from "drizzle-orm";
@@ -31,6 +31,10 @@ export async function seedDefaultWorkspace() {
     organizationId: MTI_ORGANIZATION_ID,
     userId: MTI_OPERATOR_ID,
     role: "owner"
+  }).onConflictDoNothing();
+  await database.insert(userPreferences).values({
+    organizationId: MTI_ORGANIZATION_ID,
+    userId: MTI_OPERATOR_ID
   }).onConflictDoNothing();
   const [existingAgent] = await database.select({ id: agentDefinitions.id })
     .from(agentDefinitions)

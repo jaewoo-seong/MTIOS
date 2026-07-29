@@ -69,8 +69,12 @@ export const modelRequestSchema = z.object({
   structuredOutput: z.boolean().optional()
 });
 
-export function resolveModelPolicy(route: ModelRoute, requestedBudget?: number) {
-  const policy = modelRoutePolicies[route];
+export function resolveModelPolicy(
+  route: ModelRoute,
+  requestedBudget?: number,
+  configuredPolicy: ModelRoutePolicy = modelRoutePolicies[route]
+) {
+  const policy = configuredPolicy;
   const environment = process.env.NODE_ENV === "production" ? "production" : "development";
   const explicitlyApproved = (candidate: ModelCandidate) =>
     candidate.provider === "nvidia" && process.env.NVIDIA_PRODUCTION_APPROVED === "true";
