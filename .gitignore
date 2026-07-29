@@ -5,5 +5,7 @@ node_modules/
 .env.local
 *.tsbuildinfo
 .DS_Store
+__pycache__/
+*.py[cod]
 
 .trigger

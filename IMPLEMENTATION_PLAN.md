@@ -915,7 +915,7 @@ versions, test results, credentials still required, and unresolved risks.
 
 - Status: implementation completed and verified locally; private service image
   requires Railway build/runtime smoke testing.
-- Implementation commit: `PHASE_10_IMPLEMENTATION_COMMIT`.
+- Implementation commit: `e167cec`.
 - Migration: `drizzle/0011_sweet_gabe_jones.sql`.
 - Delivered:
   - Immutable original-file upload to Railway Storage before conversion, with
