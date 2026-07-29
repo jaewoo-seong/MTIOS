@@ -973,7 +973,7 @@ versions, test results, credentials still required, and unresolved risks.
 
 - Status: implementation completed and verified locally; provider credentials
   and live routing require Railway smoke testing.
-- Implementation commit: `PHASE_11_IMPLEMENTATION_COMMIT`.
+- Implementation commit: `e58a05d`.
 - Migration: `drizzle/0012_breezy_hannibal_king.sql`.
 - Delivered:
   - LiteLLM remains the only provider gateway.
