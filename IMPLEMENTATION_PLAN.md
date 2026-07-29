@@ -557,7 +557,7 @@ versions, test results, credentials still required, and unresolved risks.
 ### 2026-07-29 - Phase 3 Completed
 
 - Status: completed and verified locally.
-- Implementation commit: recorded after verification in follow-up log commit.
+- Implementation commit: `eabde84`.
 - Migration: `drizzle/0004_mysterious_the_enforcers.sql`.
 - Delivered:
   - Reusable worker catalog for research, company intelligence, marketing,
