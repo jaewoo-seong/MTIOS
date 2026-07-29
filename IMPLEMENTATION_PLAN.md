@@ -748,7 +748,7 @@ versions, test results, credentials still required, and unresolved risks.
 ### 2026-07-29 - Phase 7 Completed
 
 - Status: completed and verified locally.
-- Implementation commit: recorded after verification in follow-up log commit.
+- Implementation commit: `375ef6e`.
 - Migration: `drizzle/0008_stale_wendell_rand.sql`.
 - Delivered:
   - Organization-scoped provider registry for Tavily, Brave, SEC EDGAR,
