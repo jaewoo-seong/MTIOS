@@ -1075,11 +1075,44 @@ versions, test results, credentials still required, and unresolved risks.
   - Phase 11 provider credentials and explicit NVIDIA production approval
   - Existing Railway, Trigger.dev, Gmail, MCP, storage, and conversion secrets
 - Remaining production blockers:
-  - Live Railway migration and all service health checks have not been run
-    against this commit.
-  - Trigger.dev production workflow, live LiteLLM primary/fallback/embedding/
-    reranking, Gmail, MCP, OCR, exports, SSE reconnect, backup/restore, and
-    alerting still require production smoke tests.
+  - Live LiteLLM primary/fallback/embedding/reranking, Gmail OAuth, Korean OCR,
+    report exports, SSE reconnect, backup/restore, and alert delivery still
+    require production acceptance tests with real inputs.
   - Live browser QA in English and Korean remains part of the production gate;
     provider-originated error text and imported source content remain in their
     source language by design.
+
+### 2026-07-29 - Production Deployment Follow-up
+
+- Railway project: `MTI Business OS`
+  (`18dcde56-e623-44be-956d-cf5362607f4b`), production environment
+  `dda4ceba-aae3-4470-9b04-9763d4cc255f`.
+- Deployed application:
+  `https://app-production-201e.up.railway.app`.
+- Trigger.dev production version `20260729.4` deployed with two detected
+  tasks. Deployment: `fhjpfzy3`.
+- Provisioned and validated Railway services: `app`, `litellm`, `mcp-tools`,
+  `document-conversion`, PostgreSQL, Redis, and `business-os-files`.
+- Production migrations and seed completed. Migration ledger contains all 15
+  migrations and `projects.budget_currency` is present.
+- Production migration repairs:
+  - `4eedb52` converts legacy text task assignments to UUID before adding the
+    agent foreign key.
+  - `d6630c3` enables `pgcrypto` before the document revision SHA-256 backfill.
+  - `4d01d15` removes app-only Railway commands from shared config so private
+    Docker services use their own startup commands.
+- Production `/api/health` returned `ok` for PostgreSQL, Redis, Railway
+  Storage, LiteLLM, and document conversion.
+- `npm run test:production` passed against the deployed application.
+- Local verification remains green: typecheck, production build, and 84 tests
+  across 16 files.
+- Remaining release gates:
+  - Complete English/Korean visual QA at laptop and desktop widths.
+  - Exercise current Trigger version with a real Executive command and verify
+    worker completion, callbacks, persisted events, SSE reconnect, and cost
+    attribution.
+  - Exercise live LiteLLM primary/fallback, embedding, and reranking routes.
+  - Run authenticated MCP invocation, Korean scanned-PDF conversion and
+    export, Gmail OAuth/read/draft, backup restore, and alert-delivery tests.
+  - Review and rotate production secrets, and replace any provider key ever
+    exposed in chat or logs.
