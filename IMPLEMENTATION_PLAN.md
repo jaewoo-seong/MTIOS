@@ -1022,7 +1022,7 @@ versions, test results, credentials still required, and unresolved risks.
 - Status: application implementation completed and verified locally;
   production deployment gates remain open and are documented below.
 - Implementation commit: `b98df3a`.
-- Completion follow-up: pending commit.
+- Completion follow-up commit: `58cbf91`.
 - Migrations: `drizzle/0013_melted_franklin_richards.sql` and
   `drizzle/0014_dear_vin_gonzales.sql`.
 - Delivered:
