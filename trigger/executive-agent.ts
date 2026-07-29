@@ -1,5 +1,6 @@
 import { task } from "@trigger.dev/sdk";
 import { requestModel } from "@/lib/ai/litellm";
+import { parseModelJson } from "@/lib/ai/model-json";
 import type { ExecutiveCommand } from "@/lib/domain";
 
 type WorkerPayload = {
@@ -78,7 +79,9 @@ export const executiveAgentWorkflow = task({
       },
       { role: "user", content: JSON.stringify({ instruction: command.instruction, context }) }
     ]);
-    const plan = JSON.parse(modelText(planningResponse)) as { tasks: string[]; reportTitle: string };
+    const plan = parseModelJson<{ tasks: string[]; reportTitle: string }>(
+      modelText(planningResponse)
+    );
     if (!Array.isArray(plan.tasks) || plan.tasks.length === 0 || plan.tasks.length > 10) {
       throw new Error("Executive plan contains an invalid task list.");
     }
