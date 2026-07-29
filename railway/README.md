@@ -24,3 +24,13 @@ Build `mcp-tools` from `railway/mcp-tools/Dockerfile`. Set
 and set `MCP_SERVICE_URL` on `app` to
 `http://mcp-tools.railway.internal:3002/mcp`. Keep the service private; only
 its `/health` endpoint is used by Railway health checks.
+
+Gmail uses server-side Google OAuth on the public `app` service. Configure
+`GOOGLE_GMAIL_CLIENT_ID`, `GOOGLE_GMAIL_CLIENT_SECRET`, and a generated
+base64-encoded 32-byte `GMAIL_TOKEN_ENCRYPTION_KEY`. Register
+`https://<app-domain>/api/v1/integrations/gmail/callback` in Google Cloud.
+The app requests only `gmail.readonly` and `gmail.compose`; refresh tokens are
+encrypted in PostgreSQL. Set the same three Gmail variables on the private
+`mcp-tools` service so its Gmail adapters can refresh and decrypt tokens.
+These credentials are separate from `MCP_SERVICE_SECRET` and must not be used
+as MCP transport authentication.

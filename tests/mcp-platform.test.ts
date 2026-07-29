@@ -26,7 +26,7 @@ describe("MCP governance", () => {
     expect(registered.tools).toHaveLength(internalToolCatalog.length);
     expect(new Set(internalToolCatalog.map((tool) => tool.group))).toEqual(new Set([
       "search", "project_context", "knowledge", "client_data", "staged_write",
-      "reports", "documents", "storage", "research"
+      "reports", "documents", "storage", "research", "communication"
     ]));
     expect(mcpExtensionGroups).toContain("crm");
     expect(mcpExtensionGroups).toContain("manufacturing");

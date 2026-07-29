@@ -6,6 +6,15 @@ import { searchWorkspace } from "@/lib/search";
 import { storeReportExport } from "@/lib/storage";
 import { runResearchQuery } from "@/lib/research/engine";
 import { createClientChangeSet, submitClientChangeSet } from "@/lib/client-changes";
+import {
+  createGmailDraft,
+  importGmailAttachment,
+  linkGmailToProject,
+  retrieveGmailThread,
+  reviseGmailDraft,
+  searchGmailThreads,
+  summarizeGmailThread
+} from "@/lib/gmail";
 
 export type McpRiskLevel = "low" | "medium" | "high" | "critical";
 export type McpApprovalRequirement = "none" | "always";
@@ -18,7 +27,8 @@ export type McpToolGroup =
   | "reports"
   | "documents"
   | "storage"
-  | "research";
+  | "research"
+  | "communication";
 
 export type InternalToolDefinition = {
   name: string;
@@ -168,6 +178,111 @@ export const internalToolCatalog = [
       queryBudget: z.number().int().min(1).max(100).default(10),
       maxResults: z.number().int().min(1).max(100).default(20)
     })
+  },
+  {
+    name: "search_gmail_threads",
+    description: "Search an authorized Gmail mailbox and mirror selected thread metadata and messages.",
+    group: "communication",
+    riskLevel: "medium",
+    approvalRequirement: "none",
+    permissions: ["gmail:read"],
+    budgetCents: 0,
+    inputSchema: z.object({
+      connectionId: z.string().uuid(),
+      query: z.string().trim().min(1).max(2000),
+      maxResults: z.number().int().min(1).max(100).default(25)
+    })
+  },
+  {
+    name: "get_gmail_thread",
+    description: "Retrieve one selected Gmail thread with messages and attachment metadata.",
+    group: "communication",
+    riskLevel: "medium",
+    approvalRequirement: "none",
+    permissions: ["gmail:read"],
+    budgetCents: 0,
+    inputSchema: z.object({
+      connectionId: z.string().uuid(),
+      gmailThreadId: z.string().trim().min(1).max(500)
+    })
+  },
+  {
+    name: "summarize_gmail_thread",
+    description: "Produce a bounded deterministic digest of one selected Gmail thread.",
+    group: "communication",
+    riskLevel: "medium",
+    approvalRequirement: "none",
+    permissions: ["gmail:read"],
+    budgetCents: 0,
+    inputSchema: z.object({
+      connectionId: z.string().uuid(),
+      gmailThreadId: z.string().trim().min(1).max(500)
+    })
+  },
+  {
+    name: "link_gmail_to_project",
+    description: "Link a mirrored Gmail thread or message to a project and optional client/company.",
+    group: "communication",
+    riskLevel: "medium",
+    approvalRequirement: "always",
+    permissions: ["gmail:link"],
+    budgetCents: 0,
+    inputSchema: z.object({
+      projectId: z.string().uuid(),
+      threadId: z.string().uuid().nullable().optional(),
+      messageId: z.string().uuid().nullable().optional(),
+      clientRecordId: z.string().uuid().nullable().optional(),
+      companyId: z.string().uuid().nullable().optional()
+    })
+  },
+  {
+    name: "import_gmail_attachment",
+    description: "Import one selected Gmail attachment into project documents with immutable provenance.",
+    group: "communication",
+    riskLevel: "high",
+    approvalRequirement: "always",
+    permissions: ["gmail:attachment_import"],
+    budgetCents: 0,
+    inputSchema: z.object({
+      attachmentId: z.string().uuid(),
+      projectId: z.string().uuid()
+    })
+  },
+  {
+    name: "create_gmail_draft",
+    description: "Create a Gmail draft linked to a project. This tool cannot send mail.",
+    group: "communication",
+    riskLevel: "medium",
+    approvalRequirement: "none",
+    permissions: ["gmail:compose"],
+    budgetCents: 0,
+    inputSchema: z.object({
+      connectionId: z.string().uuid(),
+      projectId: z.string().uuid(),
+      threadId: z.string().uuid().nullable().optional(),
+      to: z.array(z.string().email()).min(1).max(100),
+      cc: z.array(z.string().email()).max(100).default([]),
+      bcc: z.array(z.string().email()).max(100).default([]),
+      subject: z.string().max(998),
+      bodyText: z.string().max(500000)
+    })
+  },
+  {
+    name: "revise_gmail_draft",
+    description: "Revise an existing project Gmail draft and retain revision history. This tool cannot send mail.",
+    group: "communication",
+    riskLevel: "medium",
+    approvalRequirement: "none",
+    permissions: ["gmail:compose"],
+    budgetCents: 0,
+    inputSchema: z.object({
+      draftId: z.string().uuid(),
+      to: z.array(z.string().email()).min(1).max(100),
+      cc: z.array(z.string().email()).max(100).default([]),
+      bcc: z.array(z.string().email()).max(100).default([]),
+      subject: z.string().max(998),
+      bodyText: z.string().max(500000)
+    })
   }
 ] as const satisfies readonly InternalToolDefinition[];
 
@@ -264,6 +379,64 @@ export async function executeInternalTool(name: InternalToolName, rawInput: unkn
       language: String(input.language),
       queryBudget: Number(input.queryBudget),
       maxResults: Number(input.maxResults)
+    });
+  }
+  if (name === "search_gmail_threads") {
+    return {
+      threads: await searchGmailThreads({
+        connectionId: String(input.connectionId),
+        query: String(input.query),
+        maxResults: Number(input.maxResults)
+      })
+    };
+  }
+  if (name === "get_gmail_thread") {
+    return retrieveGmailThread({
+      connectionId: String(input.connectionId),
+      gmailThreadId: String(input.gmailThreadId)
+    });
+  }
+  if (name === "summarize_gmail_thread") {
+    return summarizeGmailThread({
+      connectionId: String(input.connectionId),
+      gmailThreadId: String(input.gmailThreadId)
+    });
+  }
+  if (name === "link_gmail_to_project") {
+    return linkGmailToProject({
+      projectId: String(input.projectId),
+      threadId: typeof input.threadId === "string" ? input.threadId : null,
+      messageId: typeof input.messageId === "string" ? input.messageId : null,
+      clientRecordId: typeof input.clientRecordId === "string" ? input.clientRecordId : null,
+      companyId: typeof input.companyId === "string" ? input.companyId : null
+    });
+  }
+  if (name === "import_gmail_attachment") {
+    return importGmailAttachment({
+      attachmentId: String(input.attachmentId),
+      projectId: String(input.projectId)
+    });
+  }
+  if (name === "create_gmail_draft") {
+    return createGmailDraft({
+      connectionId: String(input.connectionId),
+      projectId: String(input.projectId),
+      threadId: typeof input.threadId === "string" ? input.threadId : null,
+      to: input.to as string[],
+      cc: input.cc as string[],
+      bcc: input.bcc as string[],
+      subject: String(input.subject),
+      bodyText: String(input.bodyText)
+    });
+  }
+  if (name === "revise_gmail_draft") {
+    return reviseGmailDraft({
+      draftId: String(input.draftId),
+      to: input.to as string[],
+      cc: input.cc as string[],
+      bcc: input.bcc as string[],
+      subject: String(input.subject),
+      bodyText: String(input.bodyText)
     });
   }
   throw new Error(`Tool handler not implemented: ${name}`);

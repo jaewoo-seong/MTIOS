@@ -854,3 +854,59 @@ versions, test results, credentials still required, and unresolved risks.
     Phase 12.
   - Bulk proposals should be load-tested against realistic record counts
     before raising the current 1,000-item API limit.
+
+### 2026-07-29 - Phase 9 Completed
+
+- Status: completed and verified locally with mocked Google APIs.
+- Implementation commit: `PHASE_9_IMPLEMENTATION_COMMIT`.
+- Migration: `drizzle/0010_strange_lionheart.sql`.
+- Delivered:
+  - Google server-side authorization-code flow with offline access, one-time
+    hashed state, ten-minute expiration, consent prompt, and exact
+    `gmail.readonly` plus `gmail.compose` scopes.
+  - AES-256-GCM token encryption using a dedicated
+    `GMAIL_TOKEN_ENCRYPTION_KEY`; refresh/access tokens never enter public API
+    responses and Gmail credentials remain separate from MCP transport
+    authentication.
+  - Organization-scoped Gmail connections, mirrored threads, messages,
+    attachment metadata, project/client/company links, drafts, and immutable
+    draft revisions.
+  - Bounded selected-thread search/retrieval and deterministic thread digests
+    for Executive Agent context.
+  - Attachment import that stores the immutable original in Railway Storage,
+    records a content hash and Gmail provenance, converts supported content,
+    and creates a project document.
+  - Project-linked Gmail draft creation and revision through Gmail's draft
+    endpoints with retained local revision history.
+  - Governed MCP tools for thread search/retrieval/digest, linking,
+    attachment import, draft creation, and draft revision.
+  - Explicit approval gates for attachment imports and project links.
+  - Gmail Settings surface for connection status, OAuth start, and token
+    revocation/disconnect.
+  - No API route or MCP tool for sending, forwarding, permanent deletion,
+    delegation, or mailbox administration.
+- Validation:
+  - `npm run typecheck` passed.
+  - `npm test` passed with 66 tests across 12 files.
+  - `npm run build` passed.
+  - Drizzle migration generation passed.
+  - OAuth scope/offline behavior, state replay prevention, authenticated token
+    encryption/tamper rejection, selected-thread retrieval, message and
+    attachment mirroring, project linking, attachment provenance, draft
+    revision history, and absence of send/delete tools tested.
+- Deployment: not deployed in this phase. Register the production redirect
+  URL, set Gmail credentials on the Railway app and private MCP service, run
+  migration, and complete a real Google consent/search/draft smoke test.
+- Credentials required:
+  - `GOOGLE_GMAIL_CLIENT_ID`
+  - `GOOGLE_GMAIL_CLIENT_SECRET`
+  - Generated base64-encoded 32-byte `GMAIL_TOKEN_ENCRYPTION_KEY`
+  - Google Workspace administrator approval when organization policy requires
+    it
+- Remaining risks:
+  - Google verification may be required before use outside configured test
+    users.
+  - Live Gmail quota, token revocation, large attachment, and Workspace policy
+    behavior remain production smoke-test items.
+  - Sending stays unavailable. A future send capability must use a fresh,
+    exact-message approval immediately before execution.

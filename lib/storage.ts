@@ -35,3 +35,14 @@ export async function storeReportExport(reportId: string, title: string, content
   });
   return { key, url, expiresIn: 900, format: "markdown" };
 }
+
+export async function storeBinaryObject(key: string, contentType: string, body: Buffer) {
+  if (!storage || !bucket) throw new Error("Railway Storage Bucket is not configured.");
+  await storage.send(new PutObjectCommand({
+    Bucket: bucket,
+    Key: key,
+    Body: body,
+    ContentType: contentType
+  }));
+  return { key, size: body.byteLength, contentType };
+}

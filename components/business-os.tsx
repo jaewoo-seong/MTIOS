@@ -9,6 +9,7 @@ import {
   FileText,
   FolderKanban,
   Loader2,
+  Mail,
   Plus,
   Search,
   Send,
@@ -350,7 +351,7 @@ export function BusinessOS() {
               )}
               {page === "data" && <ClientDataView onError={pushError} />}
               {page === "knowledge" && <KnowledgeView onError={pushError} />}
-              {page === "settings" && <SettingsView />}
+              {page === "settings" && <SettingsView onError={pushError} />}
             </>
           )}
         </section>
@@ -656,13 +657,95 @@ function ContextBlock({ label, value }: { label: string; value: string }) {
   return <div><span>{label}</span><p>{value || "Not set"}</p></div>;
 }
 
-function SettingsView() {
+function SettingsView({ onError }: { onError: (message: string) => void }) {
   return (
     <div className="settings-grid">
       <section className="surface"><div className="surface-header"><h2>Workspace</h2></div><Setting label="Organization" value="MTI Korea" /><Setting label="Operator mode" value="Single workspace · no login" /></section>
       <section className="surface"><div className="surface-header"><h2>Infrastructure</h2></div><Setting label="Application" value="Railway" /><Setting label="Workflows" value="Trigger.dev managed" /><Setting label="Model gateway" value="LiteLLM" /></section>
       <section className="surface"><div className="surface-header"><h2>Review policy</h2></div><Setting label="External sends" value="Approval required" /><Setting label="Destructive writes" value="Approval required" /><Setting label="High-cost actions" value="Approval required" /></section>
+      <GmailSettings onError={onError} />
     </div>
+  );
+}
+
+type GmailConnection = {
+  id: string;
+  email: string;
+  status: string;
+  scopes: string[];
+  lastSyncAt: string | null;
+};
+
+function GmailSettings({ onError }: { onError: (message: string) => void }) {
+  const [connections, setConnections] = useState<GmailConnection[]>([]);
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    const response = await fetch("/api/v1/integrations/gmail");
+    if (!response.ok) throw new Error("Could not load Gmail connections.");
+    const payload = (await response.json()) as { data: GmailConnection[] };
+    setConnections(payload.data);
+  }, []);
+
+  useEffect(() => {
+    load().catch((reason: Error) => onError(reason.message));
+  }, [load, onError]);
+
+  async function connect() {
+    setBusy(true);
+    try {
+      const response = await fetch("/api/v1/integrations/gmail/authorize", { method: "POST" });
+      const payload = (await response.json()) as { data?: { url: string }; error?: string };
+      if (!response.ok || !payload.data) throw new Error(payload.error ?? "Gmail authorization could not start.");
+      window.location.assign(payload.data.url);
+    } catch (reason) {
+      onError(reason instanceof Error ? reason.message : "Gmail authorization could not start.");
+      setBusy(false);
+    }
+  }
+
+  async function disconnect(connectionId: string) {
+    setBusy(true);
+    try {
+      const response = await fetch(`/api/v1/integrations/gmail/${connectionId}`, { method: "DELETE" });
+      const payload = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(payload.error ?? "Gmail connection could not be removed.");
+      await load();
+    } catch (reason) {
+      onError(reason instanceof Error ? reason.message : "Gmail connection could not be removed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="surface integration-settings">
+      <div className="surface-header">
+        <div><h2>Gmail</h2><span>Read selected threads and create drafts</span></div>
+        <button className="secondary" onClick={() => void connect()} disabled={busy}>
+          {busy ? <Loader2 size={14} className="spin" aria-hidden /> : <Mail size={14} aria-hidden />}
+          Connect
+        </button>
+      </div>
+      {connections.length === 0 ? (
+        <div className="empty-inline">No Gmail account connected.</div>
+      ) : connections.map((connection) => (
+        <div className="integration-row" key={connection.id}>
+          <div>
+            <strong>{connection.email}</strong>
+            <span>{connection.status} · Gmail read and compose</span>
+          </div>
+          <button
+            className="secondary"
+            onClick={() => void disconnect(connection.id)}
+            disabled={busy || connection.status === "revoked"}
+          >
+            Disconnect
+          </button>
+        </div>
+      ))}
+      <p className="integration-policy">Sending and mailbox deletion are unavailable.</p>
+    </section>
   );
 }
 

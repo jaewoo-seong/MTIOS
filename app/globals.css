@@ -531,6 +531,12 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .setting:last-child { border-bottom: 0; }
 .setting span { color: var(--ink-mute); }
 .setting strong { font-weight: 560; text-align: right; }
+.integration-settings .surface-header > div { display: grid; gap: 2px; }
+.integration-row { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); padding: var(--sp-3) var(--sp-4); border-top: 1px solid var(--line); }
+.integration-row > div { display: grid; gap: 4px; min-width: 0; }
+.integration-row strong { overflow-wrap: anywhere; }
+.integration-row span, .integration-policy { color: var(--ink-mute); font-size: var(--t-meta); }
+.integration-policy { margin: 0; padding: var(--sp-3) var(--sp-4); border-top: 1px solid var(--line); }
 
 /* ── Executive command (docked in the main column) ────────────────────── */
 .command-wrap {

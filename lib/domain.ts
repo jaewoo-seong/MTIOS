@@ -268,7 +268,16 @@ export interface Report {
   updatedAt: string;
 }
 
-export type DocumentSourceKind = "pdf" | "docx" | "html" | "csv" | "markdown" | "text" | "json" | "unknown";
+export type DocumentSourceKind =
+  | "pdf"
+  | "docx"
+  | "html"
+  | "csv"
+  | "markdown"
+  | "text"
+  | "json"
+  | "gmail_attachment"
+  | "unknown";
 
 export interface DocumentFolder {
   id: string;
