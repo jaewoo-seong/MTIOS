@@ -10,6 +10,13 @@ const updateProjectSchema = z.object({
   scope: z.string().trim().max(3000).optional(),
   constraints: z.array(z.string().trim().min(1).max(500)).optional(),
   budgetCents: z.number().int().nonnegative().nullable().optional(),
+  reviewGates: z.array(z.string().trim().min(1).max(160)).optional(),
+  outputRequirements: z.array(z.string().trim().min(1).max(300)).optional(),
+  permissions: z.object({
+    externalSend: z.enum(["review_required", "blocked"]),
+    clientDataWrite: z.enum(["review_required", "blocked"]),
+    destructiveAction: z.enum(["review_required", "blocked"])
+  }).optional(),
   status: z.enum(["active", "paused", "completed", "archived"]).optional()
 });
 
@@ -18,7 +25,13 @@ export async function GET(_: Request, { params }: { params: Promise<{ projectId:
   const project = await repository.getProject(projectId);
   if (!project) return notFound("project");
   return NextResponse.json({
-    data: { ...project, agendas: await repository.listAgendas(projectId) }
+    data: {
+      ...project,
+      agendas: await repository.listAgendas(projectId),
+      milestones: await repository.listMilestones(projectId),
+      records: await repository.listProjectRecords(projectId),
+      deliverables: await repository.listDeliverables(projectId)
+    }
   });
 }
 

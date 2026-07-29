@@ -15,6 +15,13 @@
       "when": 1785290194396,
       "tag": "0001_foamy_robbie_robertson",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1785296873470,
+      "tag": "0002_lyrical_pete_wisdom",
+      "breakpoints": true
     }
   ]
 }

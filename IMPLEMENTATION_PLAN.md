@@ -474,4 +474,40 @@ Future implementation chats must append dated entries here after a phase is
 verified. Each entry should include the phase, commit, migrations, deployment
 versions, test results, credentials still required, and unresolved risks.
 
-- No phases recorded as completed by this handoff document.
+### 2026-07-29 - Phase 1 Completed
+
+- Status: completed and verified locally.
+- Commit: Phase 1 implementation commit recorded in Git history; exact hash is
+  appended by the follow-up completion-log commit.
+- Migration: `drizzle/0002_lyrical_pete_wisdom.sql`.
+- Delivered:
+  - Project permissions, review gates, output requirements, milestones,
+    decisions/assumptions/questions, deliverables, and typed agendas.
+  - Durable tasks with dependencies, agent assignment, tool scopes, budgets,
+    output schemas, and review requirements.
+  - Executive and worker definitions with model routes, capabilities, tool
+    scopes, and review policy.
+  - Command selection context, command revisions, persisted page drafts, and
+    pending clarification restoration across navigation and reloads.
+  - Organization/project ownership checks for agenda-linked tasks, records,
+    and deliverables.
+- APIs: added command retrieval, agent definition listing, agenda task routes,
+  and project milestone, record, and deliverable routes.
+- Validation:
+  - `npm run typecheck` passed.
+  - `npm test` passed with 30 tests.
+  - `npm run build` passed.
+  - Drizzle migration generation passed.
+  - Browser verification passed at 1024x768 and 1440x900 with no horizontal
+    overflow; project creation, governance rendering, agenda type selection,
+    clarification, contextual page modes, and draft restoration were checked.
+- Deployment: not deployed in this phase; Railway migration and production
+  smoke tests remain required before release.
+- Credentials required: none for Phase 1.
+- Remaining risks:
+  - Authentication is intentionally deferred; the seeded operator remains the
+    only active identity.
+  - Workflow planning and worker execution still use the Phase 3
+    implementation and are not considered complete by this entry.
+  - The production database must run the Phase 1 migration before this commit
+    is deployed.

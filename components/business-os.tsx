@@ -16,7 +16,17 @@ import {
   Sparkles,
   X
 } from "lucide-react";
-import type { Agenda, ExecutiveCommand, Project, Report, WorkspaceDocument } from "@/lib/domain";
+import type {
+  Agenda,
+  AgendaWorkType,
+  Deliverable,
+  ExecutiveCommand,
+  Milestone,
+  Project,
+  ProjectRecord,
+  Report,
+  WorkspaceDocument
+} from "@/lib/domain";
 import { ClientDataView } from "@/components/client-data-view";
 import { DocumentsView } from "@/components/documents-view";
 import { KnowledgeView } from "@/components/knowledge-view";
@@ -25,6 +35,12 @@ import { SearchPalette } from "@/components/search-palette";
 import { Modal } from "@/components/ui/modal";
 
 type PageId = "agent" | "projects" | "documents" | "data" | "knowledge" | "settings";
+type ProjectDetail = Project & {
+  agendas: Agenda[];
+  milestones: Milestone[];
+  records: ProjectRecord[];
+  deliverables: Deliverable[];
+};
 
 const navItems: Array<{ id: PageId; label: string; icon: typeof Bot }> = [
   { id: "agent", label: "Executive Agent", icon: Bot },
@@ -91,7 +107,7 @@ export function BusinessOS() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [reports, setReports] = useState<Report[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
-  const [selectedProject, setSelectedProject] = useState<(Project & { agendas: Agenda[] }) | null>(null);
+  const [selectedProject, setSelectedProject] = useState<ProjectDetail | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [errors, setErrors] = useState<Array<{ id: number; message: string }>>([]);
@@ -100,6 +116,7 @@ export function BusinessOS() {
   const [command, setCommand] = useState("");
   const [pendingCommand, setPendingCommand] = useState<ExecutiveCommand | null>(null);
   const [commandBusy, setCommandBusy] = useState(false);
+  const [agendaWorkType, setAgendaWorkType] = useState<AgendaWorkType>("custom");
 
   /** Errors accumulate so a failed batch reports every failure, not just the last. */
   const pushError = useCallback((message: string) => {
@@ -135,10 +152,25 @@ export function BusinessOS() {
       setSelectedProject(null);
       return;
     }
-    api<{ data: Project & { agendas: Agenda[] } }>(`/api/v1/projects/${selectedProjectId}`)
+    api<{ data: ProjectDetail }>(`/api/v1/projects/${selectedProjectId}`)
       .then((payload) => setSelectedProject(payload.data))
       .catch((reason: Error) => pushError(reason.message));
   }, [selectedProjectId, projects, pushError]);
+
+  useEffect(() => {
+    const storedDraft = window.localStorage.getItem(`executive-command:draft:${page}`);
+    setCommand(storedDraft ?? "");
+    const pendingId = window.localStorage.getItem("executive-command:pending");
+    if (pendingId) {
+      api<{ data: ExecutiveCommand }>(`/api/v1/commands/${pendingId}`)
+        .then((payload) => setPendingCommand(payload.data))
+        .catch(() => window.localStorage.removeItem("executive-command:pending"));
+    }
+  }, [page]);
+
+  useEffect(() => {
+    window.localStorage.setItem(`executive-command:draft:${page}`, command);
+  }, [command, page]);
 
   const counts = useMemo(() => ({
     active: projects.filter((project) => project.status === "active").length,
@@ -173,10 +205,16 @@ export function BusinessOS() {
         body: JSON.stringify({
           page,
           projectId: page === "projects" ? selectedProjectId : null,
-          instruction: command
+          instruction: command,
+          context: {
+            page,
+            projectId: page === "projects" ? selectedProjectId : null,
+            documentId: page === "documents" ? focusDocumentId : null
+          }
         })
       });
       setPendingCommand(payload.data);
+      window.localStorage.setItem("executive-command:pending", payload.data.id);
     } catch (reason) {
       pushError(reason instanceof Error ? reason.message : "Command failed");
     } finally {
@@ -192,15 +230,21 @@ export function BusinessOS() {
       if (page === "projects" && selectedProjectId) {
         await api(`/api/v1/projects/${selectedProjectId}/agendas`, {
           method: "POST",
-          body: JSON.stringify({ title: agendaTitle(command), instruction: command })
+          body: JSON.stringify({
+            title: agendaTitle(command),
+            instruction: command,
+            workType: agendaWorkType
+          })
         });
-        const projectPayload = await api<{ data: Project & { agendas: Agenda[] } }>(
+        const projectPayload = await api<{ data: ProjectDetail }>(
           `/api/v1/projects/${selectedProjectId}`
         );
         setSelectedProject(projectPayload.data);
       }
       setPendingCommand(null);
       setCommand("");
+      window.localStorage.removeItem("executive-command:pending");
+      window.localStorage.removeItem(`executive-command:draft:${page}`);
     } catch (reason) {
       pushError(reason instanceof Error ? reason.message : "Confirmation failed");
     } finally {
@@ -318,7 +362,12 @@ export function BusinessOS() {
           onChange={setCommand}
           onSubmit={submitCommand}
           onConfirm={confirmCommand}
-          onAdjust={() => setPendingCommand(null)}
+          workType={agendaWorkType}
+          onWorkTypeChange={setAgendaWorkType}
+          onAdjust={() => {
+            setPendingCommand(null);
+            window.localStorage.removeItem("executive-command:pending");
+          }}
         />
       </main>
 
@@ -420,7 +469,7 @@ function Metric({ label, value, note, attention = false }: {
 
 function ProjectsView({ projects, project, selectedId, onSelect, onCreate, onOpenDocument }: {
   projects: Project[];
-  project: (Project & { agendas: Agenda[] }) | null;
+  project: ProjectDetail | null;
   selectedId: string | null;
   onSelect: (id: string) => void;
   onCreate: () => void;
@@ -467,6 +516,14 @@ function ProjectsView({ projects, project, selectedId, onSelect, onCreate, onOpe
                 ? <p>Not set</p>
                 : <span className="budget-figure">{formatMoney(project.budgetCents)}</span>}
             </div>
+            <div>
+              <span>Review gates</span>
+              <p>{project.reviewGates.length > 0 ? project.reviewGates.join(" · ") : "Not set"}</p>
+            </div>
+            <div>
+              <span>Output requirements</span>
+              <p>{project.outputRequirements.length > 0 ? project.outputRequirements.join(" · ") : "Not set"}</p>
+            </div>
           </div>
           <div className="project-columns">
             <section className="surface agenda-surface">
@@ -483,6 +540,17 @@ function ProjectsView({ projects, project, selectedId, onSelect, onCreate, onOpe
             </section>
             <LiveActivity projectId={project.id} />
           </div>
+          <div className="project-columns">
+            <ProjectRegister title="Milestones" items={project.milestones.map((item) => item.title)} />
+            <ProjectRegister
+              title="Decisions, assumptions, and questions"
+              items={project.records.map((item) => `${item.kind}: ${item.content}`)}
+            />
+          </div>
+          <ProjectRegister
+            title="Deliverables"
+            items={project.deliverables.map((item) => `${item.title} · ${item.status}`)}
+          />
           <ProjectFiles projectId={project.id} onOpenDocument={onOpenDocument} />
         </div>
       )}
@@ -508,12 +576,24 @@ function AgendaRow({ agenda }: { agenda: Agenda }) {
       <span className={`agenda-dot ${agenda.status}`} />
       <div>
         <strong>{agenda.title}</strong>
+        <span className="agenda-type">{agenda.workType.replace("_", " ")}</span>
         {expanded && <p className="agenda-instruction">{agenda.instruction}</p>}
       </div>
       <span className={`pill ${agenda.status === "completed" ? "good" : agenda.status === "blocked" ? "crit" : agenda.status === "review" ? "warn" : ""}`}>
         {agenda.status}
       </span>
     </button>
+  );
+}
+
+function ProjectRegister({ title, items }: { title: string; items: string[] }) {
+  return (
+    <section className="surface">
+      <div className="surface-header"><h2>{title}</h2><span>{items.length}</span></div>
+      {items.length === 0
+        ? <div className="empty-inline">Nothing recorded yet.</div>
+        : <ul className="constraint-list">{items.map((item) => <li key={item}>{item}</li>)}</ul>}
+    </section>
   );
 }
 
@@ -603,16 +683,21 @@ function EmptyModule({ icon: Icon, title, text, action, onAction }: {
   );
 }
 
-function ExecutiveCommand({ page, value, pending, busy, disabled, onChange, onSubmit, onConfirm, onAdjust }: {
+function ExecutiveCommand({
+  page, value, pending, busy, disabled, workType,
+  onChange, onSubmit, onConfirm, onAdjust, onWorkTypeChange
+}: {
   page: PageId;
   value: string;
   pending: ExecutiveCommand | null;
   busy: boolean;
   disabled: boolean;
+  workType: AgendaWorkType;
   onChange: (value: string) => void;
   onSubmit: () => void;
   onConfirm: () => void;
   onAdjust: () => void;
+  onWorkTypeChange: (value: AgendaWorkType) => void;
 }) {
   const config = pageCopy[page];
   return (
@@ -640,6 +725,18 @@ function ExecutiveCommand({ page, value, pending, busy, disabled, onChange, onSu
           }}
         />
         <div className="command-actions">
+          {page === "projects" && (
+            <select
+              className="command-select"
+              aria-label="Agenda work type"
+              value={workType}
+              onChange={(event) => onWorkTypeChange(event.target.value as AgendaWorkType)}
+            >
+              {AGENDA_TYPES.map((type) => (
+                <option key={type} value={type}>{type.replace("_", " ")}</option>
+              ))}
+            </select>
+          )}
           {config.actions.map((action) => <button key={action} className="command-chip" onClick={() => onChange(action)}>{action}</button>)}
           <div className="spacer" />
           <button
@@ -658,7 +755,10 @@ function ExecutiveCommand({ page, value, pending, busy, disabled, onChange, onSu
 }
 
 function CreateProjectDialog({ onClose, onCreated }: { onClose: () => void; onCreated: (project: Project) => void }) {
-  const [form, setForm] = useState({ name: "", objective: "", context: "", scope: "", constraints: "", budget: "" });
+  const [form, setForm] = useState({
+    name: "", objective: "", context: "", scope: "", constraints: "", budget: "",
+    reviewGates: "", outputRequirements: ""
+  });
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -675,7 +775,14 @@ function CreateProjectDialog({ onClose, onCreated }: { onClose: () => void; onCr
           context: form.context,
           scope: form.scope,
           constraints: form.constraints.split("\n").map((item) => item.trim()).filter(Boolean),
-          budgetCents: form.budget ? Math.round(Number(form.budget) * 100) : null
+          budgetCents: form.budget ? Math.round(Number(form.budget) * 100) : null,
+          reviewGates: form.reviewGates.split("\n").map((item) => item.trim()).filter(Boolean),
+          outputRequirements: form.outputRequirements.split("\n").map((item) => item.trim()).filter(Boolean),
+          permissions: {
+            externalSend: "review_required",
+            clientDataWrite: "review_required",
+            destructiveAction: "review_required"
+          }
         })
       });
       onCreated(payload.data);
@@ -718,6 +825,12 @@ function CreateProjectDialog({ onClose, onCreated }: { onClose: () => void; onCr
           <label className="span-2">Constraints <span>One per line</span>
             <textarea rows={4} value={form.constraints} onChange={(event) => setForm({ ...form, constraints: event.target.value })} />
           </label>
+          <label>Review gates <span>One per line</span>
+            <textarea rows={4} value={form.reviewGates} onChange={(event) => setForm({ ...form, reviewGates: event.target.value })} />
+          </label>
+          <label>Output requirements <span>One per line</span>
+            <textarea rows={4} value={form.outputRequirements} onChange={(event) => setForm({ ...form, outputRequirements: event.target.value })} />
+          </label>
         </div>
         <div className="dialog-actions">
           <button type="button" className="secondary" onClick={onClose}>Cancel</button>
@@ -727,6 +840,11 @@ function CreateProjectDialog({ onClose, onCreated }: { onClose: () => void; onCr
     </Modal>
   );
 }
+
+const AGENDA_TYPES: AgendaWorkType[] = [
+  "custom", "research", "marketing", "brainstorming", "content",
+  "data_enrichment", "document", "communication", "analysis", "operations"
+];
 
 /** Derives a readable agenda title: first sentence, trimmed on a word boundary. */
 function agendaTitle(instruction: string) {

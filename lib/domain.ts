@@ -12,7 +12,35 @@ export type CommandStatus =
 
 export type ProjectStatus = "active" | "paused" | "completed" | "archived";
 export type AgendaStatus = "queued" | "working" | "blocked" | "review" | "completed";
+export type AgendaWorkType =
+  | "research"
+  | "marketing"
+  | "brainstorming"
+  | "content"
+  | "data_enrichment"
+  | "document"
+  | "communication"
+  | "analysis"
+  | "operations"
+  | "custom";
 export type ReportStatus = "working" | "review" | "saved";
+export type ProjectRecordKind = "decision" | "assumption" | "question";
+export type ProjectRecordStatus = "open" | "accepted" | "resolved" | "superseded";
+
+export interface ProjectPermissions {
+  externalSend: "review_required" | "blocked";
+  clientDataWrite: "review_required" | "blocked";
+  destructiveAction: "review_required" | "blocked";
+}
+
+export interface CommandContext extends Record<string, unknown> {
+  page: string;
+  projectId?: string | null;
+  documentId?: string | null;
+  knowledgeEntryId?: string | null;
+  clientDatabaseId?: string | null;
+  selectedRecordIds?: string[];
+}
 
 export interface Project {
   id: string;
@@ -23,6 +51,9 @@ export interface Project {
   scope: string;
   constraints: string[];
   budgetCents: number | null;
+  permissions: ProjectPermissions;
+  reviewGates: string[];
+  outputRequirements: string[];
   status: ProjectStatus;
   createdAt: string;
   updatedAt: string;
@@ -33,7 +64,80 @@ export interface Agenda {
   projectId: string;
   title: string;
   instruction: string;
+  workType: AgendaWorkType;
   status: AgendaStatus;
+  revision: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Milestone {
+  id: string;
+  projectId: string;
+  title: string;
+  description: string;
+  status: "planned" | "active" | "completed" | "missed";
+  dueAt: string | null;
+  position: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProjectRecord {
+  id: string;
+  projectId: string;
+  agendaId: string | null;
+  kind: ProjectRecordKind;
+  content: string;
+  status: ProjectRecordStatus;
+  sourceRunId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Deliverable {
+  id: string;
+  projectId: string;
+  agendaId: string | null;
+  runId: string | null;
+  title: string;
+  type: string;
+  status: "planned" | "working" | "review" | "completed";
+  reviewRequired: boolean;
+  reportId: string | null;
+  documentId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WorkTask {
+  id: string;
+  agendaId: string;
+  title: string;
+  description: string;
+  status: string;
+  assignedAgentId: string | null;
+  dependsOn: string[];
+  toolScopes: string[];
+  outputSchema: Record<string, unknown>;
+  budgetCents: number | null;
+  reviewRequired: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AgentDefinition {
+  id: string;
+  organizationId: string;
+  name: string;
+  role: "executive" | "worker" | "reviewer";
+  modelRoute: string;
+  capabilities: AgendaWorkType[];
+  toolScopes: string[];
+  budgetCents: number | null;
+  outputSchema: Record<string, unknown>;
+  reviewRequired: boolean;
+  active: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -46,6 +150,7 @@ export interface ExecutiveCommand {
   instruction: string;
   status: CommandStatus;
   clarification: string | null;
+  context: CommandContext;
   createdAt: string;
   updatedAt: string;
 }

@@ -44,4 +44,91 @@ describe("development repository lifecycle", () => {
     expect(command.status).toBe("needs_clarification");
     expect(command.clarification).toBeTruthy();
   });
+
+  it("persists project governance, typed agendas, and attached command context", async () => {
+    const project = await repository.createProject({
+      name: "Cross-functional program",
+      objective: "Coordinate research, marketing, and document work in one durable project.",
+      context: "The work continues across several quarterly agendas.",
+      scope: "Internal planning and approved client deliverables.",
+      constraints: ["No external sends without approval"],
+      budgetCents: 50000,
+      reviewGates: ["Approve client-facing outputs"],
+      outputRequirements: ["Executive summary", "Source register"],
+      permissions: {
+        externalSend: "review_required",
+        clientDataWrite: "review_required",
+        destructiveAction: "blocked"
+      }
+    });
+    const agenda = await repository.createAgenda(project.id, {
+      title: "Develop campaign options",
+      instruction: "Develop three campaign options using approved project context.",
+      workType: "marketing"
+    });
+    const command = await repository.createCommand({
+      page: "projects",
+      projectId: project.id,
+      instruction: "Develop three campaign options and return a decision memo for review.",
+      context: {
+        page: "projects",
+        projectId: project.id,
+        selectedRecordIds: ["00000000-0000-4000-8000-000000000099"]
+      }
+    });
+
+    expect(project.reviewGates).toEqual(["Approve client-facing outputs"]);
+    expect(project.permissions.destructiveAction).toBe("blocked");
+    expect(agenda.workType).toBe("marketing");
+    expect(command.context.projectId).toBe(project.id);
+    expect(command.context.selectedRecordIds).toHaveLength(1);
+  });
+
+  it("keeps milestones, project records, deliverables, and tasks traceable", async () => {
+    const project = await repository.createProject({
+      name: "Traceability program",
+      objective: "Verify that planning records remain connected to their originating project.",
+      context: "",
+      scope: "",
+      constraints: [],
+      budgetCents: null
+    });
+    const agenda = await repository.createAgenda(project.id, {
+      title: "Prepare operating memo",
+      instruction: "Prepare an operating memo with explicit assumptions and review requirements.",
+      workType: "document"
+    });
+    const milestone = await repository.createMilestone(project.id, {
+      title: "Draft ready",
+      description: "Initial draft is ready for review.",
+      dueAt: null
+    });
+    const record = await repository.createProjectRecord(project.id, {
+      agendaId: agenda.id,
+      kind: "assumption",
+      content: "The source package is complete."
+    });
+    const deliverable = await repository.createDeliverable(project.id, {
+      agendaId: agenda.id,
+      title: "Operating memo",
+      type: "report",
+      reviewRequired: true
+    });
+    const task = await repository.createTask(agenda.id, {
+      title: "Draft memo",
+      description: "Draft the structured memo.",
+      assignedAgentId: null,
+      dependsOn: [],
+      toolScopes: ["project:read"],
+      outputSchema: { type: "object" },
+      budgetCents: 1000,
+      reviewRequired: true
+    });
+
+    expect(milestone.projectId).toBe(project.id);
+    expect(record.agendaId).toBe(agenda.id);
+    expect(deliverable.reviewRequired).toBe(true);
+    expect(task.agendaId).toBe(agenda.id);
+    expect(task.toolScopes).toEqual(["project:read"]);
+  });
 });

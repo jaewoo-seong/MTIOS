@@ -18,6 +18,10 @@ const timestamps = {
 
 export const projectStatus = pgEnum("project_status", ["active", "paused", "completed", "archived"]);
 export const agendaStatus = pgEnum("agenda_status", ["queued", "working", "blocked", "review", "completed"]);
+export const agendaWorkType = pgEnum("agenda_work_type", [
+  "research", "marketing", "brainstorming", "content", "data_enrichment",
+  "document", "communication", "analysis", "operations", "custom"
+]);
 export const commandStatus = pgEnum("command_status", [
   "draft", "needs_clarification", "awaiting_confirmation", "confirmed", "planning",
   "executing", "review_required", "completed", "failed", "cancelled"
@@ -58,6 +62,17 @@ export const projects = pgTable("projects", {
   scope: text("scope").default("").notNull(),
   constraints: jsonb("constraints").$type<string[]>().default([]).notNull(),
   budgetCents: bigint("budget_cents", { mode: "number" }),
+  permissions: jsonb("permissions").$type<{
+    externalSend: "review_required" | "blocked";
+    clientDataWrite: "review_required" | "blocked";
+    destructiveAction: "review_required" | "blocked";
+  }>().default({
+    externalSend: "review_required",
+    clientDataWrite: "review_required",
+    destructiveAction: "review_required"
+  }).notNull(),
+  reviewGates: jsonb("review_gates").$type<string[]>().default([]).notNull(),
+  outputRequirements: jsonb("output_requirements").$type<string[]>().default([]).notNull(),
   status: projectStatus("status").default("active").notNull(),
   ...timestamps
 });
@@ -77,6 +92,7 @@ export const agendas = pgTable("agendas", {
   projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
   title: text("title").notNull(),
   instruction: text("instruction").notNull(),
+  workType: agendaWorkType("work_type").default("custom").notNull(),
   status: agendaStatus("status").default("queued").notNull(),
   revision: integer("revision").default(1).notNull(),
   ...timestamps
@@ -86,9 +102,36 @@ export const tasks = pgTable("tasks", {
   id: uuid("id").defaultRandom().primaryKey(),
   agendaId: uuid("agenda_id").references(() => agendas.id, { onDelete: "cascade" }).notNull(),
   title: text("title").notNull(),
+  description: text("description").default("").notNull(),
   status: text("status").default("queued").notNull(),
-  assignedAgent: text("assigned_agent"),
+  assignedAgentId: uuid("assigned_agent_id").references(() => agentDefinitions.id, { onDelete: "set null" }),
   dependsOn: jsonb("depends_on").$type<string[]>().default([]).notNull(),
+  toolScopes: jsonb("tool_scopes").$type<string[]>().default([]).notNull(),
+  outputSchema: jsonb("output_schema").$type<Record<string, unknown>>().default({}).notNull(),
+  budgetCents: bigint("budget_cents", { mode: "number" }),
+  reviewRequired: boolean("review_required").default(false).notNull(),
+  ...timestamps
+});
+
+export const milestones = pgTable("milestones", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  title: text("title").notNull(),
+  description: text("description").default("").notNull(),
+  status: text("status").default("planned").notNull(),
+  dueAt: timestamp("due_at", { withTimezone: true }),
+  position: integer("position").default(0).notNull(),
+  ...timestamps
+});
+
+export const projectRecords = pgTable("project_records", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  agendaId: uuid("agenda_id").references(() => agendas.id, { onDelete: "set null" }),
+  kind: text("kind").notNull(),
+  content: text("content").notNull(),
+  status: text("status").default("open").notNull(),
+  sourceRunId: uuid("source_run_id").references(() => runs.id, { onDelete: "set null" }),
   ...timestamps
 });
 
@@ -103,6 +146,15 @@ export const commands = pgTable("commands", {
   context: jsonb("context").$type<Record<string, unknown>>().default({}).notNull(),
   idempotencyKey: text("idempotency_key").unique(),
   ...timestamps
+});
+
+export const commandRevisions = pgTable("command_revisions", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  commandId: uuid("command_id").references(() => commands.id, { onDelete: "cascade" }).notNull(),
+  instruction: text("instruction").notNull(),
+  clarificationAnswer: text("clarification_answer"),
+  context: jsonb("context").$type<Record<string, unknown>>().default({}).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
 });
 
 export const runs = pgTable("runs", {
@@ -156,6 +208,35 @@ export const reports = pgTable("reports", {
   content: text("content").default("").notNull(),
   status: reportStatus("status").default("working").notNull(),
   revision: integer("revision").default(1).notNull(),
+  ...timestamps
+});
+
+export const deliverables = pgTable("deliverables", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  agendaId: uuid("agenda_id").references(() => agendas.id, { onDelete: "set null" }),
+  runId: uuid("run_id").references(() => runs.id, { onDelete: "set null" }),
+  title: text("title").notNull(),
+  type: text("type").default("report").notNull(),
+  status: text("status").default("planned").notNull(),
+  reviewRequired: boolean("review_required").default(false).notNull(),
+  reportId: uuid("report_id").references(() => reports.id, { onDelete: "set null" }),
+  documentId: uuid("document_id").references(() => documents.id, { onDelete: "set null" }),
+  ...timestamps
+});
+
+export const agentDefinitions = pgTable("agent_definitions", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  name: text("name").notNull(),
+  role: text("role").notNull(),
+  modelRoute: text("model_route").notNull(),
+  capabilities: jsonb("capabilities").$type<string[]>().default([]).notNull(),
+  toolScopes: jsonb("tool_scopes").$type<string[]>().default([]).notNull(),
+  budgetCents: bigint("budget_cents", { mode: "number" }),
+  outputSchema: jsonb("output_schema").$type<Record<string, unknown>>().default({}).notNull(),
+  reviewRequired: boolean("review_required").default(false).notNull(),
+  active: boolean("active").default(true).notNull(),
   ...timestamps
 });
 

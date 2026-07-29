@@ -1,4 +1,4 @@
-import { memberships, organizations, users } from "@/lib/db/schema";
+import { agentDefinitions, memberships, organizations, users } from "@/lib/db/schema";
 import { requireDatabase } from "@/lib/db/client";
 import { MTI_OPERATOR_ID, MTI_ORGANIZATION_ID } from "@/lib/repository";
 
@@ -19,4 +19,29 @@ export async function seedDefaultWorkspace() {
     userId: MTI_OPERATOR_ID,
     role: "owner"
   }).onConflictDoNothing();
+  const [existingAgent] = await database.select({ id: agentDefinitions.id })
+    .from(agentDefinitions)
+    .limit(1);
+  if (!existingAgent) {
+    await database.insert(agentDefinitions).values([
+      {
+        organizationId: MTI_ORGANIZATION_ID,
+        name: "Executive Agent",
+        role: "executive",
+        modelRoute: "executive_reasoning",
+        capabilities: ["research", "marketing", "brainstorming", "content", "data_enrichment", "document", "communication", "analysis", "operations", "custom"],
+        toolScopes: ["project:read", "knowledge:read", "plan:create", "task:delegate"],
+        reviewRequired: true
+      },
+      {
+        organizationId: MTI_ORGANIZATION_ID,
+        name: "General Worker",
+        role: "worker",
+        modelRoute: "worker_fast",
+        capabilities: ["research", "marketing", "brainstorming", "content", "data_enrichment", "document", "analysis", "operations"],
+        toolScopes: ["project:read", "knowledge:read", "output:propose"],
+        reviewRequired: false
+      }
+    ]);
+  }
 }

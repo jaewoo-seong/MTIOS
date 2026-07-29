@@ -5,11 +5,8 @@ import { repository } from "@/lib/repository";
 
 const schema = z.object({
   title: z.string().trim().min(2).max(160),
-  instruction: z.string().trim().min(5).max(6000),
-  workType: z.enum([
-    "research", "marketing", "brainstorming", "content", "data_enrichment",
-    "document", "communication", "analysis", "operations", "custom"
-  ]).default("custom")
+  description: z.string().trim().max(2000).default(""),
+  dueAt: z.string().datetime().nullable().default(null)
 });
 
 export async function POST(request: Request, { params }: { params: Promise<{ projectId: string }> }) {
@@ -17,5 +14,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ pro
   if (!await repository.getProject(projectId)) return notFound("project");
   const parsed = await parseJson(request, schema);
   if (parsed.error) return parsed.error;
-  return NextResponse.json({ data: await repository.createAgenda(projectId, parsed.data) }, { status: 201 });
+  return NextResponse.json({
+    data: await repository.createMilestone(projectId, {
+      title: parsed.data.title,
+      description: parsed.data.description ?? "",
+      dueAt: parsed.data.dueAt ?? null
+    })
+  }, { status: 201 });
 }

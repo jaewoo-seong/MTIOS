@@ -9,7 +9,18 @@ const createProjectSchema = z.object({
   context: z.string().trim().max(6000).default(""),
   scope: z.string().trim().max(3000).default(""),
   constraints: z.array(z.string().trim().min(1).max(500)).default([]),
-  budgetCents: z.number().int().nonnegative().nullable().default(null)
+  budgetCents: z.number().int().nonnegative().nullable().default(null),
+  reviewGates: z.array(z.string().trim().min(1).max(160)).default([]),
+  outputRequirements: z.array(z.string().trim().min(1).max(300)).default([]),
+  permissions: z.object({
+    externalSend: z.enum(["review_required", "blocked"]),
+    clientDataWrite: z.enum(["review_required", "blocked"]),
+    destructiveAction: z.enum(["review_required", "blocked"])
+  }).default({
+    externalSend: "review_required",
+    clientDataWrite: "review_required",
+    destructiveAction: "review_required"
+  })
 });
 
 export async function GET() {
@@ -26,7 +37,10 @@ export async function POST(request: Request) {
       context: parsed.data.context ?? "",
       scope: parsed.data.scope ?? "",
       constraints: parsed.data.constraints ?? [],
-      budgetCents: parsed.data.budgetCents ?? null
+      budgetCents: parsed.data.budgetCents ?? null,
+      reviewGates: parsed.data.reviewGates ?? [],
+      outputRequirements: parsed.data.outputRequirements ?? [],
+      permissions: parsed.data.permissions
     })
   }, { status: 201 });
 }

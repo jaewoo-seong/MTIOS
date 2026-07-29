@@ -1,32 +1,44 @@
 import { and, asc, count, desc, eq, gt, max } from "drizzle-orm";
 import type {
   Agenda,
+  AgentDefinition,
   AgentRun,
   ClientDatabase,
   ClientRecord,
+  CommandContext,
+  Deliverable,
   DocumentFolder,
   ExecutiveCommand,
   KnowledgeEntry,
+  Milestone,
   Project,
+  ProjectRecord,
   Report,
   ReviewDecision,
   RunEvent,
   WorkspaceDocument,
-  WorkspaceDocumentDetail
+  WorkspaceDocumentDetail,
+  WorkTask
 } from "@/lib/domain";
 import { db } from "@/lib/db/client";
 import {
+  agentDefinitions,
   agendas,
   clientDatabases,
   clientRecords,
+  commandRevisions,
   commands,
+  deliverables,
   documentFolders,
   documents,
   knowledgeEntries,
+  milestones,
+  projectRecords,
   projects,
   reports,
   runEvents,
-  runs
+  runs,
+  tasks
 } from "@/lib/db/schema";
 
 export const MTI_ORGANIZATION_ID = "00000000-0000-4000-8000-000000000001";
@@ -39,6 +51,11 @@ export type ProjectActivityEvent = RunEvent & { runStatus: AgentRun["status"] };
 type Store = {
   projects: Project[];
   agendas: Agenda[];
+  milestones: Milestone[];
+  projectRecords: ProjectRecord[];
+  deliverables: Deliverable[];
+  tasks: WorkTask[];
+  agents: AgentDefinition[];
   commands: ExecutiveCommand[];
   reports: Report[];
   knowledge: KnowledgeEntry[];
@@ -58,6 +75,48 @@ const globalStore = globalThis as typeof globalThis & { __businessOsStore?: Part
 const emptyStore = (): Store => ({
   projects: [],
   agendas: [],
+  milestones: [],
+  projectRecords: [],
+  deliverables: [],
+  tasks: [],
+  agents: [
+    {
+      id: "00000000-0000-4000-8000-000000000010",
+      organizationId: MTI_ORGANIZATION_ID,
+      name: "Executive Agent",
+      role: "executive",
+      modelRoute: "executive_reasoning",
+      capabilities: [
+        "research", "marketing", "brainstorming", "content", "data_enrichment",
+        "document", "communication", "analysis", "operations", "custom"
+      ],
+      toolScopes: ["project:read", "knowledge:read", "plan:create", "task:delegate"],
+      budgetCents: null,
+      outputSchema: {},
+      reviewRequired: true,
+      active: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    },
+    {
+      id: "00000000-0000-4000-8000-000000000011",
+      organizationId: MTI_ORGANIZATION_ID,
+      name: "General Worker",
+      role: "worker",
+      modelRoute: "worker_fast",
+      capabilities: [
+        "research", "marketing", "brainstorming", "content", "data_enrichment",
+        "document", "analysis", "operations"
+      ],
+      toolScopes: ["project:read", "knowledge:read", "output:propose"],
+      budgetCents: null,
+      outputSchema: {},
+      reviewRequired: false,
+      active: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    }
+  ],
   commands: [],
   reports: [],
   knowledge: [],
@@ -95,6 +154,9 @@ const projectRow = (row: typeof projects.$inferSelect): Project => ({
   ...row,
   constraints: row.constraints ?? [],
   budgetCents: row.budgetCents ?? null,
+  permissions: row.permissions,
+  reviewGates: row.reviewGates ?? [],
+  outputRequirements: row.outputRequirements ?? [],
   createdAt: iso(row.createdAt),
   updatedAt: iso(row.updatedAt)
 });
@@ -104,7 +166,9 @@ const agendaRow = (row: typeof agendas.$inferSelect): Agenda => ({
   projectId: row.projectId,
   title: row.title,
   instruction: row.instruction,
+  workType: row.workType,
   status: row.status,
+  revision: row.revision,
   createdAt: iso(row.createdAt),
   updatedAt: iso(row.updatedAt)
 });
@@ -117,6 +181,78 @@ const commandRow = (row: typeof commands.$inferSelect): ExecutiveCommand => ({
   instruction: row.instruction,
   status: row.status,
   clarification: row.clarification,
+  context: row.context as unknown as CommandContext,
+  createdAt: iso(row.createdAt),
+  updatedAt: iso(row.updatedAt)
+});
+
+const milestoneRow = (row: typeof milestones.$inferSelect): Milestone => ({
+  id: row.id,
+  projectId: row.projectId,
+  title: row.title,
+  description: row.description,
+  status: row.status as Milestone["status"],
+  dueAt: row.dueAt ? iso(row.dueAt) : null,
+  position: row.position,
+  createdAt: iso(row.createdAt),
+  updatedAt: iso(row.updatedAt)
+});
+
+const projectRecordRow = (row: typeof projectRecords.$inferSelect): ProjectRecord => ({
+  id: row.id,
+  projectId: row.projectId,
+  agendaId: row.agendaId,
+  kind: row.kind as ProjectRecord["kind"],
+  content: row.content,
+  status: row.status as ProjectRecord["status"],
+  sourceRunId: row.sourceRunId,
+  createdAt: iso(row.createdAt),
+  updatedAt: iso(row.updatedAt)
+});
+
+const deliverableRow = (row: typeof deliverables.$inferSelect): Deliverable => ({
+  id: row.id,
+  projectId: row.projectId,
+  agendaId: row.agendaId,
+  runId: row.runId,
+  title: row.title,
+  type: row.type,
+  status: row.status as Deliverable["status"],
+  reviewRequired: row.reviewRequired,
+  reportId: row.reportId,
+  documentId: row.documentId,
+  createdAt: iso(row.createdAt),
+  updatedAt: iso(row.updatedAt)
+});
+
+const taskRow = (row: typeof tasks.$inferSelect): WorkTask => ({
+  id: row.id,
+  agendaId: row.agendaId,
+  title: row.title,
+  description: row.description,
+  status: row.status,
+  assignedAgentId: row.assignedAgentId,
+  dependsOn: row.dependsOn ?? [],
+  toolScopes: row.toolScopes ?? [],
+  outputSchema: row.outputSchema ?? {},
+  budgetCents: row.budgetCents,
+  reviewRequired: row.reviewRequired,
+  createdAt: iso(row.createdAt),
+  updatedAt: iso(row.updatedAt)
+});
+
+const agentRow = (row: typeof agentDefinitions.$inferSelect): AgentDefinition => ({
+  id: row.id,
+  organizationId: row.organizationId,
+  name: row.name,
+  role: row.role as AgentDefinition["role"],
+  modelRoute: row.modelRoute,
+  capabilities: row.capabilities as AgentDefinition["capabilities"],
+  toolScopes: row.toolScopes,
+  budgetCents: row.budgetCents,
+  outputSchema: row.outputSchema,
+  reviewRequired: row.reviewRequired,
+  active: row.active,
   createdAt: iso(row.createdAt),
   updatedAt: iso(row.updatedAt)
 });
@@ -162,7 +298,19 @@ export const repository = {
     const [row] = await db.select().from(projects).where(eq(projects.id, id)).limit(1);
     return row?.organizationId === MTI_ORGANIZATION_ID ? projectRow(row) : undefined;
   },
-  async createProject(input: Omit<Project, "id" | "organizationId" | "status" | "createdAt" | "updatedAt">) {
+  async createProject(input:
+    Omit<Project, "id" | "organizationId" | "status" | "createdAt" | "updatedAt" | "permissions" | "reviewGates" | "outputRequirements">
+    & Partial<Pick<Project, "permissions" | "reviewGates" | "outputRequirements">>
+  ) {
+    const governance = {
+      permissions: input.permissions ?? {
+        externalSend: "review_required" as const,
+        clientDataWrite: "review_required" as const,
+        destructiveAction: "review_required" as const
+      },
+      reviewGates: input.reviewGates ?? [],
+      outputRequirements: input.outputRequirements ?? []
+    };
     if (!db) {
       const project: Project = {
         id: crypto.randomUUID(),
@@ -170,6 +318,7 @@ export const repository = {
         status: "active",
         createdAt: now(),
         updatedAt: now(),
+        ...governance,
         ...input
       };
       store.projects.unshift(project);
@@ -178,6 +327,7 @@ export const repository = {
     const [row] = await db.insert(projects).values({
       organizationId: MTI_ORGANIZATION_ID,
       ownerId: MTI_OPERATOR_ID,
+      ...governance,
       ...input
     }).returning();
     return projectRow(row);
@@ -199,10 +349,26 @@ export const repository = {
     return (await db.select().from(agendas).where(eq(agendas.projectId, projectId))
       .orderBy(desc(agendas.createdAt))).map(agendaRow);
   },
-  async createAgenda(projectId: string, input: Pick<Agenda, "title" | "instruction">) {
+  async getAgenda(id: string) {
+    if (!db) {
+      const agenda = store.agendas.find((item) => item.id === id);
+      if (!agenda) return undefined;
+      return store.projects.some((project) =>
+        project.id === agenda.projectId && project.organizationId === MTI_ORGANIZATION_ID
+      ) ? agenda : undefined;
+    }
+    const [row] = await db.select({ agenda: agendas, organizationId: projects.organizationId })
+      .from(agendas)
+      .innerJoin(projects, eq(agendas.projectId, projects.id))
+      .where(eq(agendas.id, id))
+      .limit(1);
+    return row?.organizationId === MTI_ORGANIZATION_ID ? agendaRow(row.agenda) : undefined;
+  },
+  async createAgenda(projectId: string, input: Pick<Agenda, "title" | "instruction"> & Partial<Pick<Agenda, "workType">>) {
     if (!db) {
       const agenda: Agenda = {
         id: crypto.randomUUID(), projectId, status: "queued",
+        workType: input.workType ?? "custom", revision: 1,
         createdAt: now(), updatedAt: now(), ...input
       };
       store.agendas.unshift(agenda);
@@ -211,7 +377,9 @@ export const repository = {
     const [row] = await db.insert(agendas).values({ projectId, ...input }).returning();
     return agendaRow(row);
   },
-  async createCommand(input: Pick<ExecutiveCommand, "page" | "projectId" | "instruction">) {
+  async createCommand(input: Pick<ExecutiveCommand, "page" | "projectId" | "instruction"> & {
+    context?: CommandContext;
+  }) {
     const needsClarification = input.instruction.trim().split(/\s+/).length < 8;
     const status = needsClarification ? "needs_clarification" : "awaiting_confirmation";
     const clarification = needsClarification
@@ -220,13 +388,16 @@ export const repository = {
     if (!db) {
       const command: ExecutiveCommand = {
         id: crypto.randomUUID(), organizationId: MTI_ORGANIZATION_ID,
-        ...input, status, clarification, createdAt: now(), updatedAt: now()
+        ...input, context: input.context ?? { page: input.page, projectId: input.projectId },
+        status, clarification, createdAt: now(), updatedAt: now()
       };
       store.commands.unshift(command);
       return command;
     }
     const [row] = await db.insert(commands).values({
-      organizationId: MTI_ORGANIZATION_ID, ...input, status, clarification
+      organizationId: MTI_ORGANIZATION_ID, ...input,
+      context: input.context ?? { page: input.page, projectId: input.projectId },
+      status, clarification
     }).returning();
     return commandRow(row);
   },
@@ -246,6 +417,100 @@ export const repository = {
     const [row] = await db.update(commands).set({ ...values, updatedAt: new Date() })
       .where(and(eq(commands.id, id), eq(commands.organizationId, MTI_ORGANIZATION_ID))).returning();
     return row ? commandRow(row) : null;
+  },
+  async reviseCommand(id: string, instruction: string, clarificationAnswer?: string) {
+    const command = await repository.getCommand(id);
+    if (!command) return null;
+    if (db) {
+      await db.insert(commandRevisions).values({
+        commandId: id,
+        instruction,
+        clarificationAnswer: clarificationAnswer ?? null,
+        context: command.context
+      });
+    }
+    return repository.updateCommand(id, {
+      instruction,
+      status: "awaiting_confirmation",
+      clarification: "Confirm the revised instruction before execution."
+    });
+  },
+  async listMilestones(projectId: string) {
+    if (!db) return store.milestones.filter((item) => item.projectId === projectId);
+    return (await db.select().from(milestones).where(eq(milestones.projectId, projectId))
+      .orderBy(asc(milestones.position), asc(milestones.createdAt))).map(milestoneRow);
+  },
+  async createMilestone(projectId: string, input: Pick<Milestone, "title" | "description" | "dueAt">) {
+    if (!db) {
+      const item: Milestone = {
+        id: crypto.randomUUID(), projectId, status: "planned", position: store.milestones.length,
+        createdAt: now(), updatedAt: now(), ...input
+      };
+      store.milestones.push(item);
+      return item;
+    }
+    const [row] = await db.insert(milestones).values({
+      projectId, title: input.title, description: input.description,
+      dueAt: input.dueAt ? new Date(input.dueAt) : null
+    }).returning();
+    return milestoneRow(row);
+  },
+  async listProjectRecords(projectId: string) {
+    if (!db) return store.projectRecords.filter((item) => item.projectId === projectId);
+    return (await db.select().from(projectRecords).where(eq(projectRecords.projectId, projectId))
+      .orderBy(desc(projectRecords.createdAt))).map(projectRecordRow);
+  },
+  async createProjectRecord(projectId: string, input: Pick<ProjectRecord, "agendaId" | "kind" | "content">) {
+    if (!db) {
+      const item: ProjectRecord = {
+        id: crypto.randomUUID(), projectId, status: "open", sourceRunId: null,
+        createdAt: now(), updatedAt: now(), ...input
+      };
+      store.projectRecords.unshift(item);
+      return item;
+    }
+    const [row] = await db.insert(projectRecords).values({ projectId, ...input }).returning();
+    return projectRecordRow(row);
+  },
+  async listDeliverables(projectId: string) {
+    if (!db) return store.deliverables.filter((item) => item.projectId === projectId);
+    return (await db.select().from(deliverables).where(eq(deliverables.projectId, projectId))
+      .orderBy(desc(deliverables.createdAt))).map(deliverableRow);
+  },
+  async createDeliverable(projectId: string, input: Pick<Deliverable, "agendaId" | "title" | "type" | "reviewRequired">) {
+    if (!db) {
+      const item: Deliverable = {
+        id: crypto.randomUUID(), projectId, runId: null, status: "planned",
+        reportId: null, documentId: null, createdAt: now(), updatedAt: now(), ...input
+      };
+      store.deliverables.unshift(item);
+      return item;
+    }
+    const [row] = await db.insert(deliverables).values({ projectId, ...input }).returning();
+    return deliverableRow(row);
+  },
+  async listTasks(agendaId: string) {
+    if (!db) return store.tasks.filter((item) => item.agendaId === agendaId);
+    return (await db.select().from(tasks).where(eq(tasks.agendaId, agendaId))
+      .orderBy(asc(tasks.createdAt))).map(taskRow);
+  },
+  async createTask(agendaId: string, input: Omit<WorkTask, "id" | "agendaId" | "status" | "createdAt" | "updatedAt">) {
+    if (!db) {
+      const item: WorkTask = {
+        id: crypto.randomUUID(), agendaId, status: "queued",
+        createdAt: now(), updatedAt: now(), ...input
+      };
+      store.tasks.push(item);
+      return item;
+    }
+    const [row] = await db.insert(tasks).values({ agendaId, ...input }).returning();
+    return taskRow(row);
+  },
+  async listAgentDefinitions() {
+    if (!db) return store.agents;
+    return (await db.select().from(agentDefinitions)
+      .where(eq(agentDefinitions.organizationId, MTI_ORGANIZATION_ID))
+      .orderBy(asc(agentDefinitions.role), asc(agentDefinitions.name))).map(agentRow);
   },
   async createRun(command: ExecutiveCommand) {
     if (!db) {

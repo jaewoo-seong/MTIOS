@@ -307,6 +307,7 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .agenda-dot.blocked { background: var(--crit); }
 .agenda-dot.review { background: var(--warn); }
 .agenda-row strong { display: block; font-size: var(--t-meta); font-weight: 560; line-height: 1.45; }
+.agenda-type { display: inline-block; margin-top: 3px; color: var(--ink-mute); font-size: 10px; text-transform: uppercase; }
 .agenda-instruction { margin: var(--sp-2) 0 0; color: var(--ink-mute); font-size: var(--t-meta); line-height: 1.55; }
 
 /* ── Live activity ────────────────────────────────────────────────────── */
@@ -537,6 +538,17 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .command textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-wash); }
 .command textarea::placeholder { color: var(--ink-faint); }
 .command-actions { display: flex; align-items: center; gap: var(--sp-2); margin-top: var(--sp-2); }
+.command-select {
+  max-width: 150px;
+  height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink-soft);
+  padding: 0 var(--sp-2);
+  font-size: var(--t-meta);
+  text-transform: capitalize;
+}
 .command-chip {
   height: 28px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: var(--r-md);
   background: var(--surface); color: var(--ink-mute); font-size: var(--t-meta);
