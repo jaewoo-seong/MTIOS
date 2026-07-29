@@ -1224,6 +1224,9 @@ versions, test results, credentials still required, and unresolved risks.
     sessions. Passwords remain Argon2id hashes and cannot be displayed.
   - The operator username and password cannot be changed inside the
     application; they are changed in Railway.
+  - Member lockout remains active. The fixed Railway-managed operator is
+    exempt so failed attempts cannot lock the only administrator out of the
+    internal system.
   - Existing users receive deterministic usernames during migration and all
     existing sessions are revoked once so stale email-based claims cannot
     continue.

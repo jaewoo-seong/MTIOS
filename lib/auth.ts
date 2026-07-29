@@ -105,18 +105,19 @@ export async function authenticate(
   )).where(eq(users.username, normalizedUsername)).limit(1);
 
   const now = new Date();
-  const railwayAdminPassword = normalizedUsername === normalizeUsername(process.env.ADMIN_USERNAME ?? "") &&
-    account?.user.id === "00000000-0000-4000-8000-000000000002"
+  const isRailwayAdmin = normalizedUsername === normalizeUsername(process.env.ADMIN_USERNAME ?? "") &&
+    account?.user.id === "00000000-0000-4000-8000-000000000002";
+  const railwayAdminPassword = isRailwayAdmin
     ? process.env.ADMIN_PASSWORD
     : null;
   const accepted = account?.user.status === "active" &&
-    (!account.user.lockedUntil || account.user.lockedUntil <= now) &&
+    (isRailwayAdmin || !account.user.lockedUntil || account.user.lockedUntil <= now) &&
     (railwayAdminPassword
       ? safeEqual(password, railwayAdminPassword)
       : Boolean(account.user.passwordHash) &&
         await verify(String(account.user.passwordHash), password).catch(() => false));
   if (!accepted) {
-    if (account?.user) {
+    if (account?.user && !isRailwayAdmin) {
       const attempts = account.user.failedLoginAttempts + 1;
       await database.update(users).set({
         failedLoginAttempts: attempts,
