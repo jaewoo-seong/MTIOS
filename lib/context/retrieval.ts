@@ -114,7 +114,15 @@ export async function buildContextPack(
     input.taskId ?? "",
     ...selected.map((item) => item.chunk.contentHash)
   ].join("|"));
-  return persistPack(input, queryLanguage, tokenBudget, tokenCount, contentHash, selected);
+  return persistPack(
+    input,
+    queryLanguage,
+    tokenBudget,
+    tokenCount,
+    vectors.query ? EMBEDDING_ROUTE : "lexical_fallback",
+    contentHash,
+    selected
+  );
 }
 
 export async function getContextPack(id: string): Promise<ContextPack | undefined> {
@@ -415,6 +423,7 @@ async function persistPack(
   queryLanguage: ContextLanguage,
   tokenBudget: number,
   tokenCount: number,
+  embeddingRoute: string,
   contentHash: string,
   selected: Array<{ source: ContextSource; chunk: ContextChunk; score: number }>
 ) {
@@ -432,7 +441,7 @@ async function persistPack(
       queryLanguage,
       tokenBudget,
       tokenCount,
-      embeddingRoute: EMBEDDING_ROUTE,
+      embeddingRoute,
       contentHash,
       citations: selected.map((item, index) => citation(item, crypto.randomUUID(), index + 1)),
       createdAt: new Date().toISOString()
@@ -452,7 +461,7 @@ async function persistPack(
       queryLanguage,
       tokenBudget,
       tokenCount,
-      embeddingRoute: EMBEDDING_ROUTE,
+      embeddingRoute,
       contentHash
     }).returning();
     const inserted = selected.length === 0 ? [] : await tx.insert(contextPackItems).values(

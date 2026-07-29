@@ -79,6 +79,8 @@ describe("context retrieval", () => {
     });
 
     expect(pack.queryLanguage).toBe("mixed");
+    expect(lexicalPack.embeddingRoute).toBe("lexical_fallback");
+    expect(pack.embeddingRoute).toBe("multilingual_embedding");
     expect(embeddedInputs).toBeGreaterThan(1);
     expect(pack.citations.length).toBeGreaterThan(0);
     expect(pack.citations[0]?.score).toBeGreaterThan(lexicalPack.citations[0]?.score ?? 0);
