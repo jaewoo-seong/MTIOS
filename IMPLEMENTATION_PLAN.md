@@ -646,7 +646,7 @@ versions, test results, credentials still required, and unresolved risks.
 ### 2026-07-29 - Phase 5 Completed
 
 - Status: completed and verified locally.
-- Implementation commit: recorded after verification in follow-up log commit.
+- Implementation commit: `bc70ffe`.
 - Migration: `drizzle/0006_opposite_nicolaos.sql`.
 - Delivered:
   - Durable brand profiles containing audiences, positioning, structured voice,
