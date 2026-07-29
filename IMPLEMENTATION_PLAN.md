@@ -1179,8 +1179,12 @@ versions, test results, credentials still required, and unresolved risks.
     ledger as model calls.
 - Production:
   - App deployment `477f9d54-8495-4aa4-981c-e4f610ccb669` succeeded.
-  - LiteLLM deployment `12540b7e-393f-4a92-963d-ea76b2bcf929`
-    succeeded with the governed `premium_fallback` route.
+  - LiteLLM deployment `2210e163-69cf-4410-8632-28919e0bb20a`
+    succeeded with Claude Haiku executive routes, the governed
+    `premium_fallback` route, and OpenRouter free worker routes. Unconfigured
+    NVIDIA embedding/reranking entries are omitted so missing credentials
+    cannot prevent gateway startup; retrieval remains lexical until those
+    routes are deliberately activated.
   - Production health passed for PostgreSQL, Redis, Railway Storage, LiteLLM,
     document conversion, and authentication.
   - Production role smoke checks passed for admin analytics/user management,
