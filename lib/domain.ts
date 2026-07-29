@@ -36,6 +36,8 @@ export interface ProjectPermissions {
 export interface CommandContext extends Record<string, unknown> {
   page: string;
   projectId?: string | null;
+  agendaId?: string | null;
+  agendaBudgetCents?: number | null;
   documentId?: string | null;
   knowledgeEntryId?: string | null;
   clientDatabaseId?: string | null;

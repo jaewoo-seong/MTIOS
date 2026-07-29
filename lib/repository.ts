@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, gt, max } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, max, sql as drizzleSql } from "drizzle-orm";
 import type {
   Agenda,
   AgentDefinition,
@@ -24,6 +24,7 @@ import { db } from "@/lib/db/client";
 import {
   agentDefinitions,
   agendas,
+  budgetLedgers,
   clientDatabases,
   clientRecords,
   commandRevisions,
@@ -32,6 +33,7 @@ import {
   documentFolders,
   documents,
   knowledgeEntries,
+  modelCalls,
   milestones,
   projectRecords,
   projects,
@@ -66,6 +68,11 @@ type Store = {
   folders: Omit<DocumentFolder, "documentCount">[];
   documents: StoredDocument[];
   records: ClientRecord[];
+  modelUsage: Array<{
+    id: string; runId: string; route: string; model: string | null;
+    provider: string | null; inputTokens: number; outputTokens: number;
+    costMicros: number; latencyMs: number; error: string | null;
+  }>;
 };
 
 export const DEFAULT_FOLDERS = ["Inbox", "Project files", "Reports", "Reference"];
@@ -131,7 +138,8 @@ const emptyStore = (): Store => ({
     createdAt: new Date().toISOString()
   })),
   documents: [],
-  records: []
+  records: [],
+  modelUsage: []
 });
 
 /**
@@ -537,6 +545,72 @@ export const repository = {
       };
     });
   },
+  async recordModelCall(input: {
+    runId: string;
+    route: string;
+    model?: string | null;
+    provider?: string | null;
+    inputTokens?: number;
+    outputTokens?: number;
+    costMicros?: number;
+    latencyMs?: number;
+    fallbackReason?: string | null;
+    error?: string | null;
+  }) {
+    if (!db) {
+      const row = {
+        id: crypto.randomUUID(),
+        runId: input.runId,
+        route: input.route,
+        model: input.model ?? null,
+        provider: input.provider ?? null,
+        inputTokens: input.inputTokens ?? 0,
+        outputTokens: input.outputTokens ?? 0,
+        costMicros: input.costMicros ?? 0,
+        latencyMs: input.latencyMs ?? 0,
+        error: input.error ?? null
+      };
+      store.modelUsage.push(row);
+      return row;
+    }
+    return db.transaction(async (tx) => {
+      const costMicros = input.costMicros ?? 0;
+      const [row] = await tx.insert(modelCalls).values({
+        runId: input.runId,
+        route: input.route,
+        model: input.model ?? null,
+        provider: input.provider ?? null,
+        inputTokens: input.inputTokens ?? 0,
+        outputTokens: input.outputTokens ?? 0,
+        costMicros,
+        latencyMs: input.latencyMs ?? 0,
+        fallbackReason: input.fallbackReason ?? null,
+        error: input.error ?? null
+      }).returning();
+      if (costMicros > 0) {
+        await tx.update(runs).set({
+          costMicros: drizzleSql`${runs.costMicros} + ${costMicros}`,
+          updatedAt: new Date()
+        }).where(eq(runs.id, input.runId));
+        const run = await repository.getRun(input.runId);
+        const scopes = [
+          { scopeType: "run", scopeId: input.runId },
+          run?.projectId ? { scopeType: "project", scopeId: run.projectId } : null
+        ].filter((scope): scope is { scopeType: string; scopeId: string } => Boolean(scope));
+        for (const scope of scopes) {
+          await tx.update(budgetLedgers).set({
+            spentCents: drizzleSql`${budgetLedgers.spentCents} + ${Math.ceil(costMicros / 10_000)}`,
+            updatedAt: new Date()
+          }).where(and(
+            eq(budgetLedgers.organizationId, MTI_ORGANIZATION_ID),
+            eq(budgetLedgers.scopeType, scope.scopeType),
+            eq(budgetLedgers.scopeId, scope.scopeId)
+          ));
+        }
+      }
+      return row;
+    });
+  },
   async getRun(id: string) {
     if (!db) return store.runs.find((item) => item.id === id);
     const [row] = await db.select({
@@ -704,13 +778,17 @@ export const repository = {
       store.events.push(event);
       return event;
     }
-    const [{ value: last } = { value: 0 }] = await db
-      .select({ value: max(runEvents.sequence) })
-      .from(runEvents)
-      .where(eq(runEvents.runId, runId));
-    const [row] = await db.insert(runEvents).values({
-      runId, sequence: (last ?? 0) + 1, type: input.type, message: input.message
-    }).returning();
+    const row = await db.transaction(async (tx) => {
+      await tx.execute(drizzleSql`select pg_advisory_xact_lock(hashtext(${runId}))`);
+      const [{ value: last } = { value: 0 }] = await tx
+        .select({ value: max(runEvents.sequence) })
+        .from(runEvents)
+        .where(eq(runEvents.runId, runId));
+      const [inserted] = await tx.insert(runEvents).values({
+        runId, sequence: (last ?? 0) + 1, type: input.type, message: input.message
+      }).returning();
+      return inserted;
+    });
     return {
       id: row.id, runId: row.runId, sequence: row.sequence,
       type: row.type, message: row.message, createdAt: iso(row.createdAt)

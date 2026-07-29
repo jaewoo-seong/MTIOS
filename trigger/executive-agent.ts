@@ -2,10 +2,18 @@ import { task } from "@trigger.dev/sdk";
 import { requestModel } from "@/lib/ai/litellm";
 import { parseModelJson } from "@/lib/ai/model-json";
 import type { ExecutiveCommand } from "@/lib/domain";
+import {
+  executionPlanSchema,
+  workerCatalog,
+  workerResultJsonInstruction,
+  workerResultSchema,
+  type DelegatedTask,
+  type WorkerResult
+} from "@/lib/workflows/contracts";
 
 type WorkerPayload = {
   runId: string;
-  instruction: string;
+  task: DelegatedTask;
   context: unknown;
 };
 
@@ -43,24 +51,61 @@ export const workerAgentTask = task({
   id: "worker-agent",
   queue: { concurrencyLimit: 10 },
   maxDuration: 1800,
+  retry: {
+    maxAttempts: 3,
+    minTimeoutInMs: 1000,
+    maxTimeoutInMs: 30000,
+    factor: 2,
+    randomize: true
+  },
+  onStartAttempt: async ({ payload, ctx }) => {
+    await callWorkflowApp({
+      action: "worker_attempt",
+      runId: payload.runId,
+      taskKey: payload.task.key,
+      attempt: ctx.attempt.number
+    });
+  },
   run: async (payload: WorkerPayload) => {
-    const response = await requestModel("worker_research", [
+    const worker = workerCatalog[payload.task.workerType];
+    const response = await requestModel(worker.modelRoute, [
       {
         role: "system",
-        content: "Complete the assigned business task. Return factual markdown with explicit sources, assumptions, and unresolved questions."
+        content: workerResultJsonInstruction(payload.task)
       },
       {
         role: "user",
-        content: JSON.stringify({ instruction: payload.instruction, context: payload.context })
+        content: JSON.stringify({ task: payload.task, context: payload.context })
       }
-    ]);
-    return { instruction: payload.instruction, output: modelText(response) };
+    ], { runId: payload.runId });
+    const result = workerResultSchema.parse(
+      parseModelJson<WorkerResult>(modelText(response))
+    );
+    await callWorkflowApp({ action: "worker_result", runId: payload.runId, result });
+    return result;
   }
 });
 
 export const executiveAgentWorkflow = task({
   id: "executive-agent-workflow",
   maxDuration: 7200,
+  onFailure: async ({ payload, error }) => {
+    await callWorkflowApp({
+      action: "terminal",
+      commandId: payload.commandId,
+      runId: payload.runId,
+      status: "failed",
+      error: error instanceof Error ? error.message : String(error)
+    });
+  },
+  onCancel: async ({ payload }) => {
+    await callWorkflowApp({
+      action: "terminal",
+      commandId: payload.commandId,
+      runId: payload.runId,
+      status: "cancelled"
+    });
+  },
   run: async ({ commandId, runId }: { commandId: string; runId: string }) => {
     const loaded = await callWorkflowApp<{ command: ExecutiveCommand; context: unknown }>({
       action: "load",
@@ -76,23 +121,29 @@ export const executiveAgentWorkflow = task({
     const planningResponse = await requestModel("executive_reasoning", [
       {
         role: "system",
-        content: "Create a concise execution plan. Return JSON only: {\"tasks\":[\"...\"],\"reportTitle\":\"...\"}. Limit tasks to 10."
+        content: [
+          "Create an execution plan using the smallest suitable worker set.",
+          "Return JSON only matching:",
+          '{"objective":"string","reportTitle":"string","tasks":[{"key":"stable-key","workerType":"research|company_intelligence|marketing_strategy|ideation|content_writing|editing|extraction|data_enrichment|document_generation|email_drafting|translation|quality_review","instruction":"string","expectedOutput":"string","toolScopes":["string"],"budgetCents":0,"reviewRequired":false}],"reviewRecommendation":"string","estimatedCostCents":0}',
+          "Use unique stable task keys. Limit tasks to 20. Never authorize external sends or direct client-data writes."
+        ].join("\n")
       },
       { role: "user", content: JSON.stringify({ instruction: command.instruction, context }) }
-    ]);
-    const plan = parseModelJson<{ tasks: string[]; reportTitle: string }>(
-      modelText(planningResponse)
+    ], { runId });
+    const plan = executionPlanSchema.parse(
+      parseModelJson(modelText(planningResponse))
     );
-    if (!Array.isArray(plan.tasks) || plan.tasks.length === 0 || plan.tasks.length > 10) {
-      throw new Error("Executive plan contains an invalid task list.");
-    }
+    await callWorkflowApp({ action: "plan", runId, plan });
 
     await callWorkflowApp({
       action: "progress", commandId, runId,
       commandStatus: "executing", runStatus: "executing", progress: 25
     });
     const results = await workerAgentTask.batchTriggerAndWait(
-      plan.tasks.map((instruction) => ({ payload: { runId, instruction, context } }))
+      plan.tasks.map((task) => ({
+        payload: { runId, task, context },
+        options: { idempotencyKey: `${runId}:${task.key}` }
+      }))
     );
     const workerOutputs = results.runs.map((result, index) => {
       if (!result.ok) throw new Error(`Worker task ${index + 1} failed.`);
@@ -109,9 +160,9 @@ export const executiveAgentWorkflow = task({
         role: "user",
         content: JSON.stringify({ instruction: command.instruction, context, workerOutputs })
       }
-    ]);
+    ], { runId });
     const content = modelText(reviewResponse);
-    return callWorkflowApp({
+    const report = await callWorkflowApp({
       action: "report",
       commandId,
       runId,
@@ -120,5 +171,7 @@ export const executiveAgentWorkflow = task({
       summary: content.slice(0, 500),
       content
     });
+    await callWorkflowApp({ action: "terminal", commandId, runId, status: "completed" });
+    return report;
   }
 });

@@ -184,9 +184,13 @@ export const modelCalls = pgTable("model_calls", {
   runId: uuid("run_id").references(() => runs.id, { onDelete: "cascade" }).notNull(),
   route: text("route").notNull(),
   provider: text("provider"),
+  model: text("model"),
   inputTokens: integer("input_tokens").default(0).notNull(),
   outputTokens: integer("output_tokens").default(0).notNull(),
   costMicros: bigint("cost_micros", { mode: "number" }).default(0).notNull(),
+  latencyMs: integer("latency_ms").default(0).notNull(),
+  fallbackReason: text("fallback_reason"),
+  error: text("error"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
 });
 
@@ -363,6 +367,71 @@ export const contextPackItems = pgTable("context_pack_items", {
 }, (table) => [
   uniqueIndex("context_pack_chunk").on(table.packId, table.chunkId)
 ]);
+
+export const workflowPlans = pgTable("workflow_plans", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  runId: uuid("run_id").references(() => runs.id, { onDelete: "cascade" }).notNull(),
+  revision: integer("revision").default(1).notNull(),
+  status: text("status").default("active").notNull(),
+  plan: jsonb("plan").$type<Record<string, unknown>>().notNull(),
+  estimatedCostCents: bigint("estimated_cost_cents", { mode: "number" }).default(0).notNull(),
+  ...timestamps
+}, (table) => [uniqueIndex("workflow_plan_run_revision").on(table.runId, table.revision)]);
+
+export const workerRuns = pgTable("worker_runs", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  runId: uuid("run_id").references(() => runs.id, { onDelete: "cascade" }).notNull(),
+  taskKey: text("task_key").notNull(),
+  workerType: text("worker_type").notNull(),
+  modelRoute: text("model_route").notNull(),
+  status: text("status").default("queued").notNull(),
+  attempt: integer("attempt").default(0).notNull(),
+  maxAttempts: integer("max_attempts").default(3).notNull(),
+  input: jsonb("input").$type<Record<string, unknown>>().default({}).notNull(),
+  output: jsonb("output").$type<Record<string, unknown>>(),
+  error: text("error"),
+  costMicros: bigint("cost_micros", { mode: "number" }).default(0).notNull(),
+  startedAt: timestamp("started_at", { withTimezone: true }),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  ...timestamps
+}, (table) => [uniqueIndex("worker_run_task").on(table.runId, table.taskKey)]);
+
+export const workflowStates = pgTable("workflow_states", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  runId: uuid("run_id").references(() => runs.id, { onDelete: "cascade" }).notNull().unique(),
+  triggerRunId: text("trigger_run_id"),
+  status: text("status").default("queued").notNull(),
+  checkpoint: jsonb("checkpoint").$type<Record<string, unknown>>().default({}).notNull(),
+  attempt: integer("attempt").default(0).notNull(),
+  lastHeartbeatAt: timestamp("last_heartbeat_at", { withTimezone: true }).defaultNow().notNull(),
+  deadlineAt: timestamp("deadline_at", { withTimezone: true }),
+  terminalAt: timestamp("terminal_at", { withTimezone: true }),
+  errorCode: text("error_code"),
+  errorMessage: text("error_message"),
+  ...timestamps
+});
+
+export const budgetLedgers = pgTable("budget_ledgers", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  scopeType: text("scope_type").notNull(),
+  scopeId: uuid("scope_id").notNull(),
+  limitCents: bigint("limit_cents", { mode: "number" }).notNull(),
+  reservedCents: bigint("reserved_cents", { mode: "number" }).default(0).notNull(),
+  spentCents: bigint("spent_cents", { mode: "number" }).default(0).notNull(),
+  ...timestamps
+}, (table) => [uniqueIndex("budget_ledger_scope").on(table.organizationId, table.scopeType, table.scopeId)]);
+
+export const deadLetters = pgTable("dead_letters", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  runId: uuid("run_id").references(() => runs.id, { onDelete: "cascade" }).notNull(),
+  workerRunId: uuid("worker_run_id").references(() => workerRuns.id, { onDelete: "set null" }),
+  category: text("category").notNull(),
+  error: text("error").notNull(),
+  payload: jsonb("payload").$type<Record<string, unknown>>().default({}).notNull(),
+  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
+});
 
 export const clientDatabases = pgTable("client_databases", {
   id: uuid("id").defaultRandom().primaryKey(),

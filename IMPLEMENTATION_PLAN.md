@@ -553,3 +553,45 @@ versions, test results, credentials still required, and unresolved risks.
   - Existing documents and memory are indexed lazily on context-pack creation,
     not by a dedicated background backfill job.
   - Production PostgreSQL must permit `CREATE EXTENSION vector`.
+
+### 2026-07-29 - Phase 3 Completed
+
+- Status: completed and verified locally.
+- Implementation commit: recorded after verification in follow-up log commit.
+- Migration: `drizzle/0004_mysterious_the_enforcers.sql`.
+- Delivered:
+  - Reusable worker catalog for research, company intelligence, marketing,
+    ideation, writing, editing, extraction, enrichment, documents, email
+    drafting, translation, and quality review.
+  - Strict Zod contracts for executive plans, delegated tasks, worker results,
+    findings, artifacts, assumptions, unresolved questions, and review needs.
+  - Trigger.dev worker fan-out with stable per-run task idempotency keys,
+    retries, concurrency control, cancellation, and terminal failure hooks.
+  - Persisted workflow plans, worker runs/attempts/results, workflow
+    checkpoints, Trigger run IDs, deadlines, terminal state, and dead letters.
+  - Run, project, agenda, and organization budget ledger support with hard
+    pre-execution checks and model-cost accumulation.
+  - LiteLLM call telemetry for actual model/provider, tokens, cost, latency,
+    fallback reason, and errors.
+  - Persisted managed-workflow progress and worker activity events.
+  - PostgreSQL advisory locks for collision-free event sequencing during
+    parallel worker completion.
+- Validation:
+  - `npm run typecheck` passed after production build.
+  - `npm test` passed with 37 tests across 6 files.
+  - `npm run build` passed and compiled Trigger workflow contracts/hooks.
+  - Drizzle migration generation passed.
+  - Worker coverage, structured validation, duplicate task rejection,
+    idempotent plan persistence, worker output persistence, project budget
+    enforcement, and terminal failure reconciliation tested.
+- Deployment: not deployed in this phase; Trigger.dev production upload,
+  Railway migration, and managed-run smoke remain required.
+- Credentials required: none beyond existing Trigger.dev, LiteLLM, and workflow
+  callback configuration.
+- Remaining risks:
+  - Scheduled workflow templates and approval-token pauses need production
+    workflow/UI scenarios before they can be operationally exercised.
+  - Tool-call accounting activates when MCP tools arrive in Phase 6; no tool
+    invocations exist yet.
+  - Provider-reported cost fields vary; production smoke must confirm LiteLLM
+    response-cost metadata for configured providers.

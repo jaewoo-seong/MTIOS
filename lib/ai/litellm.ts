@@ -48,7 +48,11 @@ export async function requestEmbedding(input: string): Promise<number[]> {
   return embedding;
 }
 
-export async function requestModel(model: ModelRoute, messages: ChatMessage[]) {
+export async function requestModel(
+  model: ModelRoute,
+  messages: ChatMessage[],
+  telemetry?: { runId?: string }
+) {
   const internalUrl = process.env.BUSINESS_OS_INTERNAL_URL;
   const callbackSecret = process.env.WORKFLOW_CALLBACK_SECRET;
   if (!internalUrl || !callbackSecret) {
@@ -61,7 +65,7 @@ export async function requestModel(model: ModelRoute, messages: ChatMessage[]) {
       Authorization: `Bearer ${callbackSecret}`,
       "Content-Type": "application/json"
     },
-    body: JSON.stringify({ model, messages })
+    body: JSON.stringify({ model, messages, runId: telemetry?.runId })
   });
   if (!response.ok) {
     throw new Error(`Internal model request failed with status ${response.status}`);
