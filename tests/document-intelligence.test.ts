@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   approveDocumentRevision,
@@ -34,6 +35,16 @@ async function projectAndFolder() {
 }
 
 describe("document intelligence pipeline", () => {
+  it("uses PNG page previews supported by the production PyMuPDF build", async () => {
+    const service = await readFile(
+      new URL("../services/document-conversion/app.py", import.meta.url),
+      "utf8"
+    );
+    expect(service).toContain('.tobytes("png")');
+    expect(service).toContain('"image/png"');
+    expect(service).not.toContain('.tobytes("webp")');
+  });
+
   it("stores the original before conversion and creates an approved initial revision", async () => {
     const { project, folder } = await projectAndFolder();
     const calls: string[] = [];

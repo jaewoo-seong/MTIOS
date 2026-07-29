@@ -183,11 +183,11 @@ def convert_pdf(filename: str, body: bytes, languages: str):
                 "markdown": markdown_table,
             })
 
-        preview = page.get_pixmap(matrix=fitz.Matrix(1.4, 1.4), alpha=False).tobytes("webp")
+        preview = page.get_pixmap(matrix=fitz.Matrix(1.4, 1.4), alpha=False).tobytes("png")
         preview_key = upload_asset(
-            f"documents/previews/{source_hash}/page-{page_number}.webp",
+            f"documents/previews/{source_hash}/page-{page_number}.png",
             preview,
-            "image/webp",
+            "image/png",
         )
         images = []
         for image_position, image_info in enumerate(page.get_images(full=True)):
