@@ -595,3 +595,50 @@ versions, test results, credentials still required, and unresolved risks.
     invocations exist yet.
   - Provider-reported cost fields vary; production smoke must confirm LiteLLM
     response-cost metadata for configured providers.
+
+### 2026-07-29 - Phase 4 Completed
+
+- Status: completed and verified locally.
+- Implementation commit: recorded after verification in follow-up log commit.
+- Migration: `drizzle/0005_regular_ikaris.sql`.
+- Delivered:
+  - Organization-wide canonical company registry with normalized names and
+    domains, legal/trading names, locations, classifications, confidence,
+    completeness, research timestamps, and project/agenda links.
+  - Globally unique official identifier records for registration IDs, LEI,
+    CIK, and future identifier types.
+  - Source evidence with retrieval and expiration metadata.
+  - Deterministic identity order: official identifier, domain, normalized
+    name plus country, then fuzzy candidate requiring review.
+  - Durable research campaigns with target, scope, qualification rules,
+    required fields, exclusions, source/query plans, existing-record policy,
+    cost, estimated remaining population, and saturation reason.
+  - Organization-level candidate fingerprints and campaign links preserving
+    reusable, stale, incomplete, rejected, duplicate, unresolved, and new
+    dispositions across projects.
+  - Expiring worker leases protected by PostgreSQL advisory locks so parallel
+    workers and retries cannot research one candidate concurrently.
+  - Coverage endpoint reporting existing reusable population, eligible count,
+    target gap, and explicit market saturation.
+  - REST endpoints for company matching/registration, campaign creation,
+    candidate intake, coverage, leases, release, and saturation.
+  - Canonical research remains separate from client databases. No discovered
+    company is written to client data without the later approval workflow.
+- Validation:
+  - `npm run typecheck` passed.
+  - `npm test` passed with 41 tests across 7 files.
+  - `npm run build` passed.
+  - Drizzle migration generation passed.
+  - Legal-name/domain normalization, identifier-first reuse, fuzzy review,
+    repeated candidate reuse, lease exclusion/release, coverage gaps, and
+    saturation reporting tested.
+- Deployment: not deployed in this phase; Railway migration and API smoke
+  tests remain required.
+- Credentials required: none.
+- Remaining risks:
+  - Fuzzy matching intentionally proposes review rather than merging records;
+    richer address and multilingual entity resolution can be added after
+    production data establishes useful thresholds.
+  - Client-database write proposals and approvals arrive in Phase 8.
+  - Campaign orchestration can use these APIs now; provider-specific discovery
+    connectors arrive with MCP tools in Phase 6.

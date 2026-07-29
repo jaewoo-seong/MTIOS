@@ -1,6 +1,7 @@
 import {
   bigint,
   boolean,
+  index,
   integer,
   jsonb,
   pgEnum,
@@ -449,6 +450,138 @@ export const clientRecords = pgTable("client_records", {
   fingerprint: text("fingerprint"),
   ...timestamps
 });
+
+export const canonicalCompanies = pgTable("canonical_companies", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  legalName: text("legal_name").notNull(),
+  tradingNames: jsonb("trading_names").$type<string[]>().default([]).notNull(),
+  normalizedName: text("normalized_name").notNull(),
+  normalizedDomain: text("normalized_domain"),
+  countryCode: text("country_code"),
+  locations: jsonb("locations").$type<Array<Record<string, string>>>().default([]).notNull(),
+  classifications: jsonb("classifications").$type<string[]>().default([]).notNull(),
+  confidence: integer("confidence").default(0).notNull(),
+  completeness: integer("completeness").default(0).notNull(),
+  firstResearchedAt: timestamp("first_researched_at", { withTimezone: true }).defaultNow().notNull(),
+  lastVerifiedAt: timestamp("last_verified_at", { withTimezone: true }),
+  ...timestamps
+}, (table) => [
+  index("canonical_company_org_name_idx").on(table.organizationId, table.normalizedName, table.countryCode),
+  uniqueIndex("canonical_company_org_domain_idx").on(table.organizationId, table.normalizedDomain)
+]);
+
+export const companyIdentifiers = pgTable("company_identifiers", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  companyId: uuid("company_id").references(() => canonicalCompanies.id, { onDelete: "cascade" }).notNull(),
+  type: text("type").notNull(),
+  value: text("value").notNull(),
+  issuingCountry: text("issuing_country"),
+  verifiedAt: timestamp("verified_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
+}, (table) => [
+  uniqueIndex("company_identifier_org_type_value_idx").on(table.organizationId, table.type, table.value)
+]);
+
+export const companySources = pgTable("company_sources", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  companyId: uuid("company_id").references(() => canonicalCompanies.id, { onDelete: "cascade" }).notNull(),
+  sourceUrl: text("source_url").notNull(),
+  sourceType: text("source_type").default("web").notNull(),
+  title: text("title").default("").notNull(),
+  evidence: jsonb("evidence").$type<Record<string, unknown>>().default({}).notNull(),
+  retrievedAt: timestamp("retrieved_at", { withTimezone: true }).defaultNow().notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
+}, (table) => [
+  uniqueIndex("company_source_company_url_idx").on(table.companyId, table.sourceUrl)
+]);
+
+export const companyProjectLinks = pgTable("company_project_links", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  companyId: uuid("company_id").references(() => canonicalCompanies.id, { onDelete: "cascade" }).notNull(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  agendaId: uuid("agenda_id").references(() => agendas.id, { onDelete: "set null" }),
+  disposition: text("disposition").default("in_scope").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
+}, (table) => [
+  uniqueIndex("company_project_link_idx").on(table.companyId, table.projectId, table.agendaId)
+]);
+
+export const researchCampaigns = pgTable("research_campaigns", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  agendaId: uuid("agenda_id").references(() => agendas.id, { onDelete: "set null" }),
+  name: text("name").notNull(),
+  scope: jsonb("scope").$type<Record<string, unknown>>().default({}).notNull(),
+  qualificationRules: jsonb("qualification_rules").$type<string[]>().default([]).notNull(),
+  requiredFields: jsonb("required_fields").$type<string[]>().default([]).notNull(),
+  exclusions: jsonb("exclusions").$type<string[]>().default([]).notNull(),
+  sourcePlan: jsonb("source_plan").$type<string[]>().default([]).notNull(),
+  queryPlan: jsonb("query_plan").$type<string[]>().default([]).notNull(),
+  targetCount: integer("target_count").notNull(),
+  existingCountPolicy: text("existing_count_policy").default("ask").notNull(),
+  status: text("status").default("draft").notNull(),
+  discoveredCount: integer("discovered_count").default(0).notNull(),
+  acceptedCount: integer("accepted_count").default(0).notNull(),
+  rejectedCount: integer("rejected_count").default(0).notNull(),
+  duplicateCount: integer("duplicate_count").default(0).notNull(),
+  unresolvedCount: integer("unresolved_count").default(0).notNull(),
+  estimatedRemaining: integer("estimated_remaining"),
+  saturationReason: text("saturation_reason"),
+  costCents: bigint("cost_cents", { mode: "number" }).default(0).notNull(),
+  ...timestamps
+});
+
+export const companyCandidates = pgTable("company_candidates", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  fingerprint: text("fingerprint").notNull(),
+  proposedName: text("proposed_name").notNull(),
+  normalizedName: text("normalized_name").notNull(),
+  normalizedDomain: text("normalized_domain"),
+  countryCode: text("country_code"),
+  address: text("address"),
+  canonicalCompanyId: uuid("canonical_company_id").references(() => canonicalCompanies.id, { onDelete: "set null" }),
+  resolution: text("resolution").default("new").notNull(),
+  resolutionReason: text("resolution_reason"),
+  evidence: jsonb("evidence").$type<Record<string, unknown>>().default({}).notNull(),
+  lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).defaultNow().notNull(),
+  ...timestamps
+}, (table) => [
+  uniqueIndex("company_candidate_org_fingerprint_idx").on(table.organizationId, table.fingerprint),
+  index("company_candidate_org_name_idx").on(table.organizationId, table.normalizedName, table.countryCode)
+]);
+
+export const campaignCandidates = pgTable("campaign_candidates", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  campaignId: uuid("campaign_id").references(() => researchCampaigns.id, { onDelete: "cascade" }).notNull(),
+  candidateId: uuid("candidate_id").references(() => companyCandidates.id, { onDelete: "cascade" }).notNull(),
+  status: text("status").default("new").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
+}, (table) => [
+  uniqueIndex("campaign_candidate_idx").on(table.campaignId, table.candidateId)
+]);
+
+export const companyResearchClaims = pgTable("company_research_claims", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  campaignId: uuid("campaign_id").references(() => researchCampaigns.id, { onDelete: "cascade" }).notNull(),
+  candidateId: uuid("candidate_id").references(() => companyCandidates.id, { onDelete: "cascade" }).notNull(),
+  workerRunId: uuid("worker_run_id").references(() => workerRuns.id, { onDelete: "set null" }),
+  leaseToken: text("lease_token").notNull(),
+  leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }).notNull(),
+  releasedAt: timestamp("released_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
+}, (table) => [
+  uniqueIndex("company_research_active_claim_idx").on(table.campaignId, table.candidateId),
+  index("company_research_lease_idx").on(table.leaseExpiresAt)
+]);
 
 export const activityLogs = pgTable("activity_logs", {
   id: uuid("id").defaultRandom().primaryKey(),

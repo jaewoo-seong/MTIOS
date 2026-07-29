@@ -36,6 +36,13 @@
       "when": 1785297630031,
       "tag": "0004_mysterious_the_enforcers",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1785298002800,
+      "tag": "0005_regular_ikaris",
+      "breakpoints": true
     }
   ]
 }
