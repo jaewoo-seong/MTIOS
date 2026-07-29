@@ -858,7 +858,7 @@ versions, test results, credentials still required, and unresolved risks.
 ### 2026-07-29 - Phase 9 Completed
 
 - Status: completed and verified locally with mocked Google APIs.
-- Implementation commit: `PHASE_9_IMPLEMENTATION_COMMIT`.
+- Implementation commit: `8114feb`.
 - Migration: `drizzle/0010_strange_lionheart.sql`.
 - Delivered:
   - Google server-side authorization-code flow with offline access, one-time
