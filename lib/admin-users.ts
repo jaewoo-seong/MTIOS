@@ -1,4 +1,3 @@
-import { randomBytes } from "node:crypto";
 import { and, desc, eq } from "drizzle-orm";
 import {
   authenticationEvents,
@@ -9,7 +8,8 @@ import {
 import {
   hashPassword,
   recordAuthEvent,
-  revokeUserSessions
+  revokeUserSessions,
+  validatePassword
 } from "@/lib/auth";
 import { requireDatabase } from "@/lib/db/client";
 import { MTI_OPERATOR_ID, MTI_ORGANIZATION_ID } from "@/lib/repository";
@@ -19,10 +19,8 @@ export async function listOrganizationUsers() {
   const rows = await database.select({
     id: users.id,
     name: users.name,
-    email: users.email,
+    username: users.username,
     status: users.status,
-    forcePasswordChange: users.forcePasswordChange,
-    temporaryPasswordExpiresAt: users.temporaryPasswordExpiresAt,
     failedLoginAttempts: users.failedLoginAttempts,
     lockedUntil: users.lockedUntil,
     lastLoginAt: users.lastLoginAt,
@@ -36,7 +34,7 @@ export async function listOrganizationUsers() {
   const history = await database.select({
     id: authenticationEvents.id,
     userId: authenticationEvents.userId,
-    email: authenticationEvents.email,
+    username: authenticationEvents.username,
     event: authenticationEvents.event,
     success: authenticationEvents.success,
     ipAddress: authenticationEvents.ipAddress,
@@ -50,21 +48,22 @@ export async function listOrganizationUsers() {
 
 export async function createOrganizationUser(input: {
   name: string;
-  email: string;
+  username: string;
+  password: string;
   role: "admin" | "member";
   actorId: string;
 }) {
   const database = requireDatabase();
-  const temporaryPassword = generateTemporaryPassword();
-  const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
+  validatePassword(input.password);
   const [created] = await database.transaction(async (tx) => {
     const [user] = await tx.insert(users).values({
       name: input.name.trim(),
-      email: input.email.trim().toLowerCase(),
-      passwordHash: await hashPassword(temporaryPassword),
+      username: input.username.trim().toLowerCase(),
+      email: null,
+      passwordHash: await hashPassword(input.password),
       status: "active",
-      forcePasswordChange: true,
-      temporaryPasswordExpiresAt: expiresAt
+      forcePasswordChange: false,
+      temporaryPasswordExpiresAt: null
     }).returning();
     await tx.insert(memberships).values({
       organizationId: MTI_ORGANIZATION_ID,
@@ -79,7 +78,7 @@ export async function createOrganizationUser(input: {
   });
   await recordAuthEvent({
     userId: created.id,
-    email: created.email,
+    username: created.username,
     event: "account_created",
     success: true,
     metadata: { actorId: input.actorId, role: input.role }
@@ -88,13 +87,11 @@ export async function createOrganizationUser(input: {
     user: {
       id: created.id,
       name: created.name,
-      email: created.email,
+      username: created.username,
       role: input.role,
       status: created.status,
-      forcePasswordChange: true,
-      temporaryPasswordExpiresAt: expiresAt
-    },
-    temporaryPassword
+      forcePasswordChange: false
+    }
   };
 }
 
@@ -102,6 +99,7 @@ export async function updateOrganizationUser(input: {
   userId: string;
   actorId: string;
   name?: string;
+  username?: string;
   role?: "admin" | "member";
   status?: "active" | "disabled";
 }) {
@@ -110,9 +108,10 @@ export async function updateOrganizationUser(input: {
     throw new Error("Seeded administrator cannot be demoted or disabled.");
   }
   await database.transaction(async (tx) => {
-    if (input.name || input.status) {
+    if (input.name || input.username || input.status) {
       await tx.update(users).set({
         ...(input.name ? { name: input.name.trim() } : {}),
+        ...(input.username ? { username: input.username.trim().toLowerCase() } : {}),
         ...(input.status ? { status: input.status } : {}),
         updatedAt: new Date()
       }).where(eq(users.id, input.userId));
@@ -137,30 +136,26 @@ export async function updateOrganizationUser(input: {
   return { updated: true };
 }
 
-export async function resetOrganizationUserPassword(userId: string, actorId: string) {
+export async function resetOrganizationUserPassword(userId: string, actorId: string, password: string) {
   const database = requireDatabase();
-  const temporaryPassword = generateTemporaryPassword();
-  const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
+  validatePassword(password);
+  if (userId === MTI_OPERATOR_ID) throw new Error("Admin credentials are managed in Railway.");
   const [account] = await database.update(users).set({
-    passwordHash: await hashPassword(temporaryPassword),
-    forcePasswordChange: true,
-    temporaryPasswordExpiresAt: expiresAt,
+    passwordHash: await hashPassword(password),
+    forcePasswordChange: false,
+    temporaryPasswordExpiresAt: null,
     failedLoginAttempts: 0,
     lockedUntil: null,
     updatedAt: new Date()
-  }).where(eq(users.id, userId)).returning({ id: users.id, email: users.email });
+  }).where(eq(users.id, userId)).returning({ id: users.id, username: users.username });
   if (!account) throw new Error("User not found.");
   await revokeUserSessions(userId);
   await recordAuthEvent({
     userId,
-    email: account.email,
+    username: account.username,
     event: "password_reset",
     success: true,
     metadata: { actorId }
   });
-  return { temporaryPassword, expiresAt };
-}
-
-function generateTemporaryPassword() {
-  return `Mti-${randomBytes(12).toString("base64url")}9`;
+  return { updated: true };
 }

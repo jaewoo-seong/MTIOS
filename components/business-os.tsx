@@ -51,8 +51,7 @@ type ProjectDetail = Project & {
   deliverables: Deliverable[];
 };
 type AppSession = {
-  user: { id: string; name: string; email: string; role: "admin" | "member" };
-  forcePasswordChange: boolean;
+  user: { id: string; name: string; username: string; role: "admin" | "member" };
 };
 
 const navItems: Array<{ id: PageId; label: string; icon: typeof Bot }> = [
@@ -705,7 +704,7 @@ function SettingsView({ onError, role }: {
   return (
     <div className="settings-grid">
       <PreferenceSettings onError={onError} />
-      <PasswordSettings onError={onError} />
+      {role === "member" && <PasswordSettings onError={onError} />}
       {role === "admin" && (
         <>
           <AdminUsersSettings onError={onError} />

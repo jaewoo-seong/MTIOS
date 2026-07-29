@@ -6,6 +6,7 @@ import { parseJson } from "@/lib/http";
 
 const schema = z.object({
   name: z.string().trim().min(1).max(120).optional(),
+  username: z.string().trim().min(3).max(64).regex(/^[a-zA-Z0-9._-]+$/).optional(),
   role: z.enum(["admin", "member"]).optional(),
   status: z.enum(["active", "disabled"]).optional()
 }).refine((value) => Object.keys(value).length > 0);

@@ -18,7 +18,7 @@ const workerToolScopes = [
 
 export async function seedDefaultWorkspace() {
   const database = requireDatabase();
-  const bootstrapEmail = process.env.ADMIN_BOOTSTRAP_EMAIL?.trim().toLowerCase() || "operator@mti.local";
+  const adminUsername = process.env.ADMIN_USERNAME?.trim().toLowerCase() || "operator";
   await database.insert(organizations).values({
     id: MTI_ORGANIZATION_ID,
     name: "MTI Korea",
@@ -27,10 +27,12 @@ export async function seedDefaultWorkspace() {
   await database.insert(users).values({
     id: MTI_OPERATOR_ID,
     name: "Default operator",
-    email: bootstrapEmail
+    username: adminUsername,
+    email: null
   }).onConflictDoNothing();
   await database.update(users).set({
-    email: bootstrapEmail,
+    username: adminUsername,
+    email: null,
     updatedAt: new Date()
   }).where(eq(users.id, MTI_OPERATOR_ID));
   await database.insert(memberships).values({
@@ -45,15 +47,15 @@ export async function seedDefaultWorkspace() {
     eq(memberships.organizationId, MTI_ORGANIZATION_ID),
     eq(memberships.userId, MTI_OPERATOR_ID)
   ));
-  const bootstrapPassword = process.env.ADMIN_BOOTSTRAP_PASSWORD ?? process.env.APP_BASIC_AUTH_PASSWORD;
+  const bootstrapPassword = process.env.ADMIN_PASSWORD;
   const [operator] = await database.select({
     passwordHash: users.passwordHash
   }).from(users).where(eq(users.id, MTI_OPERATOR_ID)).limit(1);
-  if (!operator?.passwordHash && bootstrapPassword) {
+  if (bootstrapPassword) {
     await database.update(users).set({
       passwordHash: await hashPassword(bootstrapPassword),
-      forcePasswordChange: true,
-      temporaryPasswordExpiresAt: new Date(Date.now() + 72 * 60 * 60 * 1000),
+      forcePasswordChange: false,
+      temporaryPasswordExpiresAt: null,
       updatedAt: new Date()
     }).where(eq(users.id, MTI_OPERATOR_ID));
   }

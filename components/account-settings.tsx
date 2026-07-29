@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   BarChart3,
-  Copy,
   Download,
   KeyRound,
   Loader2,
@@ -64,38 +63,40 @@ export function PasswordSettings({ onError }: { onError: (message: string) => vo
 type OrganizationUser = {
   id: string;
   name: string;
-  email: string;
+  username: string;
   role: "admin" | "member";
   status: "active" | "disabled";
-  forcePasswordChange: boolean;
   lastLoginAt: string | null;
   lockedUntil: string | null;
 };
 
 export function AdminUsersSettings({ onError }: { onError: (message: string) => void }) {
   const [users, setUsers] = useState<OrganizationUser[]>([]);
-  const [history, setHistory] = useState<Array<{ id: string; email: string | null; event: string; success: boolean; createdAt: string }>>([]);
+  const [history, setHistory] = useState<Array<{ id: string; username: string | null; event: string; success: boolean; createdAt: string }>>([]);
   const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [role, setRole] = useState<"admin" | "member">("member");
-  const [temporary, setTemporary] = useState<{ email: string; password: string } | null>(null);
+  const [passwords, setPasswords] = useState<Record<string, string>>({});
+  const [usernames, setUsernames] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const load = useCallback(() => request<{ data: { users: OrganizationUser[]; history: typeof history } }>("/api/v1/admin/users")
     .then((payload) => {
       setUsers(payload.data.users);
       setHistory(payload.data.history);
+      setUsernames(Object.fromEntries(payload.data.users.map((user) => [user.id, user.username])));
     }), []);
   useEffect(() => { load().catch((error: Error) => onError(error.message)); }, [load, onError]);
   async function create() {
     setBusy(true);
     try {
-      const payload = await request<{ data: { user: OrganizationUser; temporaryPassword: string } }>("/api/v1/admin/users", {
+      await request<{ data: { user: OrganizationUser } }>("/api/v1/admin/users", {
         method: "POST",
-        body: JSON.stringify({ name, email, role })
+        body: JSON.stringify({ name, username, password, role })
       });
-      setTemporary({ email: payload.data.user.email, password: payload.data.temporaryPassword });
       setName("");
-      setEmail("");
+      setUsername("");
+      setPassword("");
       await load();
     } catch (error) {
       onError(error instanceof Error ? error.message : "User could not be created.");
@@ -103,7 +104,7 @@ export function AdminUsersSettings({ onError }: { onError: (message: string) => 
       setBusy(false);
     }
   }
-  async function update(user: OrganizationUser, changes: Partial<Pick<OrganizationUser, "role" | "status">>) {
+  async function update(user: OrganizationUser, changes: Partial<Pick<OrganizationUser, "name" | "username" | "role" | "status">>) {
     try {
       await request(`/api/v1/admin/users/${user.id}`, {
         method: "PATCH", body: JSON.stringify(changes)
@@ -114,9 +115,13 @@ export function AdminUsersSettings({ onError }: { onError: (message: string) => 
     }
   }
   async function reset(user: OrganizationUser) {
+    const nextPassword = passwords[user.id] ?? "";
     try {
-      const payload = await request<{ data: { temporaryPassword: string } }>(`/api/v1/admin/users/${user.id}/reset-password`, { method: "POST" });
-      setTemporary({ email: user.email, password: payload.data.temporaryPassword });
+      await request(`/api/v1/admin/users/${user.id}/reset-password`, {
+        method: "POST",
+        body: JSON.stringify({ password: nextPassword })
+      });
+      setPasswords((current) => ({ ...current, [user.id]: "" }));
       await load();
     } catch (error) {
       onError(error instanceof Error ? error.message : "Password could not be reset.");
@@ -127,30 +132,24 @@ export function AdminUsersSettings({ onError }: { onError: (message: string) => 
       <div className="surface-header"><div><h2><UserRoundCog size={16} /> Users</h2><span>{users.length} company accounts</span></div></div>
       <div className="admin-create-row">
         <input placeholder="Full name" value={name} onChange={(event) => setName(event.target.value)} />
-        <input type="email" placeholder="Company email" value={email} onChange={(event) => setEmail(event.target.value)} />
+        <input placeholder="Username" autoComplete="off" value={username} onChange={(event) => setUsername(event.target.value)} />
+        <input type="password" placeholder="Password" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} />
         <select value={role} onChange={(event) => setRole(event.target.value as "admin" | "member")}><option value="member">Member</option><option value="admin">Admin</option></select>
-        <button className="primary" disabled={busy || !name || !email} onClick={() => void create()}><Plus size={14} /> Create user</button>
+        <button className="primary" disabled={busy || !name || username.length < 3 || password.length < 12} onClick={() => void create()}><Plus size={14} /> Create user</button>
       </div>
-      {temporary && (
-        <div className="credential-once">
-          <div><strong>Temporary password for {temporary.email}</strong><span>Shown once. Expires in 72 hours.</span></div>
-          <code>{temporary.password}</code>
-          <button className="icon-button" title="Copy temporary password" onClick={() => void navigator.clipboard.writeText(temporary.password)}><Copy size={15} /></button>
-          <button className="secondary" onClick={() => setTemporary(null)}>Done</button>
-        </div>
-      )}
       <div className="admin-table">
         {users.map((user) => (
           <div className="admin-user-row" key={user.id}>
-            <div><strong>{user.name}</strong><span>{user.email} · {user.lastLoginAt ? `last login ${new Date(user.lastLoginAt).toLocaleString()}` : "never signed in"}</span></div>
+            <div><strong>{user.name}</strong><span>@{user.username} · {user.lastLoginAt ? `last login ${new Date(user.lastLoginAt).toLocaleString()}` : "never signed in"}</span></div>
+            {user.id !== "00000000-0000-4000-8000-000000000002" && <><input value={usernames[user.id] ?? user.username} onChange={(event) => setUsernames((current) => ({ ...current, [user.id]: event.target.value }))} /><button className="secondary" disabled={(usernames[user.id] ?? user.username) === user.username} onClick={() => void update(user, { username: usernames[user.id] })}>Save username</button></>}
             <select value={user.role} onChange={(event) => void update(user, { role: event.target.value as "admin" | "member" })}><option value="member">Member</option><option value="admin">Admin</option></select>
             <span className={user.status === "active" ? "pill good" : "pill warn"}>{user.status}</span>
-            <button className="secondary" onClick={() => void reset(user)}><RefreshCw size={13} /> Reset password</button>
+            {user.id !== "00000000-0000-4000-8000-000000000002" && <><input type="password" autoComplete="new-password" placeholder="Set new password" value={passwords[user.id] ?? ""} onChange={(event) => setPasswords((current) => ({ ...current, [user.id]: event.target.value }))} /><button className="secondary" disabled={(passwords[user.id] ?? "").length < 12} onClick={() => void reset(user)}><RefreshCw size={13} /> Set password</button></>}
             <button className="secondary" onClick={() => void update(user, { status: user.status === "active" ? "disabled" : "active" })}>{user.status === "active" ? "Disable" : "Enable"}</button>
           </div>
         ))}
       </div>
-      <details className="auth-history"><summary>Login history</summary>{history.slice(0, 20).map((event) => <div key={event.id}><span>{event.email ?? "Unknown"}</span><span>{event.event}</span><span>{event.success ? "Success" : "Failed"}</span><time>{new Date(event.createdAt).toLocaleString()}</time></div>)}</details>
+      <details className="auth-history"><summary>Login history</summary>{history.slice(0, 20).map((event) => <div key={event.id}><span>{event.username ?? "Unknown"}</span><span>{event.event}</span><span>{event.success ? "Success" : "Failed"}</span><time>{new Date(event.createdAt).toLocaleString()}</time></div>)}</details>
     </section>
   );
 }

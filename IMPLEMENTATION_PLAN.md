@@ -1207,3 +1207,27 @@ versions, test results, credentials still required, and unresolved risks.
     against live provider quotas. Provider allowances remain admin-configured,
     not hard-coded.
   - Gmail multi-account integration remains deferred.
+
+### 2026-07-29 - Simplified Internal Username Access
+
+- Status: implemented for deployment.
+- Migration: `drizzle/0016_pink_squirrel_girl.sql`.
+- Decisions:
+  - Admin identity is configured only through Railway `ADMIN_USERNAME` and
+    `ADMIN_PASSWORD`. Login compares the seeded operator against those
+    variables and keeps normal database-backed sessions and audit records.
+  - Member accounts use a username and an administrator-assigned password.
+    Email addresses, temporary passwords, expiration, and forced first-login
+    password changes are removed from the account workflow.
+  - Administrators can create accounts with an explicit password, edit member
+    usernames, set replacement passwords, change roles/status, and revoke
+    sessions. Passwords remain Argon2id hashes and cannot be displayed.
+  - The operator username and password cannot be changed inside the
+    application; they are changed in Railway.
+  - Existing users receive deterministic usernames during migration and all
+    existing sessions are revoked once so stale email-based claims cannot
+    continue.
+- Validation:
+  - `npm run typecheck` passed.
+  - `npm test` passed with 91 tests across 17 files.
+  - `npm run build` passed with 46 application pages and API routes.

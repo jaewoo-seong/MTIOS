@@ -1,9 +1,9 @@
 const baseUrl = process.env.APP_URL;
-const email = process.env.SMOKE_AUTH_EMAIL ?? "operator@mti.local";
-const password = process.env.SMOKE_AUTH_PASSWORD ?? process.env.ADMIN_BOOTSTRAP_PASSWORD;
+const username = process.env.SMOKE_AUTH_USERNAME ?? process.env.ADMIN_USERNAME ?? "operator";
+const password = process.env.SMOKE_AUTH_PASSWORD ?? process.env.ADMIN_PASSWORD;
 
 if (!baseUrl || !password) {
-  throw new Error("APP_URL and SMOKE_AUTH_PASSWORD or ADMIN_BOOTSTRAP_PASSWORD are required.");
+  throw new Error("APP_URL and SMOKE_AUTH_PASSWORD or ADMIN_PASSWORD are required.");
 }
 
 async function expectJson(path, expectedStatus, cookie) {
@@ -32,14 +32,11 @@ await expectJson("/api/v1/projects", 401);
 const login = await fetch(`${baseUrl}/api/v1/auth/login`, {
   method: "POST",
   headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ email, password })
+  body: JSON.stringify({ username, password })
 });
 const loginPayload = await login.json();
 if (login.status !== 200) {
   throw new Error(`Login returned ${login.status}: ${loginPayload.error ?? "unknown error"}`);
-}
-if (loginPayload.data?.forcePasswordChange) {
-  throw new Error("Smoke account requires a password change before protected API checks.");
 }
 const cookie = login.headers.get("set-cookie")?.split(";")[0];
 if (!cookie) throw new Error("Login returned no session cookie.");

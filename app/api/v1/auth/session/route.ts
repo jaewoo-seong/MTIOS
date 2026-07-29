@@ -14,10 +14,10 @@ export async function GET() {
         user: {
           id: session.claims.userId,
           name: session.claims.name,
-          email: session.claims.email,
+          username: session.claims.username,
           role: session.claims.role
         },
-        forcePasswordChange: session.claims.forcePasswordChange
+        forcePasswordChange: false
       }
     });
     response.cookies.set(SESSION_COOKIE, session.token, {

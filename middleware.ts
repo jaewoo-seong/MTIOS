@@ -15,7 +15,6 @@ const ADMIN_API_PREFIXES = [
 
 type Claims = {
   role: "admin" | "member";
-  forcePasswordChange: boolean;
   expiresAt: number;
 };
 
@@ -41,16 +40,6 @@ export async function middleware(request: NextRequest) {
 
   const claims = await verifyCookie(request.cookies.get(COOKIE_NAME)?.value, sessionSecret);
   if (!claims) return unauthenticated(request);
-  if (claims.forcePasswordChange &&
-      path !== "/change-password" &&
-      path !== "/api/v1/auth/change-password" &&
-      path !== "/api/v1/auth/logout" &&
-      path !== "/api/v1/auth/session") {
-    if (path.startsWith("/api/")) {
-      return NextResponse.json({ error: "password_change_required" }, { status: 403 });
-    }
-    return NextResponse.redirect(new URL("/change-password", request.url));
-  }
   if (ADMIN_API_PREFIXES.some((prefix) => path.startsWith(prefix)) && claims.role !== "admin") {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }

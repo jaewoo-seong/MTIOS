@@ -9,7 +9,8 @@ import { parseJson } from "@/lib/http";
 
 const schema = z.object({
   name: z.string().trim().min(1).max(120),
-  email: z.string().trim().email().max(320),
+  username: z.string().trim().min(3).max(64).regex(/^[a-zA-Z0-9._-]+$/),
+  password: z.string().min(12).max(128),
   role: z.enum(["admin", "member"]).default("member")
 });
 

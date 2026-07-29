@@ -24,8 +24,7 @@ export type SessionClaims = {
   organizationId: string;
   role: SessionRole;
   name: string;
-  email: string;
-  forcePasswordChange: boolean;
+  username: string;
   issuedAt: number;
   expiresAt: number;
   nonce: string;
@@ -91,25 +90,31 @@ export function validatePassword(password: string) {
 type RequestMetadata = { ipAddress?: string | null; userAgent?: string | null };
 
 export async function authenticate(
-  email: string,
+  username: string,
   password: string,
   metadata: RequestMetadata = {}
 ) {
   const database = requireDatabase();
-  const normalizedEmail = email.trim().toLowerCase();
+  const normalizedUsername = normalizeUsername(username);
   const [account] = await database.select({
     user: users,
     role: memberships.role
   }).from(users).innerJoin(memberships, and(
     eq(memberships.userId, users.id),
     eq(memberships.organizationId, MTI_ORGANIZATION_ID)
-  )).where(eq(users.email, normalizedEmail)).limit(1);
+  )).where(eq(users.username, normalizedUsername)).limit(1);
 
   const now = new Date();
+  const railwayAdminPassword = normalizedUsername === normalizeUsername(process.env.ADMIN_USERNAME ?? "") &&
+    account?.user.id === "00000000-0000-4000-8000-000000000002"
+    ? process.env.ADMIN_PASSWORD
+    : null;
   const accepted = account?.user.status === "active" &&
     (!account.user.lockedUntil || account.user.lockedUntil <= now) &&
-    Boolean(account.user.passwordHash) &&
-    await verify(String(account.user.passwordHash), password).catch(() => false);
+    (railwayAdminPassword
+      ? safeEqual(password, railwayAdminPassword)
+      : Boolean(account.user.passwordHash) &&
+        await verify(String(account.user.passwordHash), password).catch(() => false));
   if (!accepted) {
     if (account?.user) {
       const attempts = account.user.failedLoginAttempts + 1;
@@ -121,21 +126,12 @@ export async function authenticate(
     }
     await recordAuthEvent({
       userId: account?.user.id ?? null,
-      email: normalizedEmail,
+      username: normalizedUsername,
       event: "login",
       success: false,
       ...metadata
     });
-    throw new Error("Invalid email or password.");
-  }
-  if (account.user.temporaryPasswordExpiresAt &&
-      account.user.forcePasswordChange &&
-      account.user.temporaryPasswordExpiresAt <= now) {
-    await recordAuthEvent({
-      userId: account.user.id, email: normalizedEmail, event: "login",
-      success: false, metadata: { reason: "temporary_password_expired" }, ...metadata
-    });
-    throw new Error("Temporary password expired. Ask an administrator to reset it.");
+    throw new Error("Invalid username or password.");
   }
 
   const sessionId = crypto.randomUUID();
@@ -145,8 +141,7 @@ export async function authenticate(
     organizationId: MTI_ORGANIZATION_ID,
     role: account.role === "admin" || account.role === "owner" ? "admin" : "member",
     name: account.user.name,
-    email: account.user.email,
-    forcePasswordChange: account.user.forcePasswordChange,
+    username: account.user.username,
     issuedAt: Date.now(),
     expiresAt: Date.now() + SESSION_IDLE_MS,
     nonce: randomBytes(18).toString("base64url")
@@ -171,7 +166,7 @@ export async function authenticate(
     }).where(eq(users.id, account.user.id));
   });
   await recordAuthEvent({
-    userId: account.user.id, email: normalizedEmail, event: "login",
+    userId: account.user.id, username: normalizedUsername, event: "login",
     success: true, ...metadata
   });
   return { token, claims };
@@ -191,9 +186,6 @@ export async function currentSession(options: { admin?: boolean; allowPasswordCh
   )).limit(1);
   if (!session) throw new AuthError("unauthorized", 401);
   if (options.admin && claims.role !== "admin") throw new AuthError("forbidden", 403);
-  if (claims.forcePasswordChange && !options.allowPasswordChange) {
-    throw new AuthError("password_change_required", 403);
-  }
   return claims;
 }
 
@@ -225,6 +217,9 @@ export async function refreshSession() {
 export async function changePassword(currentPassword: string, newPassword: string) {
   validatePassword(newPassword);
   const session = await currentSession({ allowPasswordChange: true });
+  if (session.role === "admin" && session.userId === "00000000-0000-4000-8000-000000000002") {
+    throw new AuthError("Admin credentials are managed in Railway.", 400);
+  }
   const database = requireDatabase();
   const [account] = await database.select().from(users).where(eq(users.id, session.userId)).limit(1);
   if (!account?.passwordHash || !await verify(account.passwordHash, currentPassword).catch(() => false)) {
@@ -234,8 +229,6 @@ export async function changePassword(currentPassword: string, newPassword: strin
   await database.transaction(async (tx) => {
     await tx.update(users).set({
       passwordHash: await hashPassword(newPassword),
-      forcePasswordChange: false,
-      temporaryPasswordExpiresAt: null,
       passwordChangedAt: now,
       updatedAt: now
     }).where(eq(users.id, session.userId));
@@ -245,7 +238,7 @@ export async function changePassword(currentPassword: string, newPassword: strin
     ));
   });
   await recordAuthEvent({
-    userId: session.userId, email: session.email, event: "password_changed", success: true
+    userId: session.userId, username: session.username, event: "password_changed", success: true
   });
 }
 
@@ -264,6 +257,7 @@ export async function revokeUserSessions(userId: string) {
 
 export async function recordAuthEvent(input: {
   userId?: string | null;
+  username?: string | null;
   email?: string | null;
   event: string;
   success: boolean;
@@ -275,6 +269,7 @@ export async function recordAuthEvent(input: {
   await db.insert(authenticationEvents).values({
     organizationId: input.userId ? MTI_ORGANIZATION_ID : null,
     userId: input.userId ?? null,
+    username: input.username ?? null,
     email: input.email ?? null,
     event: input.event,
     success: input.success,
@@ -282,6 +277,16 @@ export async function recordAuthEvent(input: {
     userAgent: input.userAgent ?? null,
     metadata: input.metadata ?? {}
   });
+}
+
+export function normalizeUsername(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function safeEqual(left: string, right: string) {
+  const leftBuffer = Buffer.from(left);
+  const rightBuffer = Buffer.from(right);
+  return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
 }
 
 export function requestMetadata(request: Request): RequestMetadata {

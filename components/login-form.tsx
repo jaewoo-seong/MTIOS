@@ -4,7 +4,7 @@ import { useState } from "react";
 import { ArrowRight, Loader2, LockKeyhole } from "lucide-react";
 
 export function LoginForm() {
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -17,11 +17,11 @@ export function LoginForm() {
       const response = await fetch("/api/v1/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password })
+        body: JSON.stringify({ username, password })
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? "Login failed.");
-      window.location.assign(payload.data.forcePasswordChange ? "/change-password" : "/");
+      window.location.assign("/");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Login failed.");
     } finally {
@@ -37,7 +37,7 @@ export function LoginForm() {
         <h1>Business OS</h1>
         <p>Sign in with your company account.</p>
       </div>
-      <label>Email address<input type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} required autoFocus /></label>
+      <label>Username<input autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} required autoFocus /></label>
       <label>Password<input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>
       {error && <div className="auth-error" role="alert">{error}</div>}
       <button className="primary auth-submit" disabled={busy}>

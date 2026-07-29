@@ -39,8 +39,7 @@ describe("authentication and quota windows", () => {
       organizationId: MTI_ORGANIZATION_ID,
       role: "admin" as const,
       name: "Operator",
-      email: "operator@example.com",
-      forcePasswordChange: false,
+      username: "operator",
       issuedAt: Date.now(),
       expiresAt: Date.now() + 60_000,
       nonce: "test"

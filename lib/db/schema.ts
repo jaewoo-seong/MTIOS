@@ -42,7 +42,8 @@ export const organizations = pgTable("organizations", {
 export const users = pgTable("users", {
   id: uuid("id").defaultRandom().primaryKey(),
   name: text("name").notNull(),
-  email: text("email").notNull().unique(),
+  username: text("username").notNull().unique(),
+  email: text("email").unique(),
   passwordHash: text("password_hash"),
   status: text("status").default("active").notNull(),
   forcePasswordChange: boolean("force_password_change").default(true).notNull(),
@@ -82,6 +83,7 @@ export const authenticationEvents = pgTable("authentication_events", {
   id: uuid("id").defaultRandom().primaryKey(),
   organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }),
   userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+  username: text("username"),
   email: text("email"),
   event: text("event").notNull(),
   success: boolean("success").default(false).notNull(),
