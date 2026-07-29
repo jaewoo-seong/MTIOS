@@ -510,3 +510,47 @@ versions, test results, credentials still required, and unresolved risks.
     implementation and are not considered complete by this entry.
   - The production database must run the Phase 1 migration before this commit
     is deployed.
+
+### 2026-07-29 - Phase 2 Completed
+
+- Status: completed and verified locally.
+- Implementation commit: recorded after verification in the follow-up
+  completion-log commit.
+- Migration: `drizzle/0003_melodic_vision.sql`.
+- Delivered:
+  - Workspace, project, agenda, and task/run-addressable context layers.
+  - Organization-scoped source registry with authority, approval, language,
+    expiry, provenance, and SHA-256 content identity.
+  - Stable bounded chunks with deduplication, token estimates, source language,
+    optional 1536-dimension embeddings, and embedding-route metadata.
+  - Persisted context packs and ranked pack items linked to command, run,
+    project, agenda, and task.
+  - Retrieval scoring for lexical relevance, scope, language, authority, and
+    agenda affinity under a hard token budget.
+  - Workflow grounding now sends selected cited passages instead of complete
+    project histories.
+  - REST APIs for context-pack creation and audited pack retrieval.
+  - LiteLLM multilingual embedding endpoint support and configurable
+    `LITELLM_EMBEDDING_ROUTE`.
+  - PostgreSQL `pgvector`, GIN full-text, HNSW vector, and scope indexes.
+- Validation:
+  - `npm run typecheck` passed after production build.
+  - `npm test` passed with 33 tests across 5 files.
+  - `npm run build` passed.
+  - Drizzle migration generation passed.
+  - English, Korean, and mixed-language detection tested.
+  - Approved-memory inclusion, proposed-memory exclusion, cross-project
+    isolation, chunk deduplication, citations, and pack rereads tested.
+  - Live REST smoke passed: project creation `201`, context-pack creation
+    `201`, and persisted pack retrieval `200`.
+- Deployment: not deployed in this phase; Railway migration and context-pack
+  production smoke remain required.
+- Credentials required: none for lexical retrieval. Enabling semantic
+  embeddings requires a multilingual embedding model configured inside
+  LiteLLM; provider credentials remain only on the LiteLLM service.
+- Remaining risks:
+  - Embedding backfill is not run until a production embedding route is
+    configured; lexical multilingual retrieval remains active meanwhile.
+  - Existing documents and memory are indexed lazily on context-pack creation,
+    not by a dedicated background backfill job.
+  - Production PostgreSQL must permit `CREATE EXTENSION vector`.

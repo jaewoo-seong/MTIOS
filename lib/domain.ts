@@ -142,6 +142,70 @@ export interface AgentDefinition {
   updatedAt: string;
 }
 
+export type ContextLanguage = "en" | "ko" | "mixed" | "unknown";
+export type ContextAuthority = "authoritative" | "approved" | "working" | "external";
+
+export interface ContextSource {
+  id: string;
+  organizationId: string;
+  projectId: string | null;
+  agendaId: string | null;
+  sourceType: "project" | "agenda" | "document" | "report" | "knowledge" | "client_record";
+  sourceId: string;
+  title: string;
+  language: ContextLanguage;
+  authority: ContextAuthority;
+  approvalStatus: "approved" | "working" | "proposed" | "rejected";
+  contentHash: string;
+  expiresAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ContextChunk {
+  id: string;
+  sourceId: string;
+  ordinal: number;
+  content: string;
+  contentHash: string;
+  language: ContextLanguage;
+  tokenEstimate: number;
+  embeddingRoute: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ContextCitation {
+  packItemId: string;
+  chunkId: string;
+  sourceType: ContextSource["sourceType"];
+  sourceId: string;
+  title: string;
+  language: ContextLanguage;
+  content: string;
+  score: number;
+  citation: string;
+  tokenCount: number;
+}
+
+export interface ContextPack {
+  id: string;
+  organizationId: string;
+  projectId: string | null;
+  agendaId: string | null;
+  taskId: string | null;
+  runId: string | null;
+  commandId: string | null;
+  query: string;
+  queryLanguage: ContextLanguage;
+  tokenBudget: number;
+  tokenCount: number;
+  embeddingRoute: string;
+  contentHash: string;
+  citations: ContextCitation[];
+  createdAt: string;
+}
+
 export interface ExecutiveCommand {
   id: string;
   organizationId: string;

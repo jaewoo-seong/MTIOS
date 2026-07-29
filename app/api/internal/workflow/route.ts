@@ -6,7 +6,11 @@ import { isValidWorkflowRequest } from "@/lib/internal-auth";
 import { repository } from "@/lib/repository";
 
 const schema = z.discriminatedUnion("action", [
-  z.object({ action: z.literal("load"), commandId: z.string().uuid() }),
+  z.object({
+    action: z.literal("load"),
+    commandId: z.string().uuid(),
+    runId: z.string().uuid().optional()
+  }),
   z.object({
     action: z.literal("progress"),
     commandId: z.string().uuid(),
@@ -39,7 +43,10 @@ export async function POST(request: Request) {
     if (!command) return NextResponse.json({ error: "not_found" }, { status: 404 });
     return NextResponse.json({
       command,
-      context: await buildAgentContext(command.projectId)
+      context: await buildAgentContext(command.projectId, command.instruction, {
+        commandId: command.id,
+        runId: input.runId ?? null
+      })
     });
   }
 

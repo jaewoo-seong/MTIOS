@@ -64,7 +64,8 @@ export const executiveAgentWorkflow = task({
   run: async ({ commandId, runId }: { commandId: string; runId: string }) => {
     const loaded = await callWorkflowApp<{ command: ExecutiveCommand; context: unknown }>({
       action: "load",
-      commandId
+      commandId,
+      runId
     });
     const { command, context } = loaded;
     await callWorkflowApp({

@@ -8,7 +8,8 @@ import {
   text,
   timestamp,
   uniqueIndex,
-  uuid
+  uuid,
+  vector
 } from "drizzle-orm/pg-core";
 
 const timestamps = {
@@ -299,6 +300,69 @@ export const knowledgeEntries = pgTable("knowledge_entries", {
   expiresAt: timestamp("expires_at", { withTimezone: true }),
   ...timestamps
 });
+
+export const contextSources = pgTable("context_sources", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }),
+  agendaId: uuid("agenda_id").references(() => agendas.id, { onDelete: "cascade" }),
+  sourceType: text("source_type").notNull(),
+  sourceId: uuid("source_id").notNull(),
+  title: text("title").notNull(),
+  language: text("language").default("unknown").notNull(),
+  authority: text("authority").default("working").notNull(),
+  approvalStatus: text("approval_status").default("working").notNull(),
+  contentHash: text("content_hash").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }),
+  ...timestamps
+}, (table) => [
+  uniqueIndex("context_source_identity").on(table.organizationId, table.sourceType, table.sourceId)
+]);
+
+export const contextChunks = pgTable("context_chunks", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  sourceId: uuid("source_id").references(() => contextSources.id, { onDelete: "cascade" }).notNull(),
+  ordinal: integer("ordinal").notNull(),
+  content: text("content").notNull(),
+  contentHash: text("content_hash").notNull(),
+  language: text("language").default("unknown").notNull(),
+  tokenEstimate: integer("token_estimate").notNull(),
+  embedding: vector("embedding", { dimensions: 1536 }),
+  embeddingRoute: text("embedding_route"),
+  ...timestamps
+}, (table) => [
+  uniqueIndex("context_chunk_source_ordinal").on(table.sourceId, table.ordinal)
+]);
+
+export const contextPacks = pgTable("context_packs", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }),
+  agendaId: uuid("agenda_id").references(() => agendas.id, { onDelete: "set null" }),
+  taskId: uuid("task_id").references(() => tasks.id, { onDelete: "set null" }),
+  runId: uuid("run_id").references(() => runs.id, { onDelete: "set null" }),
+  commandId: uuid("command_id").references(() => commands.id, { onDelete: "set null" }),
+  query: text("query").notNull(),
+  queryLanguage: text("query_language").default("unknown").notNull(),
+  tokenBudget: integer("token_budget").notNull(),
+  tokenCount: integer("token_count").default(0).notNull(),
+  embeddingRoute: text("embedding_route").default("multilingual_embedding").notNull(),
+  contentHash: text("content_hash").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
+});
+
+export const contextPackItems = pgTable("context_pack_items", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  packId: uuid("pack_id").references(() => contextPacks.id, { onDelete: "cascade" }).notNull(),
+  chunkId: uuid("chunk_id").references(() => contextChunks.id, { onDelete: "cascade" }).notNull(),
+  rank: integer("rank").notNull(),
+  scoreMicros: integer("score_micros").notNull(),
+  citation: text("citation").notNull(),
+  tokenCount: integer("token_count").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
+}, (table) => [
+  uniqueIndex("context_pack_chunk").on(table.packId, table.chunkId)
+]);
 
 export const clientDatabases = pgTable("client_databases", {
   id: uuid("id").defaultRandom().primaryKey(),

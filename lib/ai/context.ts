@@ -1,29 +1,31 @@
 import { repository } from "@/lib/repository";
+import { buildContextPack } from "@/lib/context/retrieval";
 
-export async function buildAgentContext(projectId: string | null) {
-  const approvedKnowledge = (await repository.listKnowledge())
-    .filter((entry) => entry.status === "approved")
-    .slice(0, 30);
+export async function buildAgentContext(
+  projectId: string | null,
+  query: string,
+  metadata: { commandId?: string | null; runId?: string | null; agendaId?: string | null; taskId?: string | null } = {}
+) {
+  const pack = await buildContextPack({
+    query,
+    projectId,
+    commandId: metadata.commandId,
+    runId: metadata.runId,
+    agendaId: metadata.agendaId,
+    taskId: metadata.taskId
+  });
 
   if (!projectId) {
     return {
       project: null,
-      agendas: [],
-      reports: [],
-      approvedKnowledge
+      contextPack: pack
     };
   }
 
-  const [project, agendas, reports] = await Promise.all([
-    repository.getProject(projectId),
-    repository.listAgendas(projectId),
-    repository.listReports()
-  ]);
+  const project = await repository.getProject(projectId);
 
   return {
     project: project ?? null,
-    agendas: agendas.slice(0, 50),
-    reports: reports.filter((report) => report.projectId === projectId).slice(0, 20),
-    approvedKnowledge
+    contextPack: pack
   };
 }

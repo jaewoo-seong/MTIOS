@@ -12,3 +12,9 @@ Create services for:
 Managed Trigger.dev remains external. Set `TRIGGER_DISPATCH_URL` to the deployed command workflow endpoint and use the command ID as its idempotency key.
 
 The app health check is `/api/health`. Run migrations as a Railway pre-deploy command after a PostgreSQL service is connected.
+
+Phase 2 context retrieval requires PostgreSQL `pgvector`; migration `0003`
+creates the extension, full-text index, and HNSW vector index. Configure
+`LITELLM_EMBEDDING_ROUTE` with a multilingual embedding route exposed by the
+private LiteLLM service. Keep embedding provider/model credentials in LiteLLM,
+not the application service.
