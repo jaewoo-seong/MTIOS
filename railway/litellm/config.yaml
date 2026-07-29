@@ -1,24 +1,24 @@
 model_list:
   - model_name: executive_reasoning
     litellm_params:
-      model: os.environ/EXECUTIVE_REASONING_MODEL
-      api_key: os.environ/EXECUTIVE_REASONING_API_KEY
+      model: openrouter/anthropic/claude-opus-5
+      api_key: os.environ/OPENROUTER_API_KEY
   - model_name: executive_review
     litellm_params:
-      model: os.environ/EXECUTIVE_REVIEW_MODEL
-      api_key: os.environ/EXECUTIVE_REVIEW_API_KEY
+      model: openrouter/anthropic/claude-opus-5
+      api_key: os.environ/OPENROUTER_API_KEY
   - model_name: worker_research
     litellm_params:
-      model: os.environ/WORKER_RESEARCH_MODEL
-      api_key: os.environ/WORKER_RESEARCH_API_KEY
+      model: openrouter/google/gemini-3.5-flash
+      api_key: os.environ/OPENROUTER_API_KEY
   - model_name: worker_structured
     litellm_params:
-      model: os.environ/WORKER_STRUCTURED_MODEL
-      api_key: os.environ/WORKER_STRUCTURED_API_KEY
+      model: openrouter/google/gemini-3.1-flash-lite-preview
+      api_key: os.environ/OPENROUTER_API_KEY
   - model_name: worker_fast
     litellm_params:
-      model: os.environ/WORKER_FAST_MODEL
-      api_key: os.environ/WORKER_FAST_API_KEY
+      model: openrouter/google/gemini-3.1-flash-lite-preview
+      api_key: os.environ/OPENROUTER_API_KEY
 
 router_settings:
   allowed_fails: 2

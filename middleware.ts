@@ -5,6 +5,12 @@ export function middleware(request: NextRequest) {
   if (request.nextUrl.pathname === "/api/health") {
     return NextResponse.next();
   }
+  if (request.nextUrl.pathname.startsWith("/api/internal/")) {
+    const secret = process.env.WORKFLOW_CALLBACK_SECRET;
+    if (secret && request.headers.get("authorization") === `Bearer ${secret}`) {
+      return NextResponse.next();
+    }
+  }
 
   const username = process.env.APP_BASIC_AUTH_USER;
   const password = process.env.APP_BASIC_AUTH_PASSWORD;

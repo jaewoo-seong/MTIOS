@@ -1,7 +1,6 @@
 import { task } from "@trigger.dev/sdk";
-import { buildAgentContext } from "@/lib/ai/context";
 import { requestModel } from "@/lib/ai/litellm";
-import { repository } from "@/lib/repository";
+import type { ExecutiveCommand } from "@/lib/domain";
 
 type WorkerPayload = {
   runId: string;
@@ -17,6 +16,26 @@ function modelText(response: unknown) {
   const content = (response as ModelResponse).choices?.[0]?.message?.content;
   if (!content) throw new Error("LiteLLM returned no message content.");
   return content;
+}
+
+async function callWorkflowApp<T>(body: Record<string, unknown>): Promise<T> {
+  const baseUrl = process.env.BUSINESS_OS_INTERNAL_URL;
+  const secret = process.env.WORKFLOW_CALLBACK_SECRET;
+  if (!baseUrl || !secret) {
+    throw new Error("Workflow app callback is not configured.");
+  }
+  const response = await fetch(`${baseUrl.replace(/\/$/, "")}/api/internal/workflow`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${secret}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(body)
+  });
+  if (!response.ok) {
+    throw new Error(`Workflow app request failed with status ${response.status}`);
+  }
+  return response.json() as Promise<T>;
 }
 
 export const workerAgentTask = task({
@@ -42,12 +61,15 @@ export const executiveAgentWorkflow = task({
   id: "executive-agent-workflow",
   maxDuration: 7200,
   run: async ({ commandId, runId }: { commandId: string; runId: string }) => {
-    const command = await repository.getCommand(commandId);
-    if (!command) throw new Error("Command not found.");
-
-    await repository.updateCommand(command.id, { status: "planning" });
-    await repository.updateRun(runId, { status: "planning", progress: 10 });
-    const context = await buildAgentContext(command.projectId);
+    const loaded = await callWorkflowApp<{ command: ExecutiveCommand; context: unknown }>({
+      action: "load",
+      commandId
+    });
+    const { command, context } = loaded;
+    await callWorkflowApp({
+      action: "progress", commandId, runId,
+      commandStatus: "planning", runStatus: "planning", progress: 10
+    });
 
     const planningResponse = await requestModel("executive_reasoning", [
       {
@@ -61,8 +83,10 @@ export const executiveAgentWorkflow = task({
       throw new Error("Executive plan contains an invalid task list.");
     }
 
-    await repository.updateCommand(command.id, { status: "executing" });
-    await repository.updateRun(runId, { status: "executing", progress: 25 });
+    await callWorkflowApp({
+      action: "progress", commandId, runId,
+      commandStatus: "executing", runStatus: "executing", progress: 25
+    });
     const results = await workerAgentTask.batchTriggerAndWait(
       plan.tasks.map((instruction) => ({ payload: { runId, instruction, context } }))
     );
@@ -71,7 +95,7 @@ export const executiveAgentWorkflow = task({
       return result.output;
     });
 
-    await repository.updateRun(runId, { progress: 80 });
+    await callWorkflowApp({ action: "progress", commandId, runId, progress: 80 });
     const reviewResponse = await requestModel("executive_review", [
       {
         role: "system",
@@ -83,15 +107,14 @@ export const executiveAgentWorkflow = task({
       }
     ]);
     const content = modelText(reviewResponse);
-    const report = await repository.createReport({
+    return callWorkflowApp({
+      action: "report",
+      commandId,
+      runId,
       projectId: command.projectId,
       title: plan.reportTitle,
       summary: content.slice(0, 500),
       content
     });
-
-    await repository.updateCommand(command.id, { status: "review_required" });
-    await repository.updateRun(runId, { status: "review_required", progress: 100 });
-    return { reportId: report.id, status: "review_required" };
   }
 });

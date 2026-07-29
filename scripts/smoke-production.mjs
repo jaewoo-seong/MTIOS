@@ -21,7 +21,7 @@ async function expectJson(path, expectedStatus, authenticated = false) {
 }
 
 const health = await expectJson("/api/health", 200);
-for (const dependency of ["database", "redis", "storage"]) {
+for (const dependency of ["database", "redis", "storage", "litellm"]) {
   if (health.checks?.[dependency] !== "ok") {
     throw new Error(`${dependency} health check is not ok.`);
   }

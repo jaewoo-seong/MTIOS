@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { checkLiteLLM } from "@/lib/ai/litellm";
 import { sql } from "@/lib/db/client";
 import { pingRedis } from "@/lib/redis";
 import { checkStorage } from "@/lib/storage";
@@ -10,6 +11,8 @@ export async function GET() {
     database: "not_configured",
     redis: "not_configured",
     storage: "not_configured"
+    ,
+    litellm: "not_configured"
   };
   let status = 200;
   if (sql) {
@@ -38,6 +41,15 @@ export async function GET() {
   }
   if (process.env.NODE_ENV === "production" &&
       (checks.redis === "not_configured" || checks.storage === "not_configured")) {
+    status = 503;
+  }
+  try {
+    checks.litellm = await checkLiteLLM();
+  } catch {
+    checks.litellm = "unavailable";
+    status = 503;
+  }
+  if (process.env.NODE_ENV === "production" && checks.litellm === "not_configured") {
     status = 503;
   }
   return NextResponse.json({
