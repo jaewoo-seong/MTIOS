@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import type { Server } from "node:http";
+import { request, type Server } from "node:http";
 import {
   discoverMcpServer,
   getMcpTestState,
@@ -174,6 +174,17 @@ describe("MCP Streamable HTTP service", () => {
     const base = `http://127.0.0.1:${address.port}`;
 
     expect((await fetch(`${base}/health`)).status).toBe(200);
+    const rejectedHostStatus = await new Promise<number | undefined>((resolve, reject) => {
+      const outgoing = request(`${base}/health`, {
+        headers: { host: "untrusted.example" }
+      }, (response) => {
+        response.resume();
+        resolve(response.statusCode);
+      });
+      outgoing.on("error", reject);
+      outgoing.end();
+    });
+    expect(rejectedHostStatus).toBe(403);
     expect((await fetch(`${base}/mcp`, {
       method: "POST",
       headers: { "content-type": "application/json" },

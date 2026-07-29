@@ -95,7 +95,13 @@ export function createInternalMcpServer() {
 }
 
 export function createMcpApp() {
-  const app = createMcpExpressApp();
+  const allowedHosts = [
+    "127.0.0.1",
+    "localhost",
+    "::1",
+    process.env.RAILWAY_PRIVATE_DOMAIN
+  ].filter((host): host is string => Boolean(host));
+  const app = createMcpExpressApp({ host: "0.0.0.0", allowedHosts });
   app.get("/health", (_request, response) => {
     response.json({ status: "ok", service: "mcp-tools" });
   });
