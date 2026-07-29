@@ -64,6 +64,13 @@ CREATE TABLE "project_records" (
 );
 --> statement-breakpoint
 ALTER TABLE "tasks" RENAME COLUMN "assigned_agent" TO "assigned_agent_id";--> statement-breakpoint
+ALTER TABLE "tasks" ALTER COLUMN "assigned_agent_id" SET DATA TYPE uuid USING (
+	CASE
+		WHEN "assigned_agent_id" ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+			THEN "assigned_agent_id"::uuid
+		ELSE NULL
+	END
+);--> statement-breakpoint
 ALTER TABLE "agendas" ADD COLUMN "work_type" "agenda_work_type" DEFAULT 'custom' NOT NULL;--> statement-breakpoint
 ALTER TABLE "projects" ADD COLUMN "permissions" jsonb DEFAULT '{"externalSend":"review_required","clientDataWrite":"review_required","destructiveAction":"review_required"}'::jsonb NOT NULL;--> statement-breakpoint
 ALTER TABLE "projects" ADD COLUMN "review_gates" jsonb DEFAULT '[]'::jsonb NOT NULL;--> statement-breakpoint

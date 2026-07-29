@@ -1,7 +1,20 @@
+import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 import { repository } from "@/lib/repository";
 
 describe("development repository lifecycle", () => {
+  it("converts legacy task assignments before adding the agent UUID foreign key", async () => {
+    const migration = await readFile(
+      new URL("../drizzle/0002_lyrical_pete_wisdom.sql", import.meta.url),
+      "utf8"
+    );
+
+    expect(migration).toContain('ALTER COLUMN "assigned_agent_id" SET DATA TYPE uuid');
+    expect(migration.indexOf("SET DATA TYPE uuid")).toBeLessThan(
+      migration.indexOf('ADD CONSTRAINT "tasks_assigned_agent_id_agent_definitions_id_fk"')
+    );
+  });
+
   it("keeps a long-lived project, agenda, command, run, and report connected", async () => {
     const project = await repository.createProject({
       name: "Lifecycle verification",
