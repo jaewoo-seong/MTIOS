@@ -477,8 +477,7 @@ versions, test results, credentials still required, and unresolved risks.
 ### 2026-07-29 - Phase 1 Completed
 
 - Status: completed and verified locally.
-- Commit: Phase 1 implementation commit recorded in Git history; exact hash is
-  appended by the follow-up completion-log commit.
+- Implementation commit: `ee67ccb`.
 - Migration: `drizzle/0002_lyrical_pete_wisdom.sql`.
 - Delivered:
   - Project permissions, review gates, output requirements, milestones,
