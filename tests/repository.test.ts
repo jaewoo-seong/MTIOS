@@ -15,6 +15,18 @@ describe("development repository lifecycle", () => {
     );
   });
 
+  it("enables pgcrypto before hashing document backfill content", async () => {
+    const migration = await readFile(
+      new URL("../drizzle/0011_sweet_gabe_jones.sql", import.meta.url),
+      "utf8"
+    );
+
+    expect(migration).toContain("CREATE EXTENSION IF NOT EXISTS pgcrypto");
+    expect(migration.indexOf("CREATE EXTENSION IF NOT EXISTS pgcrypto")).toBeLessThan(
+      migration.indexOf("digest(")
+    );
+  });
+
   it("keeps a long-lived project, agenda, command, run, and report connected", async () => {
     const project = await repository.createProject({
       name: "Lifecycle verification",
