@@ -76,10 +76,14 @@ export function resolveModelPolicy(
 ) {
   const policy = configuredPolicy;
   const environment = process.env.NODE_ENV === "production" ? "production" : "development";
+  const testingMode = process.env.ALLOW_TESTING_MODELS === "true";
   const explicitlyApproved = (candidate: ModelCandidate) =>
     candidate.provider === "nvidia" && process.env.NVIDIA_PRODUCTION_APPROVED === "true";
   const candidates = environment === "production"
-    ? policy.candidates.filter((candidate) => candidate.productionApproved || explicitlyApproved(candidate))
+    ? policy.candidates.filter((candidate) =>
+        candidate.productionApproved || explicitlyApproved(candidate) ||
+        (testingMode && candidate.licensingStatus === "testing_only")
+      )
     : policy.candidates;
   if (candidates.length === 0) {
     throw new Error(`No production-approved model candidate for ${route}.`);
@@ -87,6 +91,7 @@ export function resolveModelPolicy(
   return {
     ...policy,
     environment,
+    testingMode,
     candidates,
     maxCostMicros: Math.min(requestedBudget ?? policy.maxCostMicros, policy.maxCostMicros)
   };

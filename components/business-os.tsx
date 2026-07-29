@@ -722,6 +722,7 @@ function PreferenceSettings({ onError }: { onError: (message: string) => void })
 
 type ModelSettingsPayload = {
   environment: string;
+  testingMode: boolean;
   gateway: string;
   health: string;
   recentCalls: Array<{ route: string; provider: string | null; model: string | null; costMicros: number; latencyMs: number; error: string | null }>;
@@ -785,7 +786,7 @@ function ModelSettings({ onError }: { onError: (message: string) => void }) {
   }
   return (
     <section className="surface settings-wide">
-      <div className="surface-header"><h2>{t("Model routing")}</h2><span>{value ? `${value.gateway} · ${value.environment} · ${value.health}` : t("Loading…")}</span></div>
+      <div className="surface-header"><h2>{t("Model routing")}</h2><span>{value ? `${value.gateway} · ${value.environment} · ${value.testingMode ? t("testing mode") : t("production policy")} · ${t(value.health)}` : t("Loading…")}</span></div>
       {!value ? <div className="empty-inline">{t("Loading model routes…")}</div> : (
         <div className="settings-table" role="table">
           {value.routes.map((route) => (

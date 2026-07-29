@@ -27,6 +27,18 @@ describe("model routing policy", () => {
     expect(resolveModelPolicy("worker_research").candidates[0].provider).toBe("nvidia");
   });
 
+  it("allows testing-only candidates through an explicit production test gate", () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("ALLOW_TESTING_MODELS", "true");
+    const policy = resolveModelPolicy("worker_research");
+    expect(policy.testingMode).toBe(true);
+    expect(policy.candidates.map((candidate) => candidate.provider))
+      .toEqual(["nvidia", "openrouter"]);
+    expect(policy.candidates.every((candidate) =>
+      candidate.licensingStatus === "testing_only"
+    )).toBe(true);
+  });
+
   it("caps caller budgets at the route policy maximum", () => {
     expect(resolveModelPolicy("worker_fast", 999_999).maxCostMicros)
       .toBe(modelRoutePolicies.worker_fast.maxCostMicros);

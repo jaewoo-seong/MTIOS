@@ -8,6 +8,7 @@ import { listModelRouteRevisions } from "@/lib/settings";
 
 export async function GET() {
   const environment = process.env.NODE_ENV === "production" ? "production" : "development";
+  const testingMode = process.env.ALLOW_TESTING_MODELS === "true";
   const [health, recentCalls, revisions] = await Promise.all([
     checkLiteLLM().catch(() => "unavailable"),
     db ? db.select().from(modelCalls).orderBy(desc(modelCalls.createdAt)).limit(50) : [],
@@ -15,6 +16,7 @@ export async function GET() {
   ]);
   return NextResponse.json({
     environment,
+    testingMode,
     gateway: "LiteLLM",
     health,
     recentCalls,
@@ -33,6 +35,7 @@ export async function GET() {
         productionApproved: candidate.productionApproved,
         licensingStatus: candidate.licensingStatus,
         enabled: environment !== "production" || candidate.productionApproved ||
+          (testingMode && candidate.licensingStatus === "testing_only") ||
           (candidate.provider === "nvidia" && process.env.NVIDIA_PRODUCTION_APPROVED === "true")
       }))
     }))

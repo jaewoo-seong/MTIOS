@@ -369,6 +369,8 @@ const ko: Record<string, string> = {
   ,"connected": "연결됨"
   ,"revoked": "취소됨"
   ,"Gmail read and compose": "Gmail 읽기 및 초안 작성"
+  ,"testing mode": "테스트 모드"
+  ,"production policy": "프로덕션 정책"
 };
 
 export function translate(
