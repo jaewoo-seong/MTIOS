@@ -7,6 +7,11 @@ const PUBLIC_PATHS = new Set([
   "/api/health",
   "/api/v1/auth/login"
 ]);
+const ADMIN_API_PREFIXES = [
+  "/api/v1/admin/",
+  "/api/v1/settings/models",
+  "/api/v1/settings/integrations"
+];
 
 type Claims = {
   role: "admin" | "member";
@@ -46,7 +51,7 @@ export async function middleware(request: NextRequest) {
     }
     return NextResponse.redirect(new URL("/change-password", request.url));
   }
-  if (path.startsWith("/api/v1/admin/") && claims.role !== "admin") {
+  if (ADMIN_API_PREFIXES.some((prefix) => path.startsWith(prefix)) && claims.role !== "admin") {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
   if (isMutation(request.method) && !sameOrigin(request)) {

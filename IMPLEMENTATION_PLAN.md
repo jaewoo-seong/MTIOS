@@ -1147,3 +1147,59 @@ versions, test results, credentials still required, and unresolved risks.
   - After model selection, migrate the vector column if needed, configure the
     full `nvidia_nim/...` LiteLLM model identifier, run a live pack test, and
     verify stored vectors plus `multilingual_embedding` pack metadata.
+
+### 2026-07-29 - Multi-User, Model Routing, and AI Analytics Follow-up
+
+- Status: implemented, migrated, and deployed to Railway production.
+- Implementation commits: `a3fc466` and `f84ce71`.
+- Migration: `drizzle/0015_sloppy_thanos.sql`.
+- Delivered:
+  - Dedicated login and forced-password-change pages replace application Basic
+    Auth. Accounts use Argon2id password hashes, 72-hour temporary passwords,
+    lockout controls, signed HTTP-only sessions, inactivity and absolute
+    expiry, rotation, revocation, same-origin mutation protection, and
+    authentication audit events.
+  - Admin and member roles. Members retain shared project operations and
+    personal preferences/password controls. User administration, model policy,
+    integrations, quotas, premium decisions, and AI analytics are admin-only.
+  - Admin account creation, one-time temporary password issuance, disabling,
+    role changes, password reset, session revocation, and login history.
+    Plaintext changed passwords are never stored or retrievable.
+  - Acting-user attribution on projects, agendas, commands, reports, review
+    decisions, model approvals, and related writes. Existing unattributed data
+    is assigned to the seeded administrator.
+  - Specialized worker types map to explicit LiteLLM virtual routes. Approved
+    free candidates retry in order. Exhaustion or route failure creates a
+    durable admin premium-approval request and pauses execution. Approval
+    resumes the same run idempotently; rejection cancels without a paid call.
+  - Editable daily/monthly provider quotas, observed usage counters, pricing
+    snapshots, organization/project/user caps, and admin AI Analytics with
+    project/user/agent/route/provider/model dimensions and CSV export.
+  - Research-provider usage and quota checks now use the same governed usage
+    ledger as model calls.
+- Production:
+  - App deployment `477f9d54-8495-4aa4-981c-e4f610ccb669` succeeded.
+  - LiteLLM deployment `12540b7e-393f-4a92-963d-ea76b2bcf929`
+    succeeded with the governed `premium_fallback` route.
+  - Production health passed for PostgreSQL, Redis, Railway Storage, LiteLLM,
+    document conversion, and authentication.
+  - Production role smoke checks passed for admin analytics/user management,
+    member project/preferences access, and member denial from admin/model
+    settings.
+- Validation:
+  - `npm run typecheck` passed.
+  - `npm test` passed with 91 tests across 17 files.
+  - `npm run build` passed with 47 application pages and API routes.
+  - `npm audit --omit=dev` reports 23 inherited production dependency
+    advisories: 1 low, 14 moderate, 8 high, and no critical advisories.
+- Remaining release work:
+  - Complete browser visual QA for login, forced password change, admin
+    Settings, member Settings, and Korean layouts at laptop and desktop widths.
+  - Rotate the seeded administrator's temporary password immediately after
+    first login.
+  - Review and remediate or accept the outstanding dependency advisories
+    before declaring the release production-ready.
+  - Exercise a real free-route exhaustion event and premium approval/resume
+    against live provider quotas. Provider allowances remain admin-configured,
+    not hard-coded.
+  - Gmail multi-account integration remains deferred.
