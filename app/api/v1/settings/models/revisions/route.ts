@@ -33,6 +33,18 @@ export async function POST(request: Request) {
   const parsed = await parseJson(request, schema);
   if (parsed.error) return parsed.error;
   const base = modelRoutePolicies[parsed.data.route];
+  const unsafePromotion = parsed.data.candidates.some((candidate) => {
+    const current = base.candidates.find((item) =>
+      item.provider === candidate.provider && item.modelEnv === candidate.modelEnv
+    );
+    return candidate.productionApproved && !current?.productionApproved &&
+      !(candidate.provider === "nvidia" && process.env.NVIDIA_PRODUCTION_APPROVED === "true");
+  });
+  if (unsafePromotion) {
+    return NextResponse.json({
+      error: "Provider production approval requires the server-side licensing gate."
+    }, { status: 409 });
+  }
   return NextResponse.json({
     data: await createModelRouteRevision(parsed.data.route, {
       purpose: base.purpose,

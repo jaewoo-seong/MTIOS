@@ -4,8 +4,10 @@ import { useCallback, useEffect, useState } from "react";
 import { Database, Loader2, Plus } from "lucide-react";
 import type { ClientDatabase, ClientRecord } from "@/lib/domain";
 import { PromptDialog } from "@/components/ui/dialogs";
+import { useI18n } from "@/lib/i18n";
 
 export function ClientDataView({ onError }: { onError: (message: string) => void }) {
+  const { formatNumber, t } = useI18n();
   const [databases, setDatabases] = useState<ClientDatabase[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [records, setRecords] = useState<ClientRecord[]>([]);
@@ -53,7 +55,7 @@ export function ClientDataView({ onError }: { onError: (message: string) => void
   }
 
   if (loading) {
-    return <div className="loading-state"><Loader2 size={20} className="spin" /><span>Loading client data</span></div>;
+    return <div className="loading-state"><Loader2 size={20} className="spin" /><span>{t("Loading client data")}</span></div>;
   }
 
   if (databases.length === 0) {
@@ -61,15 +63,15 @@ export function ClientDataView({ onError }: { onError: (message: string) => void
       <>
         <div className="empty-module">
           <div className="empty-icon"><Database size={22} aria-hidden /></div>
-          <h2>No client databases</h2>
-          <p>Create a database. Record changes enter through approved project proposals.</p>
-          <button className="primary" onClick={() => setCreating(true)}><Plus size={14} aria-hidden /> Create database</button>
+          <h2>{t("No client databases")}</h2>
+          <p>{t("Create a database. Record changes enter through approved project proposals.")}</p>
+          <button className="primary" onClick={() => setCreating(true)}><Plus size={14} aria-hidden /> {t("Create database")}</button>
         </div>
         {creating && (
           <PromptDialog
-            title="Create client database"
-            label="Database name"
-            placeholder="Korean medical device manufacturers"
+            title={t("Create client database")}
+            label={t("Database name")}
+            placeholder={t("Korean medical device manufacturers")}
             onSubmit={createDatabase}
             onCancel={() => setCreating(false)}
           />
@@ -85,8 +87,8 @@ export function ClientDataView({ onError }: { onError: (message: string) => void
     <div className="documents-layout">
       <aside className="document-folders">
         <div className="list-heading">
-          <span>Databases</span>
-          <button onClick={() => setCreating(true)} aria-label="Create database" title="Create database">
+          <span>{t("Databases")}</span>
+          <button onClick={() => setCreating(true)} aria-label={t("Create database")} title={t("Create database")}>
             <Plus size={14} />
           </button>
         </div>
@@ -105,17 +107,17 @@ export function ClientDataView({ onError }: { onError: (message: string) => void
 
       <section className="surface document-drop">
         <div className="surface-header">
-          <h2>{active?.name ?? "Records"}</h2>
+          <h2>{active?.name ?? t("Records")}</h2>
           <div className="surface-tools">
-            <span>{records.length.toLocaleString()} {records.length === 1 ? "record" : "records"}</span>
-            <span>Changes require project approval</span>
+            <span>{t(records.length === 1 ? "{count} record" : "{count} records", { count: formatNumber(records.length) })}</span>
+            <span>{t("Changes require project approval")}</span>
           </div>
         </div>
 
         {records.length === 0 ? (
           <div className="document-dropzone">
-            <strong>No records yet</strong>
-            <p>Approve a client-data proposal from a project workspace to add records.</p>
+            <strong>{t("No records yet")}</strong>
+            <p>{t("Approve a client-data proposal from a project workspace to add records.")}</p>
           </div>
         ) : (
           <div className="table-scroll">
@@ -139,9 +141,9 @@ export function ClientDataView({ onError }: { onError: (message: string) => void
 
       {creating && (
         <PromptDialog
-          title="Create client database"
-          label="Database name"
-          placeholder="Korean medical device manufacturers"
+          title={t("Create client database")}
+          label={t("Database name")}
+          placeholder={t("Korean medical device manufacturers")}
           onSubmit={createDatabase}
           onCancel={() => setCreating(false)}
         />

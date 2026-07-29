@@ -10,6 +10,7 @@ const updateProjectSchema = z.object({
   scope: z.string().trim().max(3000).optional(),
   constraints: z.array(z.string().trim().min(1).max(500)).optional(),
   budgetCents: z.number().int().nonnegative().nullable().optional(),
+  budgetCurrency: z.enum(["USD", "KRW"]).optional(),
   reviewGates: z.array(z.string().trim().min(1).max(160)).optional(),
   outputRequirements: z.array(z.string().trim().min(1).max(300)).optional(),
   outputLanguage: z.enum(["en", "ko", "bilingual"]).optional(),

@@ -35,6 +35,7 @@ import { KnowledgeView } from "@/components/knowledge-view";
 import { LiveActivity } from "@/components/live-activity";
 import { SearchPalette } from "@/components/search-palette";
 import { Modal } from "@/components/ui/modal";
+import { useI18n, type RegionalPreferences } from "@/lib/i18n";
 
 type PageId = "agent" | "projects" | "documents" | "data" | "knowledge" | "settings";
 type ProjectDetail = Project & {
@@ -52,15 +53,6 @@ const navItems: Array<{ id: PageId; label: string; icon: typeof Bot }> = [
   { id: "knowledge", label: "Knowledge Base", icon: BookOpen },
   { id: "settings", label: "Settings", icon: Settings }
 ];
-
-const koreanLabels: Record<PageId, string> = {
-  agent: "총괄 에이전트",
-  projects: "프로젝트",
-  documents: "문서",
-  data: "고객 및 데이터",
-  knowledge: "지식 베이스",
-  settings: "설정"
-};
 
 const pageCopy: Record<PageId, { title: string; subtitle: string; command: string; actions: string[] }> = {
   agent: {
@@ -114,6 +106,7 @@ async function api<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 export function BusinessOS() {
+  const { t } = useI18n();
   const [page, setPage] = useState<PageId>("agent");
   const [projects, setProjects] = useState<Project[]>([]);
   const [reports, setReports] = useState<Report[]>([]);
@@ -128,16 +121,16 @@ export function BusinessOS() {
   const [pendingCommand, setPendingCommand] = useState<ExecutiveCommand | null>(null);
   const [commandBusy, setCommandBusy] = useState(false);
   const [agendaWorkType, setAgendaWorkType] = useState<AgendaWorkType>("custom");
-  const [locale, setLocale] = useState<"en" | "ko">("en");
 
   /** Errors accumulate so a failed batch reports every failure, not just the last. */
   const pushError = useCallback((message: string) => {
+    const localized = t(message);
     setErrors((current) =>
-      current.some((entry) => entry.message === message)
+      current.some((entry) => entry.message === localized)
         ? current
-        : [...current, { id: Date.now() + Math.random(), message }].slice(-4)
+        : [...current, { id: Date.now() + Math.random(), message: localized }].slice(-4)
     );
-  }, []);
+  }, [t]);
   const dismissError = useCallback((id: number) => {
     setErrors((current) => current.filter((entry) => entry.id !== id));
   }, []);
@@ -154,12 +147,7 @@ export function BusinessOS() {
   }, []);
 
   useEffect(() => {
-    Promise.all([
-      loadProjects(),
-      loadReports(),
-      api<{ data: { locale: "en" | "ko" } }>("/api/v1/settings/preferences")
-        .then((payload) => setLocale(payload.data.locale))
-    ])
+    Promise.all([loadProjects(), loadReports()])
       .catch((reason: Error) => pushError(reason.message))
       .finally(() => setLoading(false));
   }, [loadProjects, loadReports, pushError]);
@@ -276,7 +264,7 @@ export function BusinessOS() {
           <div className="brand-mark">MTI</div>
           <div>
             <strong>MTI Korea</strong>
-            <span>Business Operating System</span>
+            <span>{t("Business Operating System")}</span>
           </div>
         </div>
         <nav>
@@ -291,7 +279,7 @@ export function BusinessOS() {
                 onClick={() => setPage(item.id)}
               >
                 <Icon size={16} aria-hidden />
-                <span>{locale === "ko" ? koreanLabels[item.id] : item.label}</span>
+                <span>{t(item.label)}</span>
                 {count !== undefined && count > 0 && <span className="nav-count">{count}</span>}
               </button>
             );
@@ -301,7 +289,7 @@ export function BusinessOS() {
           <span className="live-dot" />
           <div>
             <strong>MTI Korea</strong>
-            <span>Single workspace</span>
+            <span>{t("Single workspace")}</span>
           </div>
         </div>
       </aside>
@@ -309,15 +297,15 @@ export function BusinessOS() {
       <main className="main">
         <header className="topbar">
           <div>
-            <h1>{locale === "ko" ? koreanLabels[page] : pageCopy[page].title}</h1>
-            <p>{pageCopy[page].subtitle}</p>
+            <h1>{t(pageCopy[page].title)}</h1>
+            <p>{t(pageCopy[page].subtitle)}</p>
           </div>
           <div className="topbar-actions">
             <button className="search-trigger" onClick={() => setSearchOpen(true)}>
-              <Search size={15} aria-hidden /> {locale === "ko" ? "검색" : "Search"}
+              <Search size={15} aria-hidden /> {t("Search")}
               <kbd>⌘K</kbd>
             </button>
-            <button className="primary" onClick={() => setCreateOpen(true)}><Plus size={15} aria-hidden /> {locale === "ko" ? "프로젝트 만들기" : "Create project"}</button>
+            <button className="primary" onClick={() => setCreateOpen(true)}><Plus size={15} aria-hidden /> {t("Create project")}</button>
           </div>
         </header>
 
@@ -328,7 +316,7 @@ export function BusinessOS() {
                 <div className="error-banner" role="alert" key={entry.id}>
                   <CircleAlert size={15} aria-hidden />
                   {entry.message}
-                  <button onClick={() => dismissError(entry.id)} aria-label="Dismiss error"><X size={14} aria-hidden /></button>
+                  <button onClick={() => dismissError(entry.id)} aria-label={t("Dismiss error")}><X size={14} aria-hidden /></button>
                 </div>
               ))}
             </div>
@@ -366,7 +354,7 @@ export function BusinessOS() {
               )}
               {page === "data" && <ClientDataView onError={pushError} />}
               {page === "knowledge" && <KnowledgeView onError={pushError} />}
-              {page === "settings" && <SettingsView onError={pushError} onLocaleChange={setLocale} />}
+              {page === "settings" && <SettingsView onError={pushError} />}
             </>
           )}
         </section>
@@ -425,7 +413,8 @@ export function BusinessOS() {
 }
 
 function LoadingState() {
-  return <div className="loading-state"><Loader2 size={20} className="spin" /><span>Loading workspace</span></div>;
+  const { t } = useI18n();
+  return <div className="loading-state"><Loader2 size={20} className="spin" /><span>{t("Loading workspace")}</span></div>;
 }
 
 function AgentView({ counts, hasProjects, onCreate }: {
@@ -433,31 +422,32 @@ function AgentView({ counts, hasProjects, onCreate }: {
   hasProjects: boolean;
   onCreate: () => void;
 }) {
+  const { t } = useI18n();
   return (
     <div className="agent-view">
       <div className="metrics">
-        <Metric label="Active projects" value={counts.active} note="In flight" />
-        <Metric label="Working outputs" value={counts.workingReports} note="Drafts in progress" attention />
-        <Metric label="Saved reports" value={counts.savedReports} note="Released" />
-        <Metric label="Archived projects" value={counts.archived} note="Closed" />
+        <Metric label={t("Active projects")} value={counts.active} note={t("In flight")} />
+        <Metric label={t("Working outputs")} value={counts.workingReports} note={t("Drafts in progress")} attention />
+        <Metric label={t("Saved reports")} value={counts.savedReports} note={t("Released")} />
+        <Metric label={t("Archived projects")} value={counts.archived} note={t("Closed")} />
       </div>
       {!hasProjects ? (
         <EmptyModule
           icon={Sparkles}
-          title="Start with a project"
-          text="Projects give the Executive Agent durable context, constraints, agendas, and review gates."
-          action="Create project"
+          title={t("Start with a project")}
+          text={t("Projects give the Executive Agent durable context, constraints, agendas, and review gates.")}
+          action={t("Create project")}
           onAction={onCreate}
         />
       ) : (
         <div className="surface-grid">
           <section className="surface">
-            <div className="surface-header"><h2>Portfolio attention</h2></div>
-            <div className="empty-inline">No blockers or decisions require attention.</div>
+            <div className="surface-header"><h2>{t("Portfolio attention")}</h2></div>
+            <div className="empty-inline">{t("No blockers or decisions require attention.")}</div>
           </section>
           <section className="surface">
-            <div className="surface-header"><h2>Agent allocation</h2></div>
-            <div className="empty-inline">No worker runs are active.</div>
+            <div className="surface-header"><h2>{t("Agent allocation")}</h2></div>
+            <div className="empty-inline">{t("No worker runs are active.")}</div>
           </section>
         </div>
       )}
@@ -471,13 +461,14 @@ function Metric({ label, value, note, attention = false }: {
   note?: string;
   attention?: boolean;
 }) {
+  const { formatNumber, t } = useI18n();
   return (
     <div className={attention && value > 0 ? "metric attention" : "metric"}>
       <span>{label}</span>
-      <strong>{value.toLocaleString()}</strong>
+      <strong>{formatNumber(value)}</strong>
       {note && (
         <span className="metric-note">
-          {attention && value > 0 && <span className="pill warn">needs you</span>}
+          {attention && value > 0 && <span className="pill warn">{t("needs you")}</span>}
           {note}
         </span>
       )}
@@ -494,13 +485,14 @@ function ProjectsView({ projects, project, selectedId, onSelect, onCreate, onErr
   onError: (message: string) => void;
   onOpenDocument: (documentId: string) => void;
 }) {
+  const { formatCurrency, formatNumber, t } = useI18n();
   if (projects.length === 0) {
-    return <EmptyModule icon={FolderKanban} title="No projects" text="Create a project to establish context, constraints, agendas, and output requirements." action="Create project" onAction={onCreate} />;
+    return <EmptyModule icon={FolderKanban} title={t("No projects")} text={t("Create a project to establish context, constraints, agendas, and output requirements.")} action={t("Create project")} onAction={onCreate} />;
   }
   return (
     <div className="project-layout">
       <aside className="project-list">
-        <div className="list-heading"><span>Projects</span><button onClick={onCreate}><Plus size={14} /></button></div>
+        <div className="list-heading"><span>{t("Projects")}</span><button onClick={onCreate}><Plus size={14} /></button></div>
         {projects.map((item) => (
           <button key={item.id} className={selectedId === item.id ? "project-row selected" : "project-row"} onClick={() => onSelect(item.id)}>
             <strong>{item.name}</strong>
@@ -511,18 +503,18 @@ function ProjectsView({ projects, project, selectedId, onSelect, onCreate, onErr
       {project && (
         <div className="project-center">
           <section className="project-title">
-            <div><span className="eyebrow">Project command center</span><h2>{project.name}</h2><p>{project.objective}</p></div>
+            <div><span className="eyebrow">{t("Project command center")}</span><h2>{project.name}</h2><p>{project.objective}</p></div>
             <span className={`pill ${project.status === "active" ? "good" : project.status === "archived" ? "" : "warn"}`}>
               {project.status}
             </span>
           </section>
           <div className="project-context">
-            <ContextBlock label="Context" value={project.context} />
-            <ContextBlock label="Scope" value={project.scope} />
+            <ContextBlock label={t("Context")} value={project.context} />
+            <ContextBlock label={t("Scope")} value={project.scope} />
             <div>
-              <span>Constraints</span>
+              <span>{t("Constraints")}</span>
               {project.constraints.length === 0 ? (
-                <p>Not set</p>
+                <p>{t("Not set")}</p>
               ) : (
                 <ul className="constraint-list">
                   {project.constraints.map((constraint) => <li key={constraint}>{constraint}</li>)}
@@ -530,25 +522,25 @@ function ProjectsView({ projects, project, selectedId, onSelect, onCreate, onErr
               )}
             </div>
             <div>
-              <span>Budget</span>
+              <span>{t("Budget")}</span>
               {project.budgetCents === null
-                ? <p>Not set</p>
-                : <span className="budget-figure">{formatMoney(project.budgetCents)}</span>}
+                ? <p>{t("Not set")}</p>
+                : <span className="budget-figure">{formatCurrency(project.budgetCents, project.budgetCurrency)}</span>}
             </div>
             <div>
-              <span>Review gates</span>
-              <p>{project.reviewGates.length > 0 ? project.reviewGates.join(" · ") : "Not set"}</p>
+              <span>{t("Review gates")}</span>
+              <p>{project.reviewGates.length > 0 ? project.reviewGates.join(" · ") : t("Not set")}</p>
             </div>
             <div>
-              <span>Output requirements</span>
-              <p>{project.outputRequirements.length > 0 ? project.outputRequirements.join(" · ") : "Not set"}</p>
+              <span>{t("Output requirements")}</span>
+              <p>{project.outputRequirements.length > 0 ? project.outputRequirements.join(" · ") : t("Not set")}</p>
             </div>
           </div>
           <div className="project-columns">
             <section className="surface agenda-surface">
-              <div className="surface-header"><h2>Agenda lifecycle</h2><span>{project.agendas.length}</span></div>
+              <div className="surface-header"><h2>{t("Agenda lifecycle")}</h2><span>{formatNumber(project.agendas.length)}</span></div>
               {project.agendas.length === 0 ? (
-                <div className="empty-inline">No agendas yet. Use Executive Command to add the first instruction.</div>
+                <div className="empty-inline">{t("No agendas yet. Use Executive Command to add the first instruction.")}</div>
               ) : (
                 <div className="agenda-list">
                   {project.agendas.map((agenda) => (
@@ -560,14 +552,14 @@ function ProjectsView({ projects, project, selectedId, onSelect, onCreate, onErr
             <LiveActivity projectId={project.id} />
           </div>
           <div className="project-columns">
-            <ProjectRegister title="Milestones" items={project.milestones.map((item) => item.title)} />
+            <ProjectRegister title={t("Milestones")} items={project.milestones.map((item) => item.title)} />
             <ProjectRegister
-              title="Decisions, assumptions, and questions"
+              title={t("Decisions, assumptions, and questions")}
               items={project.records.map((item) => `${item.kind}: ${item.content}`)}
             />
           </div>
           <ProjectRegister
-            title="Deliverables"
+            title={t("Deliverables")}
             items={project.deliverables.map((item) => `${item.title} · ${item.status}`)}
           />
           <ClientChangeReview projectId={project.id} onError={onError} />
@@ -583,6 +575,7 @@ function ProjectsView({ projects, project, selectedId, onSelect, onCreate, onErr
  * The full instruction is available on expand instead.
  */
 function AgendaRow({ agenda }: { agenda: Agenda }) {
+  const { t } = useI18n();
   const [expanded, setExpanded] = useState(false);
   const truncated = agenda.instruction.trim() !== agenda.title.trim();
 
@@ -596,22 +589,23 @@ function AgendaRow({ agenda }: { agenda: Agenda }) {
       <span className={`agenda-dot ${agenda.status}`} />
       <div>
         <strong>{agenda.title}</strong>
-        <span className="agenda-type">{agenda.workType.replace("_", " ")}</span>
+        <span className="agenda-type">{t(agenda.workType.replace("_", " "))}</span>
         {expanded && <p className="agenda-instruction">{agenda.instruction}</p>}
       </div>
       <span className={`pill ${agenda.status === "completed" ? "good" : agenda.status === "blocked" ? "crit" : agenda.status === "review" ? "warn" : ""}`}>
-        {agenda.status}
+        {t(agenda.status)}
       </span>
     </button>
   );
 }
 
 function ProjectRegister({ title, items }: { title: string; items: string[] }) {
+  const { formatNumber, t } = useI18n();
   return (
     <section className="surface">
-      <div className="surface-header"><h2>{title}</h2><span>{items.length}</span></div>
+      <div className="surface-header"><h2>{title}</h2><span>{formatNumber(items.length)}</span></div>
       {items.length === 0
-        ? <div className="empty-inline">Nothing recorded yet.</div>
+        ? <div className="empty-inline">{t("Nothing recorded yet.")}</div>
         : <ul className="constraint-list">{items.map((item) => <li key={item}>{item}</li>)}</ul>}
     </section>
   );
@@ -622,6 +616,7 @@ function ProjectFiles({ projectId, onOpenDocument }: {
   projectId: string;
   onOpenDocument: (documentId: string) => void;
 }) {
+  const { formatNumber, t } = useI18n();
   const [files, setFiles] = useState<WorkspaceDocument[] | null>(null);
 
   useEffect(() => {
@@ -638,14 +633,14 @@ function ProjectFiles({ projectId, onOpenDocument }: {
   return (
     <section className="surface">
       <div className="surface-header">
-        <h2>Project files</h2>
-        <span>{files === null ? "…" : `${files.length} attached`}</span>
+        <h2>{t("Project files")}</h2>
+        <span>{files === null ? "…" : t("{count} attached", { count: formatNumber(files.length) })}</span>
       </div>
       {files === null ? (
-        <div className="empty-inline">Loading files…</div>
+        <div className="empty-inline">{t("Loading files…")}</div>
       ) : files.length === 0 ? (
         <div className="empty-inline">
-          No files attached. Open a document and set its project to ground the agent in real BOMs and quotations.
+          {t("No files attached. Open a document and set its project to ground the agent in real BOMs and quotations.")}
         </div>
       ) : (
         <ul className="document-list">
@@ -656,7 +651,7 @@ function ProjectFiles({ projectId, onOpenDocument }: {
                   <span className={`kind-badge ${file.sourceKind}`}>{file.sourceKind}</span>
                   <span className="document-meta">
                     <strong>{file.title}</strong>
-                    <span>{file.filename} · {file.wordCount.toLocaleString()} words</span>
+                    <span>{file.filename} · {t("{count} words", { count: formatNumber(file.wordCount) })}</span>
                   </span>
                 </button>
               </div>
@@ -669,53 +664,42 @@ function ProjectFiles({ projectId, onOpenDocument }: {
 }
 
 function ContextBlock({ label, value }: { label: string; value: string }) {
-  return <div><span>{label}</span><p>{value || "Not set"}</p></div>;
+  const { t } = useI18n();
+  return <div><span>{label}</span><p>{value || t("Not set")}</p></div>;
 }
 
-function SettingsView({ onError, onLocaleChange }: {
-  onError: (message: string) => void;
-  onLocaleChange: (locale: "en" | "ko") => void;
-}) {
+function SettingsView({ onError }: { onError: (message: string) => void }) {
+  const { t } = useI18n();
   return (
     <div className="settings-grid">
-      <PreferenceSettings onError={onError} onLocaleChange={onLocaleChange} />
+      <PreferenceSettings onError={onError} />
       <ModelSettings onError={onError} />
       <McpSettings onError={onError} />
-      <section className="surface"><div className="surface-header"><h2>Review policy</h2></div><Setting label="External sends" value="Approval required" /><Setting label="Destructive writes" value="Approval required" /><Setting label="High-cost actions" value="Approval required" /></section>
+      <section className="surface"><div className="surface-header"><h2>{t("Review policy")}</h2></div><Setting label={t("External sends")} value={t("Approval required")} /><Setting label={t("Destructive writes")} value={t("Approval required")} /><Setting label={t("High-cost actions")} value={t("Approval required")} /></section>
       <GmailSettings onError={onError} />
     </div>
   );
 }
 
-type Preferences = {
-  locale: "en" | "ko";
-  timezone: string;
-  dateFormat: "short" | "medium" | "long";
-  numberFormat: "locale";
-  currency: "USD" | "KRW";
-};
-
-function PreferenceSettings({ onError, onLocaleChange }: {
-  onError: (message: string) => void;
-  onLocaleChange: (locale: "en" | "ko") => void;
-}) {
-  const [value, setValue] = useState<Preferences | null>(null);
+function PreferenceSettings({ onError }: { onError: (message: string) => void }) {
+  const { preferences, setPreferences, t } = useI18n();
+  const [value, setValue] = useState<RegionalPreferences>(preferences);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
-    api<{ data: Preferences }>("/api/v1/settings/preferences")
+    api<{ data: RegionalPreferences }>("/api/v1/settings/preferences")
       .then((payload) => setValue(payload.data))
       .catch((error: Error) => onError(error.message));
   }, [onError]);
+  useEffect(() => setValue(preferences), [preferences]);
   async function save() {
     if (!value) return;
     setBusy(true);
     try {
-      const payload = await api<{ data: Preferences }>("/api/v1/settings/preferences", {
+      const payload = await api<{ data: RegionalPreferences }>("/api/v1/settings/preferences", {
         method: "PATCH", body: JSON.stringify(value)
       });
       setValue(payload.data);
-      onLocaleChange(payload.data.locale);
-      document.documentElement.lang = payload.data.locale;
+      setPreferences(payload.data);
     } catch (error) {
       onError(error instanceof Error ? error.message : "Preferences could not be saved.");
     } finally {
@@ -724,16 +708,14 @@ function PreferenceSettings({ onError, onLocaleChange }: {
   }
   return (
     <section className="surface settings-wide">
-      <div className="surface-header"><h2>Language & regional</h2></div>
-      {!value ? <div className="empty-inline">Loading preferences…</div> : (
-        <div className="settings-form">
-          <label>Interface language<select value={value.locale} onChange={(event) => setValue({ ...value, locale: event.target.value as Preferences["locale"] })}><option value="en">English</option><option value="ko">한국어</option></select></label>
-          <label>Timezone<input value={value.timezone} onChange={(event) => setValue({ ...value, timezone: event.target.value })} /></label>
-          <label>Date format<select value={value.dateFormat} onChange={(event) => setValue({ ...value, dateFormat: event.target.value as Preferences["dateFormat"] })}><option value="short">Short</option><option value="medium">Medium</option><option value="long">Long</option></select></label>
-          <label>Currency<select value={value.currency} onChange={(event) => setValue({ ...value, currency: event.target.value as Preferences["currency"] })}><option value="USD">USD</option><option value="KRW">KRW</option></select></label>
-          <button className="primary" onClick={() => void save()} disabled={busy}>{busy && <Loader2 size={14} className="spin" />}Save preferences</button>
-        </div>
-      )}
+      <div className="surface-header"><h2>{t("Language & regional")}</h2></div>
+      <div className="settings-form">
+        <label>{t("Interface language")}<select value={value.locale} onChange={(event) => setValue({ ...value, locale: event.target.value as RegionalPreferences["locale"] })}><option value="en">English</option><option value="ko">한국어</option></select></label>
+        <label>{t("Timezone")}<input value={value.timezone} onChange={(event) => setValue({ ...value, timezone: event.target.value })} /></label>
+        <label>{t("Date format")}<select value={value.dateFormat} onChange={(event) => setValue({ ...value, dateFormat: event.target.value as RegionalPreferences["dateFormat"] })}><option value="short">{t("Short")}</option><option value="medium">{t("Medium")}</option><option value="long">{t("Long")}</option></select></label>
+        <label>{t("Currency")}<select value={value.currency} onChange={(event) => setValue({ ...value, currency: event.target.value as RegionalPreferences["currency"] })}><option value="USD">USD</option><option value="KRW">KRW</option></select></label>
+        <button className="primary" onClick={() => void save()} disabled={busy}>{busy && <Loader2 size={14} className="spin" />}{t("Save preferences")}</button>
+      </div>
     </section>
   );
 }
@@ -751,10 +733,21 @@ type ModelSettingsPayload = {
 };
 
 function ModelSettings({ onError }: { onError: (message: string) => void }) {
+  const { t } = useI18n();
   const [value, setValue] = useState<ModelSettingsPayload | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [drafts, setDrafts] = useState<Record<string, { maxCostMicros: number; structuredOutput: boolean }>>({});
   const lastSuccessful = value?.recentCalls.find((call) => !call.error);
-  const load = useCallback(() => api<ModelSettingsPayload>("/api/v1/settings/models").then(setValue), []);
+  const load = useCallback(() => api<ModelSettingsPayload>("/api/v1/settings/models").then((payload) => {
+    setValue(payload);
+    setDrafts((current) => Object.fromEntries(payload.routes.map((route) => [
+      route.route,
+      current[route.route] ?? {
+        maxCostMicros: route.maxCostMicros,
+        structuredOutput: route.structuredOutput
+      }
+    ])));
+  }), []);
   useEffect(() => { load().catch((error: Error) => onError(error.message)); }, [load, onError]);
   async function stage(route: ModelSettingsPayload["routes"][number]) {
     setBusy(route.route);
@@ -763,8 +756,8 @@ function ModelSettings({ onError }: { onError: (message: string) => void }) {
         method: "POST",
         body: JSON.stringify({
           route: route.route,
-          maxCostMicros: route.maxCostMicros,
-          structuredOutput: route.structuredOutput,
+          maxCostMicros: drafts[route.route]?.maxCostMicros ?? route.maxCostMicros,
+          structuredOutput: drafts[route.route]?.structuredOutput ?? route.structuredOutput,
           candidates: route.candidates.map(({ provider, modelEnv, pricingClass, productionApproved, licensingStatus }) => ({
             provider, modelEnv, pricingClass, productionApproved, licensingStatus
           }))
@@ -792,32 +785,63 @@ function ModelSettings({ onError }: { onError: (message: string) => void }) {
   }
   return (
     <section className="surface settings-wide">
-      <div className="surface-header"><h2>Model routing</h2><span>{value ? `${value.gateway} · ${value.environment} · ${value.health}` : "Loading…"}</span></div>
-      {!value ? <div className="empty-inline">Loading model routes…</div> : (
+      <div className="surface-header"><h2>{t("Model routing")}</h2><span>{value ? `${value.gateway} · ${value.environment} · ${value.health}` : t("Loading…")}</span></div>
+      {!value ? <div className="empty-inline">{t("Loading model routes…")}</div> : (
         <div className="settings-table" role="table">
           {value.routes.map((route) => (
             <div className="model-route-row" role="row" key={route.route}>
-              <div><strong>{route.route}</strong><span>{route.purpose} · limit ${(route.maxCostMicros / 1_000_000).toFixed(2)}</span></div>
+              <div><strong>{route.route}</strong><span>{t(route.purpose)} · {t("limit")} ${(route.maxCostMicros / 1_000_000).toFixed(2)}</span></div>
               <div>
-                {route.candidates.map((candidate) => <span className={candidate.enabled ? "pill good" : "pill warn"} key={`${candidate.order}-${candidate.provider}`}>{candidate.order}. {candidate.provider} · {candidate.model} · {candidate.licensingStatus}</span>)}
-                <button className="secondary" disabled={busy !== null} onClick={() => void stage(route)}>Stage revision</button>
+                {route.candidates.map((candidate) => <span className={candidate.enabled ? "pill good" : "pill warn"} key={`${candidate.order}-${candidate.provider}`}>{candidate.order}. {candidate.provider} · {candidate.model} · {t(candidate.licensingStatus)}</span>)}
+                <label className="model-route-control">
+                  {t("Cost limit")}
+                  <input
+                    type="number"
+                    min="0.001"
+                    max="1"
+                    step="0.001"
+                    value={(drafts[route.route]?.maxCostMicros ?? route.maxCostMicros) / 1_000_000}
+                    onChange={(event) => setDrafts((current) => ({
+                      ...current,
+                      [route.route]: {
+                        maxCostMicros: Math.round(Number(event.target.value) * 1_000_000),
+                        structuredOutput: current[route.route]?.structuredOutput ?? route.structuredOutput
+                      }
+                    }))}
+                  />
+                </label>
+                <label className="model-route-check">
+                  <input
+                    type="checkbox"
+                    checked={drafts[route.route]?.structuredOutput ?? route.structuredOutput}
+                    onChange={(event) => setDrafts((current) => ({
+                      ...current,
+                      [route.route]: {
+                        maxCostMicros: current[route.route]?.maxCostMicros ?? route.maxCostMicros,
+                        structuredOutput: event.target.checked
+                      }
+                    }))}
+                  />
+                  {t("Structured output")}
+                </label>
+                <button className="secondary" disabled={busy !== null} onClick={() => void stage(route)}>{t("Stage revision")}</button>
               </div>
             </div>
           ))}
           {value.revisions.map((revision) => (
             <div className="model-route-row" key={revision.id}>
-              <div><strong>{revision.route} v{revision.version}</strong><span>{revision.status} · test {revision.testStatus}</span></div>
+              <div><strong>{revision.route} v{revision.version}</strong><span>{t(revision.status)} · {t("test")} {t(revision.testStatus)}</span></div>
               <div>
-                {revision.testStatus !== "passed" && <button className="secondary" disabled={busy !== null} onClick={() => void transition(revision.id, "test")}>Test</button>}
-                {revision.testStatus === "passed" && revision.status === "draft" && <button className="secondary" disabled={busy !== null} onClick={() => void transition(revision.id, "approve")}>Approve</button>}
-                {revision.status === "approved" && <button className="primary" disabled={busy !== null} onClick={() => void transition(revision.id, "activate")}>Activate</button>}
-                {revision.status === "active" && <button className="secondary" disabled={busy !== null} onClick={() => void transition(revision.id, "rollback")}>Rollback</button>}
+                {revision.testStatus !== "passed" && <button className="secondary" disabled={busy !== null} onClick={() => void transition(revision.id, "test")}>{t("Test")}</button>}
+                {revision.testStatus === "passed" && revision.status === "draft" && <button className="secondary" disabled={busy !== null} onClick={() => void transition(revision.id, "approve")}>{t("Approve")}</button>}
+                {revision.status === "approved" && <button className="primary" disabled={busy !== null} onClick={() => void transition(revision.id, "activate")}>{t("Activate")}</button>}
+                {revision.status === "active" && <button className="secondary" disabled={busy !== null} onClick={() => void transition(revision.id, "rollback")}>{t("Rollback")}</button>}
               </div>
             </div>
           ))}
           {lastSuccessful && (
             <div className="model-route-row">
-              <div><strong>Last successful model</strong><span>{lastSuccessful.route}</span></div>
+              <div><strong>{t("Last successful model")}</strong><span>{lastSuccessful.route}</span></div>
               <div><span className="pill good">{lastSuccessful.provider ?? "unknown"} · {lastSuccessful.model ?? "unknown"} · {lastSuccessful.latencyMs} ms · ${(lastSuccessful.costMicros / 1_000_000).toFixed(4)}</span></div>
             </div>
           )}
@@ -828,16 +852,32 @@ function ModelSettings({ onError }: { onError: (message: string) => void }) {
 }
 
 function McpSettings({ onError }: { onError: (message: string) => void }) {
+  const { formatDate, formatNumber, t } = useI18n();
   const [tools, setTools] = useState<Array<{ id: string; name: string; riskLevel: string; approvalRequirement: string; active: boolean }>>([]);
+  const [servers, setServers] = useState<Array<{
+    id: string; name: string; transport: string; status: string; healthStatus: string;
+    lastHealthCheckAt: string | null;
+  }>>([]);
   useEffect(() => {
-    api<{ data: typeof tools }>("/api/v1/mcp/tools").then((payload) => setTools(payload.data))
+    Promise.all([
+      api<{ data: typeof tools }>("/api/v1/mcp/tools").then((payload) => setTools(payload.data)),
+      api<{ mcp: { servers: typeof servers } }>("/api/v1/settings/integrations")
+        .then((payload) => setServers(payload.mcp.servers))
+    ])
       .catch((error: Error) => onError(error.message));
   }, [onError]);
   return (
     <section className="surface settings-wide">
-      <div className="surface-header"><h2>MCP tools</h2><span>{tools.length} allowed</span></div>
-      {tools.length === 0 ? <div className="empty-inline">No MCP tools available.</div> : tools.map((tool) => (
-        <Setting key={tool.id} label={tool.name} value={`${tool.riskLevel} · ${tool.approvalRequirement}`} />
+      <div className="surface-header"><h2>{t("MCP tools")}</h2><span>{formatNumber(tools.length)} {t("allowed")}</span></div>
+      {servers.map((server) => (
+        <Setting
+          key={server.id}
+          label={`${server.name} · ${server.transport}`}
+          value={`${t(server.status)} · ${t(server.healthStatus)}${server.lastHealthCheckAt ? ` · ${formatDate(server.lastHealthCheckAt)}` : ""}`}
+        />
+      ))}
+      {tools.length === 0 ? <div className="empty-inline">{t("No MCP tools available.")}</div> : tools.map((tool) => (
+        <Setting key={tool.id} label={tool.name} value={`${t(tool.riskLevel)} · ${t(tool.approvalRequirement)}`} />
       ))}
     </section>
   );
@@ -852,7 +892,9 @@ type GmailConnection = {
 };
 
 function GmailSettings({ onError }: { onError: (message: string) => void }) {
+  const { t } = useI18n();
   const [connections, setConnections] = useState<GmailConnection[]>([]);
+  const [oauthConfigured, setOauthConfigured] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -863,7 +905,11 @@ function GmailSettings({ onError }: { onError: (message: string) => void }) {
   }, []);
 
   useEffect(() => {
-    load().catch((reason: Error) => onError(reason.message));
+    Promise.all([
+      load(),
+      api<{ gmail: { oauthConfigured: boolean } }>("/api/v1/settings/integrations")
+        .then((payload) => setOauthConfigured(payload.gmail.oauthConfigured))
+    ]).catch((reason: Error) => onError(reason.message));
   }, [load, onError]);
 
   async function connect() {
@@ -896,30 +942,33 @@ function GmailSettings({ onError }: { onError: (message: string) => void }) {
   return (
     <section className="surface integration-settings">
       <div className="surface-header">
-        <div><h2>Gmail</h2><span>Read selected threads and create drafts</span></div>
+        <div>
+          <h2>{t("Gmail")}</h2>
+          <span>{t("Read selected threads and create drafts")} · {t(oauthConfigured ? "OAuth configured" : "OAuth not configured")}</span>
+        </div>
         <button className="secondary" onClick={() => void connect()} disabled={busy}>
           {busy ? <Loader2 size={14} className="spin" aria-hidden /> : <Mail size={14} aria-hidden />}
-          Connect
+          {t("Connect")}
         </button>
       </div>
       {connections.length === 0 ? (
-        <div className="empty-inline">No Gmail account connected.</div>
+        <div className="empty-inline">{t("No Gmail account connected.")}</div>
       ) : connections.map((connection) => (
         <div className="integration-row" key={connection.id}>
           <div>
             <strong>{connection.email}</strong>
-            <span>{connection.status} · Gmail read and compose</span>
+            <span>{t(connection.status)} · {t("Gmail read and compose")}</span>
           </div>
           <button
             className="secondary"
             onClick={() => void disconnect(connection.id)}
             disabled={busy || connection.status === "revoked"}
           >
-            Disconnect
+            {t("Disconnect")}
           </button>
         </div>
       ))}
-      <p className="integration-policy">Sending and mailbox deletion are unavailable.</p>
+      <p className="integration-policy">{t("Sending and mailbox deletion are unavailable.")}</p>
     </section>
   );
 }
@@ -961,25 +1010,26 @@ function ExecutiveCommand({
   onAdjust: () => void;
   onWorkTypeChange: (value: AgendaWorkType) => void;
 }) {
+  const { t } = useI18n();
   const config = pageCopy[page];
   return (
     <div className="command-wrap">
       {pending && (
         <div className="clarification">
-          <div><Sparkles size={15} /><strong>Clarify before execution</strong></div>
+          <div><Sparkles size={15} /><strong>{t("Clarify before execution")}</strong></div>
           <p>{pending.clarification}</p>
           <div className="clarification-actions">
-            <button className="primary" onClick={onConfirm} disabled={busy}>Confirm</button>
-            <button className="secondary" onClick={onAdjust}>Adjust instruction</button>
+            <button className="primary" onClick={onConfirm} disabled={busy}>{t("Confirm")}</button>
+            <button className="secondary" onClick={onAdjust}>{t("Adjust instruction")}</button>
           </div>
         </div>
       )}
       <div className="command">
-        <div className="command-head"><span className="live-dot" /><strong>Executive Command</strong><span>{config.title}</span></div>
+        <div className="command-head"><span className="live-dot" /><strong>{t("Executive Command")}</strong><span>{t(config.title)}</span></div>
         <textarea
           value={value}
           onChange={(event) => onChange(event.target.value)}
-          placeholder={disabled ? "Select a project before adding an instruction." : config.command}
+          placeholder={disabled ? t("Select a project before adding an instruction.") : t(config.command)}
           rows={value.split("\n").length > 2 ? 5 : 2}
           disabled={disabled}
           onKeyDown={(event) => {
@@ -990,23 +1040,23 @@ function ExecutiveCommand({
           {page === "projects" && (
             <select
               className="command-select"
-              aria-label="Agenda work type"
+              aria-label={t("Agenda work type")}
               value={workType}
               onChange={(event) => onWorkTypeChange(event.target.value as AgendaWorkType)}
             >
               {AGENDA_TYPES.map((type) => (
-                <option key={type} value={type}>{type.replace("_", " ")}</option>
+                <option key={type} value={type}>{t(type.replace("_", " "))}</option>
               ))}
             </select>
           )}
-          {config.actions.map((action) => <button key={action} className="command-chip" onClick={() => onChange(action)}>{action}</button>)}
+          {config.actions.map((action) => <button key={action} className="command-chip" onClick={() => onChange(action)}>{t(action)}</button>)}
           <div className="spacer" />
           <button
             className="send"
             onClick={onSubmit}
             disabled={disabled || busy || !value.trim()}
-            aria-label={busy ? "Sending instruction" : "Send instruction"}
-            title="Send instruction (⌘↵)"
+            aria-label={busy ? t("Sending instruction") : t("Send instruction")}
+            title={`${t("Send instruction")} (⌘↵)`}
           >
             {busy ? <Loader2 size={15} className="spin" aria-hidden /> : <Send size={15} aria-hidden />}
           </button>
@@ -1017,6 +1067,7 @@ function ExecutiveCommand({
 }
 
 function CreateProjectDialog({ onClose, onCreated }: { onClose: () => void; onCreated: (project: Project) => void }) {
+  const { preferences, t } = useI18n();
   const [form, setForm] = useState({
     name: "", objective: "", context: "", scope: "", constraints: "", budget: "",
     reviewGates: "", outputRequirements: "", outputLanguage: "en"
@@ -1037,7 +1088,10 @@ function CreateProjectDialog({ onClose, onCreated }: { onClose: () => void; onCr
           context: form.context,
           scope: form.scope,
           constraints: form.constraints.split("\n").map((item) => item.trim()).filter(Boolean),
-          budgetCents: form.budget ? Math.round(Number(form.budget) * 100) : null,
+          budgetCents: form.budget
+            ? Math.round(Number(form.budget) * (preferences.currency === "KRW" ? 1 : 100))
+            : null,
+          budgetCurrency: preferences.currency,
           reviewGates: form.reviewGates.split("\n").map((item) => item.trim()).filter(Boolean),
           outputRequirements: form.outputRequirements.split("\n").map((item) => item.trim()).filter(Boolean),
           outputLanguage: form.outputLanguage,
@@ -1061,50 +1115,50 @@ function CreateProjectDialog({ onClose, onCreated }: { onClose: () => void; onCr
       <form onSubmit={submit}>
         <div className="dialog-head">
           <div>
-            <span className="eyebrow">New project</span>
-            <h2 id="create-project-title">Create durable project context</h2>
+            <span className="eyebrow">{t("New project")}</span>
+            <h2 id="create-project-title">{t("Create durable project context")}</h2>
           </div>
-          <button type="button" className="icon-only" onClick={onClose} aria-label="Close dialog">
+          <button type="button" className="icon-only" onClick={onClose} aria-label={t("Close dialog")}>
             <X size={17} aria-hidden />
           </button>
         </div>
         {formError && <div className="field-error" role="alert">{formError}</div>}
         <div className="form-grid">
-          <label>Project name <em aria-hidden>required</em>
+          <label>{t("Project name")} <em aria-hidden>{t("required")}</em>
             <input required minLength={2} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
           </label>
-          <label>Budget (USD)
-            <input type="number" min="0" inputMode="decimal" placeholder="Optional" value={form.budget} onChange={(event) => setForm({ ...form, budget: event.target.value })} />
+          <label>{t("Budget")} ({preferences.currency})
+            <input type="number" min="0" inputMode="decimal" placeholder={t("Optional")} value={form.budget} onChange={(event) => setForm({ ...form, budget: event.target.value })} />
           </label>
-          <label>Output language
+          <label>{t("Output language")}
             <select value={form.outputLanguage} onChange={(event) => setForm({ ...form, outputLanguage: event.target.value })}>
-              <option value="en">English</option>
+              <option value="en">{t("English")}</option>
               <option value="ko">한국어</option>
-              <option value="bilingual">English + 한국어</option>
+              <option value="bilingual">{t("English + Korean")}</option>
             </select>
           </label>
-          <label className="span-2">Objective <em aria-hidden>required</em>
+          <label className="span-2">{t("Objective")} <em aria-hidden>{t("required")}</em>
             <textarea required minLength={10} rows={3} value={form.objective} onChange={(event) => setForm({ ...form, objective: event.target.value })} />
           </label>
-          <label>Context
+          <label>{t("Context")}
             <textarea rows={4} value={form.context} onChange={(event) => setForm({ ...form, context: event.target.value })} />
           </label>
-          <label>Scope
+          <label>{t("Scope")}
             <textarea rows={4} value={form.scope} onChange={(event) => setForm({ ...form, scope: event.target.value })} />
           </label>
-          <label className="span-2">Constraints <span>One per line</span>
+          <label className="span-2">{t("Constraints")} <span>{t("One per line")}</span>
             <textarea rows={4} value={form.constraints} onChange={(event) => setForm({ ...form, constraints: event.target.value })} />
           </label>
-          <label>Review gates <span>One per line</span>
+          <label>{t("Review gates")} <span>{t("One per line")}</span>
             <textarea rows={4} value={form.reviewGates} onChange={(event) => setForm({ ...form, reviewGates: event.target.value })} />
           </label>
-          <label>Output requirements <span>One per line</span>
+          <label>{t("Output requirements")} <span>{t("One per line")}</span>
             <textarea rows={4} value={form.outputRequirements} onChange={(event) => setForm({ ...form, outputRequirements: event.target.value })} />
           </label>
         </div>
         <div className="dialog-actions">
-          <button type="button" className="secondary" onClick={onClose}>Cancel</button>
-          <button className="primary" disabled={busy}>{busy && <Loader2 size={14} className="spin" aria-hidden />}Create project</button>
+          <button type="button" className="secondary" onClick={onClose}>{t("Cancel")}</button>
+          <button className="primary" disabled={busy}>{busy && <Loader2 size={14} className="spin" aria-hidden />}{t("Create project")}</button>
         </div>
       </form>
     </Modal>
@@ -1125,8 +1179,4 @@ function agendaTitle(instruction: string) {
   const cut = candidate.slice(0, 80);
   const boundary = cut.lastIndexOf(" ");
   return `${(boundary > 40 ? cut.slice(0, boundary) : cut).trimEnd()}…`;
-}
-
-function formatMoney(cents: number) {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(cents / 100);
 }

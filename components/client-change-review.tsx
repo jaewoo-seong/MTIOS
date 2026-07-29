@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { Check, Download, Loader2, Pencil, RotateCcw, Search, X } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
+import { useI18n } from "@/lib/i18n";
 
 type ChangeItem = {
   id: string;
@@ -27,6 +28,7 @@ export function ClientChangeReview({ projectId, onError }: {
   projectId: string;
   onError: (message: string) => void;
 }) {
+  const { formatNumber, t } = useI18n();
   const [sets, setSets] = useState<ChangeSet[]>([]);
   const [selected, setSelected] = useState<Record<string, string[]>>({});
   const [busy, setBusy] = useState<string | null>(null);
@@ -128,8 +130,8 @@ export function ClientChangeReview({ projectId, onError }: {
   return (
     <section className="surface change-review">
       <div className="surface-header">
-        <div><h2>Client-data proposals</h2><span>Review exact values before any database write</span></div>
-        <span>{pending.length}</span>
+        <div><h2>{t("Client-data proposals")}</h2><span>{t("Review exact values before any database write")}</span></div>
+        <span>{formatNumber(pending.length)}</span>
       </div>
       <div className="change-set-list">
         {pending.map((set) => (
@@ -140,7 +142,7 @@ export function ClientChangeReview({ projectId, onError }: {
                 {set.reason && <p>{set.reason}</p>}
               </div>
               <span className={`pill ${set.status === "applied" ? "good" : set.status === "conflict" ? "crit" : "warn"}`}>
-                {set.status.replaceAll("_", " ")}
+                {t(set.status.replaceAll("_", " "))}
               </span>
             </header>
             <div className="change-items">
@@ -150,7 +152,7 @@ export function ClientChangeReview({ projectId, onError }: {
                   <div className="change-item" key={item.id}>
                     <input
                       type="checkbox"
-                      aria-label={`Select ${item.operation} proposal`}
+                      aria-label={t("Select {operation} proposal", { operation: t(item.operation) })}
                       checked={checked}
                       disabled={set.status !== "review_required"}
                       onChange={() => setSelected((current) => ({
@@ -160,16 +162,16 @@ export function ClientChangeReview({ projectId, onError }: {
                           : [...(current[set.id] ?? []), item.id]
                       }))}
                     />
-                    <span className="change-operation">{item.operation}</span>
-                    <JsonValues label="Current" value={item.before} />
-                    <JsonValues label="Proposed" value={item.after} />
+                    <span className="change-operation">{t(item.operation)}</span>
+                    <JsonValues label={t("Current")} value={item.before} />
+                    <JsonValues label={t("Proposed")} value={item.after} />
                     <span className="change-confidence">{item.confidence}%</span>
                     {set.status === "review_required" && item.operation !== "delete" && (
                       <button
                         type="button"
                         className="icon-only change-edit"
-                        aria-label="Edit proposed values"
-                        title="Edit proposed values"
+                        aria-label={t("Edit proposed values")}
+                        title={t("Edit proposed values")}
                         onClick={(event) => {
                           event.preventDefault();
                           setEditing({ set, item });
@@ -184,25 +186,25 @@ export function ClientChangeReview({ projectId, onError }: {
             </div>
             <footer>
               <a className="secondary" href={`/api/v1/client-change-sets/${set.id}/export`}>
-                <Download size={14} aria-hidden /> Export
+                <Download size={14} aria-hidden /> {t("Export")}
               </a>
               {set.status === "review_required" && (
                 <>
                   <button className="secondary" disabled={busy === set.id} onClick={() => void decide(set, "needs_research")}>
-                    <Search size={14} aria-hidden /> More research
+                    <Search size={14} aria-hidden /> {t("More research")}
                   </button>
                   <button className="secondary" disabled={busy === set.id} onClick={() => void decide(set, "rejected")}>
-                    <X size={14} aria-hidden /> Reject
+                    <X size={14} aria-hidden /> {t("Reject")}
                   </button>
                   <button className="primary" disabled={busy === set.id || (selected[set.id]?.length ?? 0) === 0} onClick={() => void decide(set, "approved")}>
                     {busy === set.id ? <Loader2 size={14} className="spin" aria-hidden /> : <Check size={14} aria-hidden />}
-                    Approve and apply
+                    {t("Approve and apply")}
                   </button>
                 </>
               )}
               {set.status === "applied" && (
                 <button className="secondary" disabled={busy === set.id} onClick={() => void rollback(set)}>
-                  <RotateCcw size={14} aria-hidden /> Roll back
+                  <RotateCcw size={14} aria-hidden /> {t("Roll back")}
                 </button>
               )}
             </footer>
@@ -222,12 +224,13 @@ export function ClientChangeReview({ projectId, onError }: {
 }
 
 function JsonValues({ label, value }: { label: string; value: Record<string, string> | null }) {
+  const { t } = useI18n();
   return (
     <span className="change-values">
       <small>{label}</small>
       {value
         ? Object.entries(value).map(([key, item]) => <span key={key}><b>{key}</b>{item}</span>)
-        : <span>None</span>}
+        : <span>{t("None")}</span>}
     </span>
   );
 }
@@ -238,6 +241,7 @@ function ProposalEditor({ item, busy, onSave, onClose }: {
   onSave: (value: Record<string, string> | null) => void;
   onClose: () => void;
 }) {
+  const { t } = useI18n();
   const titleId = useId();
   const [value, setValue] = useState(JSON.stringify(item.after, null, 2));
   const [error, setError] = useState("");
@@ -252,22 +256,22 @@ function ProposalEditor({ item, busy, onSave, onClose }: {
             typeof parsed !== "object" ||
             Array.isArray(parsed) ||
             Object.values(parsed).some((entry) => typeof entry !== "string")
-          )) throw new Error("Use a JSON object with string values.");
+          )) throw new Error(t("Use a JSON object with string values."));
           onSave(parsed as Record<string, string> | null);
         } catch (reason) {
-          setError(reason instanceof Error ? reason.message : "Invalid JSON.");
+          setError(reason instanceof Error ? reason.message : t("Invalid JSON."));
         }
       }}>
-        <div className="dialog-head"><h2 id={titleId}>Edit proposed values</h2></div>
+        <div className="dialog-head"><h2 id={titleId}>{t("Edit proposed values")}</h2></div>
         <label className="field">
-          Record JSON
+          {t("Record JSON")}
           <textarea rows={12} value={value} onChange={(event) => setValue(event.target.value)} />
         </label>
         {error && <p className="field-error" role="alert">{error}</p>}
         <div className="dialog-actions">
-          <button type="button" className="secondary" onClick={onClose} disabled={busy}>Cancel</button>
+          <button type="button" className="secondary" onClick={onClose} disabled={busy}>{t("Cancel")}</button>
           <button className="primary" disabled={busy}>
-            {busy && <Loader2 size={14} className="spin" aria-hidden />} Save revision
+            {busy && <Loader2 size={14} className="spin" aria-hidden />} {t("Save revision")}
           </button>
         </div>
       </form>

@@ -542,6 +542,9 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .model-route-row > div:first-child { display: grid; gap: 2px; }
 .model-route-row strong { font-family: var(--mono); font-size: var(--t-meta); overflow-wrap: anywhere; }
 .model-route-row span:not(.pill) { color: var(--ink-mute); font-size: var(--t-meta); }
+.model-route-control { display: flex; align-items: center; gap: var(--sp-1); color: var(--ink-mute); font-size: var(--t-meta); }
+.model-route-control input { width: 72px; height: 28px; padding: 0 var(--sp-2); border: 1px solid var(--line); border-radius: var(--r-md); }
+.model-route-check { display: inline-flex; align-items: center; gap: var(--sp-1); color: var(--ink-mute); font-size: var(--t-meta); white-space: nowrap; }
 .setting { display: flex; justify-content: space-between; gap: var(--sp-4); padding: var(--sp-3) var(--sp-4); border-bottom: 1px solid var(--line); font-size: var(--t-meta); }
 .setting:last-child { border-bottom: 0; }
 .setting span { color: var(--ink-mute); }

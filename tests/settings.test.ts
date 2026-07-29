@@ -40,10 +40,22 @@ describe("workspace settings", () => {
   });
 
   it("supports rollback without deleting revision history", async () => {
-    const revision = await createModelRouteRevision("worker_editing", modelRoutePolicies.worker_editing);
-    await setModelRevisionState(revision.id, "test_passed");
-    await setModelRevisionState(revision.id, "approve");
-    await setModelRevisionState(revision.id, "activate");
-    expect((await setModelRevisionState(revision.id, "rollback")).status).toBe("rolled_back");
+    const first = await createModelRouteRevision("worker_editing", {
+      ...modelRoutePolicies.worker_editing,
+      maxCostMicros: 40_000
+    });
+    await setModelRevisionState(first.id, "test_passed");
+    await setModelRevisionState(first.id, "approve");
+    await setModelRevisionState(first.id, "activate");
+    const second = await createModelRouteRevision("worker_editing", {
+      ...modelRoutePolicies.worker_editing,
+      maxCostMicros: 50_000
+    });
+    await setModelRevisionState(second.id, "test_passed");
+    await setModelRevisionState(second.id, "approve");
+    await setModelRevisionState(second.id, "activate");
+    expect((await getActiveModelPolicy("worker_editing")).maxCostMicros).toBe(50_000);
+    expect((await setModelRevisionState(second.id, "rollback")).status).toBe("rolled_back");
+    expect((await getActiveModelPolicy("worker_editing")).maxCostMicros).toBe(40_000);
   });
 });

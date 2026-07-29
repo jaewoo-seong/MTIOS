@@ -76,6 +76,7 @@ export const projects = pgTable("projects", {
   scope: text("scope").default("").notNull(),
   constraints: jsonb("constraints").$type<string[]>().default([]).notNull(),
   budgetCents: bigint("budget_cents", { mode: "number" }),
+  budgetCurrency: text("budget_currency").default("USD").notNull(),
   permissions: jsonb("permissions").$type<{
     externalSend: "review_required" | "blocked";
     clientDataWrite: "review_required" | "blocked";

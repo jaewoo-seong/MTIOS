@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Radio } from "lucide-react";
+import { useI18n } from "@/lib/i18n";
 
 export interface ActivityEvent {
   id: string;
@@ -25,6 +26,7 @@ const DONE = new Set(["run.completed", "run.cancelled"]);
  * reading back through history is never interrupted.
  */
 export function LiveActivity({ projectId }: { projectId: string }) {
+  const { preferences, t } = useI18n();
   const [events, setEvents] = useState<ActivityEvent[]>([]);
   const [connection, setConnection] = useState<Connection>("connecting");
   const logRef = useRef<HTMLDivElement>(null);
@@ -74,10 +76,10 @@ export function LiveActivity({ projectId }: { projectId: string }) {
   return (
     <section className="surface activity-surface">
       <div className="surface-header">
-        <h2>Live activity</h2>
+        <h2>{t("Live activity")}</h2>
         <span className={`activity-status ${connection}`}>
           <Radio size={11} aria-hidden />
-          {connection === "live" ? "Streaming" : connection === "connecting" ? "Connecting" : connection === "error" ? "Disconnected" : "Idle"}
+          {t(connection === "live" ? "Streaming" : connection === "connecting" ? "Connecting" : connection === "error" ? "Disconnected" : "Idle")}
         </span>
       </div>
       <div
@@ -85,7 +87,7 @@ export function LiveActivity({ projectId }: { projectId: string }) {
         ref={logRef}
         role="log"
         aria-live="polite"
-        aria-label="Live agent activity"
+        aria-label={t("Live agent activity")}
         onScroll={(event) => {
           const node = event.currentTarget;
           pinnedRef.current = node.scrollHeight - node.scrollTop - node.clientHeight < 24;
@@ -94,8 +96,8 @@ export function LiveActivity({ projectId }: { projectId: string }) {
         {events.length === 0 ? (
           <p className="activity-empty">
             {connection === "connecting"
-              ? "Connecting to the activity stream…"
-              : "No agent activity yet. Confirm an instruction to start a run."}
+              ? t("Connecting to the activity stream…")
+              : t("No agent activity yet. Confirm an instruction to start a run.")}
           </p>
         ) : (
           events.map((event) => (
@@ -103,8 +105,8 @@ export function LiveActivity({ projectId }: { projectId: string }) {
               className={`activity-line${ATTENTION.has(event.type) ? " attention" : ""}`}
               key={event.id}
             >
-              <time dateTime={event.createdAt}>{formatTime(event.createdAt)}</time>
-              <span className="activity-type">{shortType(event.type)}</span>
+              <time dateTime={event.createdAt}>{formatTime(event.createdAt, preferences.locale, preferences.timezone)}</time>
+              <span className="activity-type">{t(shortType(event.type))}</span>
               <span className="activity-message">{event.message}</span>
             </div>
           ))
@@ -114,10 +116,13 @@ export function LiveActivity({ projectId }: { projectId: string }) {
   );
 }
 
-function formatTime(iso: string) {
+function formatTime(iso: string, locale: "en" | "ko", timezone: string) {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "--:--:--";
-  return date.toLocaleTimeString("en-GB", { hour12: false });
+  return date.toLocaleTimeString(locale === "ko" ? "ko-KR" : "en-GB", {
+    hour12: false,
+    timeZone: timezone
+  });
 }
 
 function shortType(type: string) {

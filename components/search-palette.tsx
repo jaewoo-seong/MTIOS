@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { BookOpen, Database, FileText, FolderKanban, ListChecks, Loader2, Search } from "lucide-react";
 import type { SearchHit, SearchKind } from "@/lib/domain";
+import { useI18n } from "@/lib/i18n";
 
 const KIND_LABEL: Record<SearchKind, string> = {
   project: "Projects",
@@ -28,6 +29,7 @@ export function SearchPalette({
   onClose: () => void;
   onSelect: (hit: SearchHit) => void;
 }) {
+  const { t } = useI18n();
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<SearchHit[]>([]);
   const [busy, setBusy] = useState(false);
@@ -116,7 +118,7 @@ export function SearchPalette({
       className="search-backdrop"
       onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}
     >
-      <div className="search-panel" role="dialog" aria-modal="true" aria-label="Search workspace">
+      <div className="search-panel" role="dialog" aria-modal="true" aria-label={t("Search workspace")}>
         <div className="search-field">
           {busy ? <Loader2 size={18} className="spin" aria-hidden /> : <Search size={18} aria-hidden />}
           <input
@@ -124,22 +126,22 @@ export function SearchPalette({
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={onKeyDown}
-            placeholder="Search projects, documents, agendas, knowledge…"
-            aria-label="Search query"
+            placeholder={t("Search projects, documents, agendas, knowledge…")}
+            aria-label={t("Search query")}
             autoComplete="off"
             spellCheck={false}
           />
         </div>
 
-        <div className="search-results" ref={listRef} role="listbox" aria-label="Search results">
+        <div className="search-results" ref={listRef} role="listbox" aria-label={t("Search results")}>
           {query.trim().length < 2 ? (
-            <p className="search-empty">Type at least two characters.</p>
+            <p className="search-empty">{t("Type at least two characters.")}</p>
           ) : grouped.flat.length === 0 ? (
-            <p className="search-empty">{busy ? "Searching…" : `No matches for “${query.trim()}”.`}</p>
+            <p className="search-empty">{busy ? t("Searching…") : t("No matches for “{query}”.", { query: query.trim() })}</p>
           ) : (
             grouped.groups.map((group) => (
               <div key={group.kind}>
-                <div className="search-group">{KIND_LABEL[group.kind]}</div>
+                <div className="search-group">{t(KIND_LABEL[group.kind])}</div>
                 {group.items.map((hit) => {
                   const index = grouped.flat.indexOf(hit);
                   const Icon = KIND_ICON[hit.kind];
@@ -166,9 +168,9 @@ export function SearchPalette({
         </div>
 
         <div className="search-foot">
-          <span>↑↓ navigate</span>
-          <span>↵ open</span>
-          <span>esc close</span>
+          <span>{t("↑↓ navigate")}</span>
+          <span>{t("↵ open")}</span>
+          <span>{t("esc close")}</span>
         </div>
       </div>
     </div>

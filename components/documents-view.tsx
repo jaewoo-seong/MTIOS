@@ -17,12 +17,18 @@ import type { DocumentFolder, Project, WorkspaceDocument, WorkspaceDocumentDetai
 import { ConfirmDialog, PromptDialog } from "@/components/ui/dialogs";
 import { Markdown } from "@/components/ui/markdown";
 import { Modal } from "@/components/ui/modal";
+import { useI18n } from "@/lib/i18n";
 
 /** The rich text editor is a large dependency most sessions never open. */
 const DocumentEditor = dynamic(
   () => import("@/components/document-editor").then((module) => module.DocumentEditor),
-  { ssr: false, loading: () => <div className="doc-editor-loading">Preparing editor…</div> }
+  { ssr: false, loading: () => <EditorLoading /> }
 );
+
+function EditorLoading() {
+  const { t } = useI18n();
+  return <div className="doc-editor-loading">{t("Preparing editor…")}</div>;
+}
 
 const UPLOAD_CONCURRENCY = 3;
 const ACCEPT = ".pdf,.docx,.html,.htm,.csv,.tsv,.json,.md,.markdown,.txt";
@@ -53,6 +59,7 @@ export function DocumentsView({
   focusDocumentId?: string | null;
   onFocusHandled?: () => void;
 }) {
+  const { formatNumber, t } = useI18n();
   const [folders, setFolders] = useState<DocumentFolder[]>([]);
   const [documents, setDocuments] = useState<WorkspaceDocument[]>([]);
   const [activeFolderId, setActiveFolderId] = useState<string | null>(null);
@@ -112,10 +119,10 @@ export function DocumentsView({
           const response = await fetch("/api/v1/documents", { method: "POST", body });
           if (!response.ok) {
             const payload = await response.json().catch(() => null);
-            throw new Error(payload?.detail ?? `Could not import ${file.name}.`);
+            throw new Error(payload?.detail ?? t("Could not import {filename}.", { filename: file.name }));
           }
         } catch (reason) {
-          onError(reason instanceof Error ? reason.message : `Could not import ${file.name}.`);
+          onError(reason instanceof Error ? reason.message : t("Could not import {filename}.", { filename: file.name }));
         } finally {
           setUploading((current) => current.filter((name) => name !== file.name));
         }
@@ -132,7 +139,7 @@ export function DocumentsView({
       await Promise.all(workers);
       await refresh().catch((reason: Error) => onError(reason.message));
     },
-    [refresh, onError]
+    [refresh, onError, t]
   );
 
   async function moveDocument(documentId: string, folderId: string) {
@@ -226,7 +233,7 @@ export function DocumentsView({
   }
 
   if (loading) {
-    return <div className="loading-state"><Loader2 size={20} className="spin" /><span>Loading documents</span></div>;
+    return <div className="loading-state"><Loader2 size={20} className="spin" /><span>{t("Loading documents")}</span></div>;
   }
 
   // Latent today because defaults are seeded, but deleting every folder would
@@ -236,17 +243,17 @@ export function DocumentsView({
       <>
         <div className="empty-module">
           <div className="empty-icon"><FolderPlus size={22} aria-hidden /></div>
-          <h2>No folders</h2>
-          <p>Documents live inside folders. Create one to start importing files.</p>
+          <h2>{t("No folders")}</h2>
+          <p>{t("Documents live inside folders. Create one to start importing files.")}</p>
           <button className="primary" onClick={() => setCreatingFolder(true)}>
-            <FolderPlus size={14} aria-hidden /> Create folder
+            <FolderPlus size={14} aria-hidden /> {t("Create folder")}
           </button>
         </div>
         {creatingFolder && (
           <PromptDialog
-            title="Create folder"
-            label="Folder name"
-            placeholder="Quotations"
+            title={t("Create folder")}
+            label={t("Folder name")}
+            placeholder={t("Quotations")}
             onSubmit={addFolder}
             onCancel={() => setCreatingFolder(false)}
           />
@@ -261,8 +268,8 @@ export function DocumentsView({
     <div className="documents-layout">
       <aside className="document-folders">
         <div className="list-heading">
-          <span>Folders</span>
-          <button onClick={() => setCreatingFolder(true)} aria-label="Create folder" title="Create folder">
+          <span>{t("Folders")}</span>
+          <button onClick={() => setCreatingFolder(true)} aria-label={t("Create folder")} title={t("Create folder")}>
             <FolderPlus size={14} />
           </button>
         </div>
@@ -290,7 +297,7 @@ export function DocumentsView({
             }}
           >
             <FileText size={15} aria-hidden />
-            <span className="folder-name">{folder.name}</span>
+            <span className="folder-name">{t(folder.name)}</span>
             <span>{folder.documentCount}</span>
           </button>
         ))}
@@ -315,11 +322,11 @@ export function DocumentsView({
         }}
       >
         <div className="surface-header">
-          <h2>{activeFolder?.name ?? "Documents"}</h2>
+          <h2>{activeFolder ? t(activeFolder.name) : t("Documents")}</h2>
           <div className="surface-tools">
-            <span>{plural(visible.length, "file")}</span>
+            <span>{t(visible.length === 1 ? "{count} file" : "{count} files", { count: formatNumber(visible.length) })}</span>
             <button className="secondary" onClick={() => fileInputRef.current?.click()} disabled={!activeFolderId}>
-              <Upload size={14} aria-hidden /> Import
+              <Upload size={14} aria-hidden /> {t("Import")}
             </button>
           </div>
         </div>
@@ -339,17 +346,19 @@ export function DocumentsView({
         {uploading.length > 0 && (
           <div className="upload-strip" role="status">
             <Loader2 size={13} className="spin" aria-hidden />
-            Converting {plural(uploading.length, "file")} to markdown…
+            {t("Converting {count} to markdown…", {
+              count: t(uploading.length === 1 ? "{count} file" : "{count} files", { count: formatNumber(uploading.length) })
+            })}
           </div>
         )}
 
         {visible.length === 0 && uploading.length === 0 ? (
           <div className="document-dropzone">
             <Upload size={22} aria-hidden />
-            <strong>Drop files here to import</strong>
-            <p>PDF, DOCX, HTML, CSV, TSV, JSON, Markdown, and text files are converted to readable markdown.</p>
+            <strong>{t("Drop files here to import")}</strong>
+            <p>{t("PDF, DOCX, HTML, CSV, TSV, JSON, Markdown, and text files are converted to readable markdown.")}</p>
             <button className="primary" onClick={() => fileInputRef.current?.click()} disabled={!activeFolderId}>
-              Choose files
+              {t("Choose files")}
             </button>
           </div>
         ) : (
@@ -374,9 +383,9 @@ export function DocumentsView({
                     <span className="document-meta">
                       <strong>{document.title}</strong>
                       <span>
-                        {describeDocument(document)}
+                        {describeDocument(document, formatNumber, t)}
                         {document.projectId && (
-                          <span className="document-project"> · {projectName(projects, document.projectId)}</span>
+                          <span className="document-project"> · {projectName(projects, document.projectId, t)}</span>
                         )}
                       </span>
                     </span>
@@ -385,8 +394,8 @@ export function DocumentsView({
                     <a
                       className="icon-only"
                       href={`/api/v1/documents/${document.id}/export?format=md`}
-                      title={`Export ${document.title} as markdown`}
-                      aria-label={`Export ${document.title} as markdown`}
+                      title={t("Export {title} as markdown", { title: document.title })}
+                      aria-label={t("Export {title} as markdown", { title: document.title })}
                       download
                     >
                       <Download size={14} aria-hidden />
@@ -394,8 +403,8 @@ export function DocumentsView({
                     <button
                       className="icon-only"
                       onClick={() => setPendingDelete(document)}
-                      title={`Delete ${document.title}`}
-                      aria-label={`Delete ${document.title}`}
+                      title={t("Delete {title}", { title: document.title })}
+                      aria-label={t("Delete {title}", { title: document.title })}
                     >
                       <Trash2 size={14} aria-hidden />
                     </button>
@@ -423,18 +432,18 @@ export function DocumentsView({
 
       {creatingFolder && (
         <PromptDialog
-          title="Create folder"
-          label="Folder name"
-          placeholder="Quotations"
+          title={t("Create folder")}
+          label={t("Folder name")}
+          placeholder={t("Quotations")}
           onSubmit={addFolder}
           onCancel={() => setCreatingFolder(false)}
         />
       )}
       {pendingDelete && (
         <ConfirmDialog
-          title={`Delete “${pendingDelete.title}”?`}
-          body={`${pendingDelete.filename} and its converted text will be removed permanently. This cannot be undone.`}
-          confirmLabel="Delete document"
+          title={t("Delete “{title}”?", { title: pendingDelete.title })}
+          body={t("{filename} and its converted text will be removed permanently. This cannot be undone.", { filename: pendingDelete.filename })}
+          confirmLabel={t("Delete document")}
           destructive
           onConfirm={() => void removeDocument(pendingDelete.id)}
           onCancel={() => setPendingDelete(null)}
@@ -444,8 +453,8 @@ export function DocumentsView({
   );
 }
 
-function projectName(projects: Project[], projectId: string) {
-  return projects.find((project) => project.id === projectId)?.name ?? "Unknown project";
+function projectName(projects: Project[], projectId: string, t: Translate) {
+  return projects.find((project) => project.id === projectId)?.name ?? t("Unknown project");
 }
 
 function DocumentModal({
@@ -460,6 +469,7 @@ function DocumentModal({
   onSave: (markdown: string) => Promise<void>;
   onError: (message: string) => void;
 }) {
+  const { formatNumber, t } = useI18n();
   const [editing, setEditing] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -498,9 +508,9 @@ function DocumentModal({
   }, [document.markdown]);
 
   const close = useCallback(() => {
-    if (dirty && !window.confirm("Discard unsaved changes to this document?")) return;
+    if (dirty && !window.confirm(t("Discard unsaved changes to this document?"))) return;
     onClose();
-  }, [dirty, onClose]);
+  }, [dirty, onClose, t]);
 
   async function save({ thenClose }: { thenClose: boolean }) {
     const markdown = getMarkdownRef.current?.();
@@ -595,17 +605,17 @@ function DocumentModal({
           <span className={`kind-badge ${document.sourceKind}`}>{document.sourceKind}</span>
           <div>
             <h2 id="document-modal-title">{document.title}</h2>
-            <p>{describeDocument(document)}{dirty ? " · Unsaved changes" : ""}</p>
+            <p>{describeDocument(document, formatNumber, t)}{dirty ? ` · ${t("Unsaved changes")}` : ""}</p>
           </div>
         </div>
 
         <div className="doc-modal-actions">
           {!editing && (
             <label className="doc-folder-picker">
-              Folder
+              {t("Folder")}
               <select value={document.folderId} onChange={(event) => onMove(event.target.value)}>
                 {folders.map((folder) => (
-                  <option key={folder.id} value={folder.id}>{folder.name}</option>
+                  <option key={folder.id} value={folder.id}>{t(folder.name)}</option>
                 ))}
               </select>
             </label>
@@ -613,12 +623,12 @@ function DocumentModal({
 
           {!editing && (
             <label className="doc-folder-picker">
-              Project
+              {t("Project")}
               <select
                 value={document.projectId ?? ""}
                 onChange={(event) => onAssignProject(event.target.value || null)}
               >
-                <option value="">Not attached</option>
+                <option value="">{t("Not attached")}</option>
                 {projects.map((project) => (
                   <option key={project.id} value={project.id}>{project.name}</option>
                 ))}
@@ -627,19 +637,19 @@ function DocumentModal({
           )}
 
           {!editing && (
-            <div className="segmented-control" role="group" aria-label="Document view">
+            <div className="segmented-control" role="group" aria-label={t("Document view")}>
               <button
                 className={viewMode === "edited" ? "active" : ""}
                 onClick={() => setViewMode("edited")}
               >
-                Edited
+                {t("Edited")}
               </button>
               <button
                 className={viewMode === "original" ? "active" : ""}
                 onClick={() => setViewMode("original")}
                 disabled={!originalUrl}
               >
-                Original
+                {t("Original")}
               </button>
               {intelligence?.revisions[0]?.source === "ai_repair" &&
                 !intelligence.revisions[0].approved && (
@@ -647,7 +657,7 @@ function DocumentModal({
                     className={viewMode === "proposed" ? "active" : ""}
                     onClick={() => setViewMode("proposed")}
                   >
-                    Proposed
+                    {t("Proposed")}
                   </button>
                 )}
             </div>
@@ -667,20 +677,20 @@ function DocumentModal({
           {editing ? (
             <>
               <button className="secondary" onClick={() => { setEditing(false); setDirty(false); }} disabled={saving}>
-                <Minimize2 size={13} aria-hidden /> Done
+                <Minimize2 size={13} aria-hidden /> {t("Done")}
               </button>
               <button className="primary" onClick={() => void save({ thenClose: false })} disabled={saving || !dirty}>
                 {saving ? <Loader2 size={13} className="spin" aria-hidden /> : null}
-                {saving ? "Saving" : "Save"}
+                {t(saving ? "Saving" : "Save")}
               </button>
             </>
           ) : (
             <button className="primary" onClick={() => setEditing(true)}>
-              <Pencil size={13} aria-hidden /> Edit
+              <Pencil size={13} aria-hidden /> {t("Edit")}
             </button>
           )}
 
-          <button className="icon-only" onClick={close} aria-label="Close document">
+          <button className="icon-only" onClick={close} aria-label={t("Close document")}>
             <X size={16} aria-hidden />
           </button>
         </div>
@@ -706,13 +716,13 @@ function DocumentModal({
           )}
           {viewMode === "original" && originalUrl ? (
             document.mimeType === "application/pdf" || document.mimeType.startsWith("image/") ? (
-              <iframe className="document-original" src={originalUrl} title={`Original ${document.title}`} />
+              <iframe className="document-original" src={originalUrl} title={t("Original {title}", { title: document.title })} />
             ) : (
               <div className="original-download">
                 <FileText size={24} aria-hidden />
                 <strong>{document.filename}</strong>
                 <a className="primary" href={originalUrl} download>
-                  <Download size={14} aria-hidden /> Download original
+                  <Download size={14} aria-hidden /> {t("Download original")}
                 </a>
               </div>
             )
@@ -748,45 +758,48 @@ function ConversionStatus({
   onRetry: () => void;
   onRepair: () => void;
 }) {
+  const { formatNumber, t } = useI18n();
   const attention = conversion.status === "failed" ||
     conversion.status === "review_required" ||
     conversion.confidence < 80;
   return (
     <div className={attention ? "conversion-status attention" : "conversion-status"}>
       <span className={`pill ${conversion.status === "completed" ? "good" : "warn"}`}>
-        {conversion.status.replaceAll("_", " ")}
+        {t(conversion.status.replaceAll("_", " "))}
       </span>
-      <span>{conversion.confidence}% confidence</span>
+      <span>{t("{percent}% confidence", { percent: conversion.confidence })}</span>
       {conversion.ocrUsed && <span>OCR</span>}
       {conversion.language && <span>{conversion.language}</span>}
-      <span>{revisionCount} {revisionCount === 1 ? "revision" : "revisions"}</span>
+      <span>{t(revisionCount === 1 ? "{count} revision" : "{count} revisions", { count: formatNumber(revisionCount) })}</span>
       {(conversion.error || conversion.warnings[0]) && (
         <strong>{conversion.error ?? conversion.warnings[0]}</strong>
       )}
       {!approved && conversion.status !== "failed" && (
         <>
-          <button className="secondary" onClick={onRepair}>Repair with AI</button>
-          <button className="secondary" onClick={onApprove}>Approve extraction</button>
+          <button className="secondary" onClick={onRepair}>{t("Repair with AI")}</button>
+          <button className="secondary" onClick={onApprove}>{t("Approve extraction")}</button>
         </>
       )}
       {conversion.status === "failed" && (
-        <button className="secondary" onClick={onRetry}>Retry conversion</button>
+        <button className="secondary" onClick={onRetry}>{t("Retry conversion")}</button>
       )}
     </div>
   );
 }
 
-function describeDocument(document: WorkspaceDocument) {
+type Translate = (text: string, values?: Record<string, string | number>) => string;
+
+function describeDocument(
+  document: WorkspaceDocument,
+  formatNumber: (value: number) => string,
+  t: Translate
+) {
   return [
     document.filename,
     formatBytes(document.sizeBytes),
-    document.pageCount ? plural(document.pageCount, "page") : null,
-    plural(document.wordCount, "word")
+    document.pageCount ? t(document.pageCount === 1 ? "{count} page" : "{count} pages", { count: formatNumber(document.pageCount) }) : null,
+    t(document.wordCount === 1 ? "{count} word" : "{count} words", { count: formatNumber(document.wordCount) })
   ].filter(Boolean).join(" · ");
-}
-
-function plural(count: number, noun: string) {
-  return `${count.toLocaleString()} ${noun}${count === 1 ? "" : "s"}`;
 }
 
 function formatBytes(bytes: number) {

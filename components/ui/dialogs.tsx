@@ -3,6 +3,7 @@
 import { useId, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
+import { useI18n } from "@/lib/i18n";
 
 /** Confirmation for destructive or irreversible actions. */
 export function ConfirmDialog({
@@ -16,18 +17,19 @@ export function ConfirmDialog({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
+  const { t } = useI18n();
   const titleId = useId();
   return (
     <Modal labelledBy={titleId} onClose={onCancel} className="dialog dialog-sm">
       <div className="dialog-head">
         <div>
-          <span className="eyebrow">{destructive ? "Permanent" : "Confirm"}</span>
+          <span className="eyebrow">{t(destructive ? "Permanent" : "Confirm")}</span>
           <h2 id={titleId}>{title}</h2>
         </div>
       </div>
       <p className="confirm-body">{body}</p>
       <div className="dialog-actions">
-        <button type="button" className="secondary" onClick={onCancel} disabled={busy}>Cancel</button>
+        <button type="button" className="secondary" onClick={onCancel} disabled={busy}>{t("Cancel")}</button>
         <button
           type="button"
           className={destructive ? "primary danger" : "primary"}
@@ -54,6 +56,7 @@ export function PromptDialog({
   onSubmit: (value: string) => void;
   onCancel: () => void;
 }) {
+  const { t } = useI18n();
   const titleId = useId();
   const [value, setValue] = useState(initialValue);
 
@@ -78,8 +81,8 @@ export function PromptDialog({
           />
         </label>
         <div className="dialog-actions">
-          <button type="button" className="secondary" onClick={onCancel}>Cancel</button>
-          <button className="primary" disabled={!value.trim()}>{submitLabel}</button>
+          <button type="button" className="secondary" onClick={onCancel}>{t("Cancel")}</button>
+          <button className="primary" disabled={!value.trim()}>{t(submitLabel)}</button>
         </div>
       </form>
     </Modal>

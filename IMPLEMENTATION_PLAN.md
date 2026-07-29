@@ -1022,7 +1022,9 @@ versions, test results, credentials still required, and unresolved risks.
 - Status: application implementation completed and verified locally;
   production deployment gates remain open and are documented below.
 - Implementation commit: `b98df3a`.
-- Migration: `drizzle/0013_melted_franklin_richards.sql`.
+- Completion follow-up: pending commit.
+- Migrations: `drizzle/0013_melted_franklin_richards.sql` and
+  `drizzle/0014_dear_vin_gonzales.sql`.
 - Delivered:
   - Persistent per-user interface locale, timezone, date format, number format,
     and currency preferences.
@@ -1041,17 +1043,31 @@ versions, test results, credentials still required, and unresolved risks.
     policy while calls still pass only through LiteLLM.
   - MCP Settings visibility for allowed tools, risk, and approval policy;
     Gmail connection and revocation state remain visible beside it.
+  - Shared English/Korean catalog now covers navigation, command surfaces,
+    projects, forms, validation messages, notifications, search, Documents,
+    Client & Data, Knowledge Base, model governance, MCP, Gmail, report and
+    export actions, and all first-use/empty states.
+  - Locale-aware dates, numbers, time zones, and currency formatting are
+    applied across operational views. Project budgets persist their own USD or
+    KRW currency so changing an operator preference cannot relabel stored
+    monetary values.
+  - Settings now reports configured MCP service health and Gmail OAuth
+    readiness. Model route cost and structured-output controls can be staged
+    as governed revisions; unsafe production candidate promotion is blocked
+    server-side.
+  - Model rollback reactivates the prior approved revision rather than leaving
+    a route without active policy.
   - Production smoke coverage expanded to model settings, preferences, MCP
     catalog, and document conversion.
   - Railway deployment order, secrets, model approval rules, health gates, and
     end-to-end production smoke checklist documented.
 - Validation:
   - `npm run typecheck` passed.
-  - `npm test` passed with 80 tests across 15 files.
-  - `npm run build` passed with 37 application routes.
+  - `npm test` passed with 82 tests across 16 files.
+  - `npm run build` passed with 96 application and API routes.
   - Drizzle migration generation passed.
-  - Production build browser QA passed for Settings layout, live empty/provider
-    states, MCP inventory, preference persistence, and Korean shell switching.
+  - Translation lookup, fallback, interpolation, and catalog coverage are
+    tested. Production browser QA must be repeated after deployment.
 - Deployment: not deployed in this phase. Run the Railway production gate in
   `railway/README.md`; the app intentionally reports missing providers instead
   of treating them as healthy.
@@ -1064,7 +1080,6 @@ versions, test results, credentials still required, and unresolved risks.
   - Trigger.dev production workflow, live LiteLLM primary/fallback/embedding/
     reranking, Gmail, MCP, OCR, exports, SSE reconnect, backup/restore, and
     alerting still require production smoke tests.
-  - Korean localization currently covers the shell, regional settings, project
-    output policy, and generated deliverables. Secondary module copy and every
-    validation/error string still need a complete translation catalog before
-    claiming a fully localized Korean interface.
+  - Live browser QA in English and Korean remains part of the production gate;
+    provider-originated error text and imported source content remain in their
+    source language by design.

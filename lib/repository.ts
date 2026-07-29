@@ -177,6 +177,7 @@ const projectRow = (row: typeof projects.$inferSelect): Project => ({
   ...row,
   constraints: row.constraints ?? [],
   budgetCents: row.budgetCents ?? null,
+  budgetCurrency: row.budgetCurrency as Project["budgetCurrency"],
   permissions: row.permissions,
   reviewGates: row.reviewGates ?? [],
   outputRequirements: row.outputRequirements ?? [],
@@ -323,8 +324,8 @@ export const repository = {
     return row?.organizationId === MTI_ORGANIZATION_ID ? projectRow(row) : undefined;
   },
   async createProject(input:
-    Omit<Project, "id" | "organizationId" | "status" | "createdAt" | "updatedAt" | "permissions" | "reviewGates" | "outputRequirements" | "outputLanguage">
-    & Partial<Pick<Project, "permissions" | "reviewGates" | "outputRequirements" | "outputLanguage">>
+    Omit<Project, "id" | "organizationId" | "status" | "createdAt" | "updatedAt" | "permissions" | "reviewGates" | "outputRequirements" | "outputLanguage" | "budgetCurrency">
+    & Partial<Pick<Project, "permissions" | "reviewGates" | "outputRequirements" | "outputLanguage" | "budgetCurrency">>
   ) {
     const governance = {
       permissions: input.permissions ?? {
@@ -334,7 +335,8 @@ export const repository = {
       },
       reviewGates: input.reviewGates ?? [],
       outputRequirements: input.outputRequirements ?? [],
-      outputLanguage: input.outputLanguage ?? "en"
+      outputLanguage: input.outputLanguage ?? "en",
+      budgetCurrency: input.budgetCurrency ?? "USD"
     };
     if (!db) {
       const project: Project = {

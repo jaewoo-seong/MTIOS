@@ -53,6 +53,7 @@ export interface Project {
   scope: string;
   constraints: string[];
   budgetCents: number | null;
+  budgetCurrency: "USD" | "KRW";
   permissions: ProjectPermissions;
   reviewGates: string[];
   outputRequirements: string[];

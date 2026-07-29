@@ -132,6 +132,9 @@ export async function setModelRevisionState(
   if (action === "activate" && current.status !== "approved") {
     throw new Error("Approval is required before activation.");
   }
+  if (action === "rollback" && current.status !== "active") {
+    throw new Error("Only the active revision can be rolled back.");
+  }
   const values =
     action === "test_passed" ? { testStatus: "passed", testError: null } :
     action === "test_failed" ? { testStatus: "failed", testError: error ?? "Test failed." } :
@@ -144,6 +147,19 @@ export async function setModelRevisionState(
       for (const item of state.__mtiModelRevisions!) {
         if (item.route === current.route && item.id !== id && item.status === "active") item.status = "superseded";
       }
+    } else if (action === "rollback") {
+      const previous = state.__mtiModelRevisions!
+        .filter((item) =>
+          item.route === current.route &&
+          item.id !== current.id &&
+          item.version < current.version &&
+          ["superseded", "approved"].includes(item.status)
+        )
+        .sort((a, b) => b.version - a.version)[0];
+      if (previous) {
+        previous.status = "active";
+        Object.assign(previous, { activatedAt: new Date().toISOString() });
+      }
     }
     return current;
   }
@@ -155,6 +171,24 @@ export async function setModelRevisionState(
           eq(modelRouteRevisions.route, current.route),
           eq(modelRouteRevisions.status, "active")
         ));
+    }
+    if (action === "rollback") {
+      const candidate = (await tx.select().from(modelRouteRevisions).where(and(
+        eq(modelRouteRevisions.organizationId, MTI_ORGANIZATION_ID),
+        eq(modelRouteRevisions.route, current.route)
+      )).orderBy(desc(modelRouteRevisions.version)))
+        .find((item) =>
+          item.id !== current.id &&
+          item.version < current.version &&
+          ["superseded", "approved"].includes(item.status)
+        );
+      if (candidate) {
+        await tx.update(modelRouteRevisions).set({
+          status: "active",
+          activatedAt: new Date(),
+          updatedAt: new Date()
+        }).where(eq(modelRouteRevisions.id, candidate.id));
+      }
     }
     const [row] = await tx.update(modelRouteRevisions).set({ ...values, updatedAt: new Date() })
       .where(and(eq(modelRouteRevisions.id, id), eq(modelRouteRevisions.organizationId, MTI_ORGANIZATION_ID)))

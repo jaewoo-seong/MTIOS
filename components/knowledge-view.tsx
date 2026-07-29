@@ -5,6 +5,7 @@ import { BookOpen, Check, Loader2, Plus, Trash2, X } from "lucide-react";
 import type { KnowledgeEntry } from "@/lib/domain";
 import { ConfirmDialog } from "@/components/ui/dialogs";
 import { Modal } from "@/components/ui/modal";
+import { useI18n } from "@/lib/i18n";
 
 type Filter = "all" | KnowledgeEntry["status"];
 
@@ -16,6 +17,7 @@ const FILTERS: Array<{ id: Filter; label: string }> = [
 ];
 
 export function KnowledgeView({ onError }: { onError: (message: string) => void }) {
+  const { formatNumber, t } = useI18n();
   const [entries, setEntries] = useState<KnowledgeEntry[]>([]);
   const [filter, setFilter] = useState<Filter>("proposed");
   const [loading, setLoading] = useState(true);
@@ -73,7 +75,7 @@ export function KnowledgeView({ onError }: { onError: (message: string) => void 
   }
 
   if (loading) {
-    return <div className="loading-state"><Loader2 size={20} className="spin" /><span>Loading knowledge base</span></div>;
+    return <div className="loading-state"><Loader2 size={20} className="spin" /><span>{t("Loading knowledge base")}</span></div>;
   }
 
   return (
@@ -87,24 +89,23 @@ export function KnowledgeView({ onError }: { onError: (message: string) => void 
               aria-pressed={filter === option.id}
               onClick={() => setFilter(option.id)}
             >
-              {option.label} <span className="data">{counts[option.id]}</span>
+              {t(option.label)} <span className="data">{formatNumber(counts[option.id])}</span>
             </button>
           ))}
         </div>
         <button className="secondary" onClick={() => setComposing(true)}>
-          <Plus size={14} aria-hidden /> Propose memory
+          <Plus size={14} aria-hidden /> {t("Propose memory")}
         </button>
       </div>
 
       {visible.length === 0 ? (
         <div className="empty-module">
           <div className="empty-icon"><BookOpen size={22} aria-hidden /></div>
-          <h2>{filter === "proposed" ? "Nothing awaiting review" : "No entries here"}</h2>
+          <h2>{t(filter === "proposed" ? "Nothing awaiting review" : "No entries here")}</h2>
           <p>
-            Approved memory is what the Executive Agent treats as established fact about MTI.
-            Propose an entry, then approve it to put it into circulation.
+            {t("Approved memory is what the Executive Agent treats as established fact about MTI. Propose an entry, then approve it to put it into circulation.")}
           </p>
-          <button className="primary" onClick={() => setComposing(true)}><Plus size={14} aria-hidden /> Propose memory</button>
+          <button className="primary" onClick={() => setComposing(true)}><Plus size={14} aria-hidden /> {t("Propose memory")}</button>
         </div>
       ) : (
         <div className="knowledge-list">
@@ -113,7 +114,7 @@ export function KnowledgeView({ onError }: { onError: (message: string) => void 
               <header>
                 <h3>{entry.title}</h3>
                 <span className={`pill ${entry.status === "approved" ? "good" : entry.status === "rejected" ? "crit" : "warn"}`}>
-                  {entry.status}
+                  {t(entry.status)}
                 </span>
               </header>
               <span className="label">{entry.collection}</span>
@@ -123,15 +124,15 @@ export function KnowledgeView({ onError }: { onError: (message: string) => void 
                 <div className="spacer" />
                 {entry.status !== "approved" && (
                   <button className="secondary" onClick={() => void setStatus(entry, "approved")}>
-                    <Check size={13} aria-hidden /> Approve
+                    <Check size={13} aria-hidden /> {t("Approve")}
                   </button>
                 )}
                 {entry.status !== "rejected" && (
                   <button className="quiet" onClick={() => void setStatus(entry, "rejected")}>
-                    <X size={13} aria-hidden /> Reject
+                    <X size={13} aria-hidden /> {t("Reject")}
                   </button>
                 )}
-                <button className="icon-only" onClick={() => setPendingDelete(entry)} aria-label={`Delete ${entry.title}`} title={`Delete ${entry.title}`}>
+                <button className="icon-only" onClick={() => setPendingDelete(entry)} aria-label={t("Delete {title}", { title: entry.title })} title={t("Delete {title}", { title: entry.title })}>
                   <Trash2 size={13} aria-hidden />
                 </button>
               </footer>
@@ -153,9 +154,9 @@ export function KnowledgeView({ onError }: { onError: (message: string) => void 
       )}
       {pendingDelete && (
         <ConfirmDialog
-          title={`Delete “${pendingDelete.title}”?`}
-          body="This removes the entry from organizational memory. This cannot be undone."
-          confirmLabel="Delete entry"
+          title={t("Delete “{title}”?", { title: pendingDelete.title })}
+          body={t("This removes the entry from organizational memory. This cannot be undone.")}
+          confirmLabel={t("Delete entry")}
           destructive
           onConfirm={() => void remove(pendingDelete)}
           onCancel={() => setPendingDelete(null)}
@@ -172,6 +173,7 @@ function ComposeMemory({
   onCreated: () => void;
   onError: (message: string) => void;
 }) {
+  const { t } = useI18n();
   const [form, setForm] = useState({ collection: "Operations", title: "", content: "", source: "" });
   const [busy, setBusy] = useState(false);
 
@@ -203,29 +205,29 @@ function ComposeMemory({
       <form onSubmit={submit}>
         <div className="dialog-head">
           <div>
-            <span className="eyebrow">New memory</span>
-            <h2 id="compose-memory-title">Propose an entry</h2>
-            <p>Entries enter as proposed and only become established fact once approved.</p>
+            <span className="eyebrow">{t("New memory")}</span>
+            <h2 id="compose-memory-title">{t("Propose an entry")}</h2>
+            <p>{t("Entries enter as proposed and only become established fact once approved.")}</p>
           </div>
-          <button type="button" className="icon-only" onClick={onClose} aria-label="Close dialog"><X size={16} aria-hidden /></button>
+          <button type="button" className="icon-only" onClick={onClose} aria-label={t("Close dialog")}><X size={16} aria-hidden /></button>
         </div>
         <div className="form-grid">
-          <label>Collection <em>required</em>
+          <label>{t("Collection")} <em>{t("required")}</em>
             <input required value={form.collection} onChange={(event) => setForm({ ...form, collection: event.target.value })} />
           </label>
-          <label>Source
-            <input placeholder="Optional" value={form.source} onChange={(event) => setForm({ ...form, source: event.target.value })} />
+          <label>{t("Source")}
+            <input placeholder={t("Optional")} value={form.source} onChange={(event) => setForm({ ...form, source: event.target.value })} />
           </label>
-          <label className="span-2">Title <em>required</em>
+          <label className="span-2">{t("Title")} <em>{t("required")}</em>
             <input required minLength={2} value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} />
           </label>
-          <label className="span-2">Content <em>required</em>
+          <label className="span-2">{t("Content")} <em>{t("required")}</em>
             <textarea required minLength={2} rows={6} value={form.content} onChange={(event) => setForm({ ...form, content: event.target.value })} />
           </label>
         </div>
         <div className="dialog-actions">
-          <button type="button" className="secondary" onClick={onClose}>Cancel</button>
-          <button className="primary" disabled={busy}>{busy && <Loader2 size={13} className="spin" aria-hidden />}Propose entry</button>
+          <button type="button" className="secondary" onClick={onClose}>{t("Cancel")}</button>
+          <button className="primary" disabled={busy}>{busy && <Loader2 size={13} className="spin" aria-hidden />}{t("Propose entry")}</button>
         </div>
       </form>
     </Modal>

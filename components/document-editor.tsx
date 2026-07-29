@@ -26,6 +26,7 @@ import {
 import DOMPurify from "isomorphic-dompurify";
 import { marked } from "marked";
 import TurndownService from "turndown";
+import { useI18n } from "@/lib/i18n";
 
 const turndown = new TurndownService({
   headingStyle: "atx",
@@ -82,6 +83,7 @@ interface DocumentEditorProps {
 }
 
 export function DocumentEditor({ markdown, onDirtyChange, registerGetter }: DocumentEditorProps) {
+  const { t } = useI18n();
   const initialHtml = useMemo(() => markdownToHtml(markdown), [markdown]);
   // Compare against the round-tripped form, not the raw source. Turndown normalizes
   // spacing (blank line after a heading, list indentation), so a straight comparison
@@ -95,7 +97,7 @@ export function DocumentEditor({ markdown, onDirtyChange, registerGetter }: Docu
       StarterKit.configure({
         link: { openOnClick: false, HTMLAttributes: { rel: "noopener noreferrer nofollow" } }
       }),
-      Placeholder.configure({ placeholder: "Start writing…" }),
+      Placeholder.configure({ placeholder: t("Start writing…") }),
       TableKit.configure({ table: { resizable: true } })
     ],
     content: initialHtml,
@@ -116,7 +118,7 @@ export function DocumentEditor({ markdown, onDirtyChange, registerGetter }: Docu
   const setLink = useCallback(() => {
     if (!editor) return;
     const previous = editor.getAttributes("link").href as string | undefined;
-    const url = window.prompt("Link URL", previous ?? "https://");
+    const url = window.prompt(t("Link URL"), previous ?? "https://");
     if (url === null) return;
     if (url.trim() === "") {
       editor.chain().focus().extendMarkRange("link").unsetLink().run();
@@ -124,63 +126,63 @@ export function DocumentEditor({ markdown, onDirtyChange, registerGetter }: Docu
     }
     // Only allow schemes that cannot execute script when clicked.
     if (!/^(https?:|mailto:|#|\/)/i.test(url.trim())) {
-      window.alert("Use an http(s), mailto, or relative link.");
+      window.alert(t("Use an http(s), mailto, or relative link."));
       return;
     }
     editor.chain().focus().extendMarkRange("link").setLink({ href: url.trim() }).run();
-  }, [editor]);
+  }, [editor, t]);
 
-  if (!editor) return <div className="doc-editor-loading">Preparing editor…</div>;
+  if (!editor) return <div className="doc-editor-loading">{t("Preparing editor…")}</div>;
 
   return (
     <div className="doc-editor">
-      <div className="doc-toolbar" role="toolbar" aria-label="Formatting">
+      <div className="doc-toolbar" role="toolbar" aria-label={t("Formatting")}>
         <Group>
-          <Tool editor={editor} label="Undo" onClick={() => editor.chain().focus().undo().run()} disabled={!editor.can().undo()}><Undo2 size={15} /></Tool>
-          <Tool editor={editor} label="Redo" onClick={() => editor.chain().focus().redo().run()} disabled={!editor.can().redo()}><Redo2 size={15} /></Tool>
+          <Tool editor={editor} label={t("Undo")} onClick={() => editor.chain().focus().undo().run()} disabled={!editor.can().undo()}><Undo2 size={15} /></Tool>
+          <Tool editor={editor} label={t("Redo")} onClick={() => editor.chain().focus().redo().run()} disabled={!editor.can().redo()}><Redo2 size={15} /></Tool>
         </Group>
         <Divider />
         <Group>
           <select
             className="doc-style-select"
-            aria-label="Paragraph style"
+            aria-label={t("Paragraph style")}
             value={currentBlock(editor)}
             onChange={(event) => applyBlock(editor, event.target.value)}
           >
-            <option value="paragraph">Body text</option>
-            <option value="h1">Heading 1</option>
-            <option value="h2">Heading 2</option>
-            <option value="h3">Heading 3</option>
-            <option value="h4">Heading 4</option>
+            <option value="paragraph">{t("Body text")}</option>
+            <option value="h1">{t("Heading 1")}</option>
+            <option value="h2">{t("Heading 2")}</option>
+            <option value="h3">{t("Heading 3")}</option>
+            <option value="h4">{t("Heading 4")}</option>
           </select>
         </Group>
         <Divider />
         <Group>
-          <Tool editor={editor} label="Heading 1" active={editor.isActive("heading", { level: 1 })} onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}><Heading1 size={15} /></Tool>
-          <Tool editor={editor} label="Heading 2" active={editor.isActive("heading", { level: 2 })} onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}><Heading2 size={15} /></Tool>
-          <Tool editor={editor} label="Heading 3" active={editor.isActive("heading", { level: 3 })} onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}><Heading3 size={15} /></Tool>
+          <Tool editor={editor} label={t("Heading 1")} active={editor.isActive("heading", { level: 1 })} onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}><Heading1 size={15} /></Tool>
+          <Tool editor={editor} label={t("Heading 2")} active={editor.isActive("heading", { level: 2 })} onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}><Heading2 size={15} /></Tool>
+          <Tool editor={editor} label={t("Heading 3")} active={editor.isActive("heading", { level: 3 })} onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}><Heading3 size={15} /></Tool>
         </Group>
         <Divider />
         <Group>
-          <Tool editor={editor} label="Bold" active={editor.isActive("bold")} onClick={() => editor.chain().focus().toggleBold().run()}><Bold size={15} /></Tool>
-          <Tool editor={editor} label="Italic" active={editor.isActive("italic")} onClick={() => editor.chain().focus().toggleItalic().run()}><Italic size={15} /></Tool>
-          <Tool editor={editor} label="Underline" active={editor.isActive("underline")} onClick={() => editor.chain().focus().toggleUnderline().run()}><UnderlineIcon size={15} /></Tool>
-          <Tool editor={editor} label="Strikethrough" active={editor.isActive("strike")} onClick={() => editor.chain().focus().toggleStrike().run()}><Strikethrough size={15} /></Tool>
-          <Tool editor={editor} label="Inline code" active={editor.isActive("code")} onClick={() => editor.chain().focus().toggleCode().run()}><Code size={15} /></Tool>
+          <Tool editor={editor} label={t("Bold")} active={editor.isActive("bold")} onClick={() => editor.chain().focus().toggleBold().run()}><Bold size={15} /></Tool>
+          <Tool editor={editor} label={t("Italic")} active={editor.isActive("italic")} onClick={() => editor.chain().focus().toggleItalic().run()}><Italic size={15} /></Tool>
+          <Tool editor={editor} label={t("Underline")} active={editor.isActive("underline")} onClick={() => editor.chain().focus().toggleUnderline().run()}><UnderlineIcon size={15} /></Tool>
+          <Tool editor={editor} label={t("Strikethrough")} active={editor.isActive("strike")} onClick={() => editor.chain().focus().toggleStrike().run()}><Strikethrough size={15} /></Tool>
+          <Tool editor={editor} label={t("Inline code")} active={editor.isActive("code")} onClick={() => editor.chain().focus().toggleCode().run()}><Code size={15} /></Tool>
         </Group>
         <Divider />
         <Group>
-          <Tool editor={editor} label="Bulleted list" active={editor.isActive("bulletList")} onClick={() => editor.chain().focus().toggleBulletList().run()}><List size={15} /></Tool>
-          <Tool editor={editor} label="Numbered list" active={editor.isActive("orderedList")} onClick={() => editor.chain().focus().toggleOrderedList().run()}><ListOrdered size={15} /></Tool>
-          <Tool editor={editor} label="Quote" active={editor.isActive("blockquote")} onClick={() => editor.chain().focus().toggleBlockquote().run()}><Quote size={15} /></Tool>
-          <Tool editor={editor} label="Divider" onClick={() => editor.chain().focus().setHorizontalRule().run()}><Minus size={15} /></Tool>
+          <Tool editor={editor} label={t("Bulleted list")} active={editor.isActive("bulletList")} onClick={() => editor.chain().focus().toggleBulletList().run()}><List size={15} /></Tool>
+          <Tool editor={editor} label={t("Numbered list")} active={editor.isActive("orderedList")} onClick={() => editor.chain().focus().toggleOrderedList().run()}><ListOrdered size={15} /></Tool>
+          <Tool editor={editor} label={t("Quote")} active={editor.isActive("blockquote")} onClick={() => editor.chain().focus().toggleBlockquote().run()}><Quote size={15} /></Tool>
+          <Tool editor={editor} label={t("Divider")} onClick={() => editor.chain().focus().setHorizontalRule().run()}><Minus size={15} /></Tool>
         </Group>
         <Divider />
         <Group>
-          <Tool editor={editor} label="Link" active={editor.isActive("link")} onClick={setLink}><Link2 size={15} /></Tool>
+          <Tool editor={editor} label={t("Link")} active={editor.isActive("link")} onClick={setLink}><Link2 size={15} /></Tool>
           <Tool
             editor={editor}
-            label="Insert table"
+            label={t("Insert table")}
             onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}
           ><TableIcon size={15} /></Tool>
         </Group>
