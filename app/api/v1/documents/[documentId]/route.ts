@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { notFound, parseJson } from "@/lib/http";
+import { recordDocumentRevision } from "@/lib/documents/intelligence";
 import { repository } from "@/lib/repository";
 
 const updateDocumentSchema = z.object({
@@ -33,6 +34,12 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ do
   if (!document) return notFound("document");
   // Editing the body changes the word count the list and preview display.
   if (parsed.data.markdown !== undefined) {
+    await recordDocumentRevision({
+      documentId,
+      markdown: parsed.data.markdown,
+      source: "manual",
+      approved: true
+    });
     const updated = await repository.getDocument(documentId);
     return NextResponse.json({ data: updated });
   }

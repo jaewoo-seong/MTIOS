@@ -46,3 +46,18 @@ export async function storeBinaryObject(key: string, contentType: string, body: 
   }));
   return { key, size: body.byteLength, contentType };
 }
+
+export async function getSignedObjectUrl(key: string, expiresIn = 900) {
+  if (!storage || !bucket) throw new Error("Railway Storage Bucket is not configured.");
+  const url = await getSignedUrl(storage, new GetObjectCommand({ Bucket: bucket, Key: key }), {
+    expiresIn
+  });
+  return { key, url, expiresIn };
+}
+
+export async function getBinaryObject(key: string) {
+  if (!storage || !bucket) throw new Error("Railway Storage Bucket is not configured.");
+  const object = await storage.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+  if (!object.Body) throw new Error("Stored object body is unavailable.");
+  return Buffer.from(await object.Body.transformToByteArray());
+}

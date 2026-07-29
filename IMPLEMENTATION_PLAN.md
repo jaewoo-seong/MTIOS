@@ -910,3 +910,61 @@ versions, test results, credentials still required, and unresolved risks.
     behavior remain production smoke-test items.
   - Sending stays unavailable. A future send capability must use a fresh,
     exact-message approval immediately before execution.
+
+### 2026-07-29 - Phase 10 Completed
+
+- Status: implementation completed and verified locally; private service image
+  requires Railway build/runtime smoke testing.
+- Implementation commit: `PHASE_10_IMPLEMENTATION_COMMIT`.
+- Migration: `drizzle/0011_sweet_gabe_jones.sql`.
+- Delivered:
+  - Immutable original-file upload to Railway Storage before conversion, with
+    SHA-256 identity and signed original-file access.
+  - Private Railway `document-conversion` service using PyMuPDF, pdfplumber,
+    Tesseract English/Korean OCR, page rendering, embedded-image extraction,
+    Noto CJK fonts, python-docx, and WeasyPrint.
+  - Normalized conversions, pages, blocks, tables, images, bounding boxes,
+    extraction method, confidence, language, OCR state, warnings, errors, and
+    retry history.
+  - Editable Markdown output for digital and scanned PDFs, DOCX, HTML,
+    CSV/TSV, JSON, Markdown, and text.
+  - Original/Edited/Proposed views in the full-page document surface,
+    conversion confidence and warning status, retry control, revision count,
+    and explicit extraction approval.
+  - Structured LiteLLM repair limited to low-confidence headings, reading
+    order, and table structure. AI repair creates an unapproved revision and
+    cannot alter authoritative content before operator approval.
+  - Immutable document revisions for conversion, manual edits, AI repair, and
+    rollback-compatible history.
+  - Context retrieval now chunks only the latest approved document revision;
+    failed, uncertain, and unapproved extraction stays unavailable to agents.
+  - Markdown, DOCX, PDF, and applicable table-to-CSV exports.
+  - Gmail attachments now use the same original-preserving document
+    intelligence pipeline while retaining Gmail message/attachment provenance.
+  - Legacy non-empty documents backfilled as approved revision 1 during
+    migration.
+  - App health check includes the private document conversion service.
+- Validation:
+  - `npm run typecheck` passed.
+  - `npm test` passed with 71 tests across 13 files.
+  - `npm run build` passed.
+  - Python service source passed `py_compile`.
+  - Drizzle migration generation passed.
+  - Original-before-conversion ordering, bilingual conversion metadata,
+    low-confidence context exclusion, explicit approval, failed-source
+    preservation, constrained AI repair, private-service authentication,
+    Korean-safe export delegation, Gmail pipeline reuse, and revision
+    provenance tested.
+- Deployment: not deployed in this phase. Build
+  `railway/document-conversion/Dockerfile`, configure its private URL/secret
+  and bucket variables, run migration, then smoke digital, scanned,
+  table-heavy, English, Korean, and mixed-language fixtures.
+- Credentials required: generated `DOCUMENT_CONVERSION_SERVICE_SECRET`; no
+  external OCR API key is required.
+- Remaining risks:
+  - Docker is unavailable in the local environment, so the Python image and
+    native OCR/font packages were not executed locally.
+  - Tesseract accuracy depends on scan quality; low-confidence pages remain
+    review-required by design.
+  - Large complex PDFs require production timeout, memory, and concurrency
+    load tests in Phase 12.

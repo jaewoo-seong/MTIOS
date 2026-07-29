@@ -537,6 +537,14 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .integration-row strong { overflow-wrap: anywhere; }
 .integration-row span, .integration-policy { color: var(--ink-mute); font-size: var(--t-meta); }
 .integration-policy { margin: 0; padding: var(--sp-3) var(--sp-4); border-top: 1px solid var(--line); }
+.segmented-control { display: inline-flex; padding: 2px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--sunk); }
+.segmented-control button { min-height: 26px; padding: 0 9px; border: 0; border-radius: 3px; background: transparent; font-size: var(--t-meta); }
+.segmented-control button.active { background: var(--surface); box-shadow: 0 1px 2px rgb(0 0 0 / 8%); }
+.conversion-status { display: flex; align-items: center; gap: var(--sp-2); margin: 0 auto var(--sp-3); max-width: 880px; padding: var(--sp-2) var(--sp-3); border: 1px solid var(--line); background: var(--surface); color: var(--ink-mute); font-size: var(--t-meta); }
+.conversion-status.attention { border-left: 3px solid var(--warn); }
+.conversion-status strong { margin-left: auto; color: var(--ink-soft); font-weight: 550; }
+.document-original { display: block; width: min(100%, 1040px); min-height: calc(100vh - 190px); margin: 0 auto; border: 1px solid var(--line); background: white; }
+.original-download { display: grid; justify-items: center; gap: var(--sp-3); margin: 12vh auto; }
 
 /* ── Executive command (docked in the main column) ────────────────────── */
 .command-wrap {

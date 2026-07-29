@@ -175,8 +175,11 @@ describe("Gmail project workflow", () => {
     });
     if (!imported.document) throw new Error("Expected a newly imported document.");
     expect(imported.document.projectId).toBe(project.id);
-    expect(imported.document.markdown).toContain("source:gmail");
     expect(imported.document.markdown).toContain("Approved scope text");
+    expect(imported.provenance).toMatchObject({
+      gmailMessageId: "message-1",
+      gmailAttachmentId: "attachment-1"
+    });
   });
 
   it("creates and revises Gmail drafts without exposing send or delete tools", async () => {

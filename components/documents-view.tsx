@@ -26,6 +26,24 @@ const DocumentEditor = dynamic(
 
 const UPLOAD_CONCURRENCY = 3;
 const ACCEPT = ".pdf,.docx,.html,.htm,.csv,.tsv,.json,.md,.markdown,.txt";
+type DocumentIntelligenceSummary = {
+  conversions: Array<{
+    status: string;
+    confidence: number;
+    ocrUsed: boolean;
+    language: string | null;
+    warnings: string[];
+    error: string | null;
+  }>;
+  revisions: Array<{
+    id: string;
+    revision: number;
+    markdown: string;
+    source: string;
+    approved: boolean;
+    createdAt: string;
+  }>;
+};
 
 export function DocumentsView({
   onError, projects, focusDocumentId, onFocusHandled
@@ -445,10 +463,39 @@ function DocumentModal({
   const [editing, setEditing] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [viewMode, setViewMode] = useState<"edited" | "original" | "proposed">("edited");
+  const [renderedMarkdown, setRenderedMarkdown] = useState(document.markdown);
+  const [originalUrl, setOriginalUrl] = useState<string | null>(null);
+  const [intelligence, setIntelligence] = useState<DocumentIntelligenceSummary | null>(null);
   const getMarkdownRef = useRef<(() => string) | null>(null);
   const registerGetter = useCallback((getter: () => string) => {
     getMarkdownRef.current = getter;
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    Promise.all([
+      fetch(`/api/v1/documents/${document.id}/intelligence`)
+        .then((response) => response.ok ? response.json() : Promise.reject(new Error("Could not load conversion detail."))),
+      document.storageKey
+        ? fetch(`/api/v1/documents/${document.id}/original`).then((response) => response.ok ? response.json() : null)
+        : Promise.resolve(null)
+    ]).then(([detail, original]: [
+      { data: DocumentIntelligenceSummary },
+      { data?: { url: string } } | null
+    ]) => {
+      if (!active) return;
+      setIntelligence(detail.data);
+      setOriginalUrl(original?.data?.url ?? null);
+    }).catch((reason: Error) => {
+      if (active) onError(reason.message);
+    });
+    return () => { active = false; };
+  }, [document.id, document.storageKey, onError]);
+
+  useEffect(() => {
+    setRenderedMarkdown(document.markdown);
+  }, [document.markdown]);
 
   const close = useCallback(() => {
     if (dirty && !window.confirm("Discard unsaved changes to this document?")) return;
@@ -467,6 +514,59 @@ function DocumentModal({
       onError(reason instanceof Error ? reason.message : "Could not save the document.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function approveExtraction() {
+    const revision = intelligence?.revisions[0];
+    if (!revision) return;
+    try {
+      const response = await fetch(
+        `/api/v1/documents/${document.id}/revisions/${revision.id}/approve`,
+        { method: "POST" }
+      );
+      if (!response.ok) throw new Error("Could not approve this document revision.");
+      if (revision.source === "ai_repair") setRenderedMarkdown(revision.markdown);
+      setViewMode("edited");
+      setIntelligence((current) => current ? {
+        ...current,
+        revisions: current.revisions.map((item) =>
+          item.id === revision.id ? { ...item, approved: true } : item
+        )
+      } : current);
+    } catch (reason) {
+      onError(reason instanceof Error ? reason.message : "Could not approve this document revision.");
+    }
+  }
+
+  async function retryConversion() {
+    try {
+      const response = await fetch(`/api/v1/documents/${document.id}/conversion/retry`, {
+        method: "POST"
+      });
+      const payload = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(payload.error ?? "Document conversion retry failed.");
+      window.location.reload();
+    } catch (reason) {
+      onError(reason instanceof Error ? reason.message : "Document conversion retry failed.");
+    }
+  }
+
+  async function repairConversion() {
+    try {
+      const response = await fetch(`/api/v1/documents/${document.id}/ai-repair`, {
+        method: "POST"
+      });
+      const payload = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(payload.error ?? "AI document repair failed.");
+      const detail = await fetch(`/api/v1/documents/${document.id}/intelligence`);
+      if (detail.ok) {
+        const body = (await detail.json()) as { data: DocumentIntelligenceSummary };
+        setIntelligence(body.data);
+        if (body.data.revisions[0]?.source === "ai_repair") setViewMode("proposed");
+      }
+    } catch (reason) {
+      onError(reason instanceof Error ? reason.message : "AI document repair failed.");
     }
   }
 
@@ -526,7 +626,39 @@ function DocumentModal({
             </label>
           )}
 
-          {!editing && (["md", "txt", "json"] as const).map((format) => (
+          {!editing && (
+            <div className="segmented-control" role="group" aria-label="Document view">
+              <button
+                className={viewMode === "edited" ? "active" : ""}
+                onClick={() => setViewMode("edited")}
+              >
+                Edited
+              </button>
+              <button
+                className={viewMode === "original" ? "active" : ""}
+                onClick={() => setViewMode("original")}
+                disabled={!originalUrl}
+              >
+                Original
+              </button>
+              {intelligence?.revisions[0]?.source === "ai_repair" &&
+                !intelligence.revisions[0].approved && (
+                  <button
+                    className={viewMode === "proposed" ? "active" : ""}
+                    onClick={() => setViewMode("proposed")}
+                  >
+                    Proposed
+                  </button>
+                )}
+            </div>
+          )}
+
+          {!editing && ([
+            "md",
+            ...(document.markdown.includes("| ---") ? ["csv" as const] : []),
+            "docx",
+            "pdf"
+          ] as const).map((format) => (
             <a key={format} className="secondary" href={`/api/v1/documents/${document.id}/export?format=${format}`} download>
               <Download size={13} aria-hidden /> .{format}
             </a>
@@ -556,18 +688,91 @@ function DocumentModal({
 
       {editing ? (
         <DocumentEditor
-          markdown={document.markdown}
+          markdown={renderedMarkdown}
           onDirtyChange={setDirty}
           registerGetter={registerGetter}
         />
       ) : (
         <div className="doc-modal-body">
-          <div className="doc-page">
-            <Markdown source={document.markdown} />
-          </div>
+          {intelligence?.conversions[0] && (
+            <ConversionStatus
+              conversion={intelligence.conversions[0]}
+              revisionCount={intelligence.revisions.length}
+              approved={intelligence.revisions[0]?.approved ?? false}
+              onApprove={() => void approveExtraction()}
+              onRetry={() => void retryConversion()}
+              onRepair={() => void repairConversion()}
+            />
+          )}
+          {viewMode === "original" && originalUrl ? (
+            document.mimeType === "application/pdf" || document.mimeType.startsWith("image/") ? (
+              <iframe className="document-original" src={originalUrl} title={`Original ${document.title}`} />
+            ) : (
+              <div className="original-download">
+                <FileText size={24} aria-hidden />
+                <strong>{document.filename}</strong>
+                <a className="primary" href={originalUrl} download>
+                  <Download size={14} aria-hidden /> Download original
+                </a>
+              </div>
+            )
+          ) : viewMode === "proposed" && intelligence?.revisions[0] ? (
+            <div className="doc-page">
+              <Markdown source={intelligence.revisions[0].markdown} />
+            </div>
+          ) : (
+            <div className="doc-page">
+              <Markdown source={renderedMarkdown} />
+            </div>
+          )}
         </div>
       )}
     </Modal>
+  );
+}
+
+function ConversionStatus({
+  conversion, revisionCount, approved, onApprove, onRetry, onRepair
+}: {
+  conversion: {
+    status: string;
+    confidence: number;
+    ocrUsed: boolean;
+    language: string | null;
+    warnings: string[];
+    error: string | null;
+  };
+  revisionCount: number;
+  approved: boolean;
+  onApprove: () => void;
+  onRetry: () => void;
+  onRepair: () => void;
+}) {
+  const attention = conversion.status === "failed" ||
+    conversion.status === "review_required" ||
+    conversion.confidence < 80;
+  return (
+    <div className={attention ? "conversion-status attention" : "conversion-status"}>
+      <span className={`pill ${conversion.status === "completed" ? "good" : "warn"}`}>
+        {conversion.status.replaceAll("_", " ")}
+      </span>
+      <span>{conversion.confidence}% confidence</span>
+      {conversion.ocrUsed && <span>OCR</span>}
+      {conversion.language && <span>{conversion.language}</span>}
+      <span>{revisionCount} {revisionCount === 1 ? "revision" : "revisions"}</span>
+      {(conversion.error || conversion.warnings[0]) && (
+        <strong>{conversion.error ?? conversion.warnings[0]}</strong>
+      )}
+      {!approved && conversion.status !== "failed" && (
+        <>
+          <button className="secondary" onClick={onRepair}>Repair with AI</button>
+          <button className="secondary" onClick={onApprove}>Approve extraction</button>
+        </>
+      )}
+      {conversion.status === "failed" && (
+        <button className="secondary" onClick={onRetry}>Retry conversion</button>
+      )}
+    </div>
   );
 }
 

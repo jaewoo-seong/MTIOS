@@ -10,9 +10,9 @@ export async function GET() {
   const checks = {
     database: "not_configured",
     redis: "not_configured",
-    storage: "not_configured"
-    ,
-    litellm: "not_configured"
+    storage: "not_configured",
+    litellm: "not_configured",
+    documentConversion: "not_configured"
   };
   let status = 200;
   if (sql) {
@@ -50,6 +50,20 @@ export async function GET() {
     status = 503;
   }
   if (process.env.NODE_ENV === "production" && checks.litellm === "not_configured") {
+    status = 503;
+  }
+  if (process.env.DOCUMENT_CONVERSION_SERVICE_URL) {
+    try {
+      const response = await fetch(
+        `${process.env.DOCUMENT_CONVERSION_SERVICE_URL.replace(/\/$/, "")}/health`,
+        { signal: AbortSignal.timeout(3000) }
+      );
+      checks.documentConversion = response.ok ? "ok" : "unavailable";
+    } catch {
+      checks.documentConversion = "unavailable";
+    }
+  }
+  if (process.env.NODE_ENV === "production" && checks.documentConversion !== "ok") {
     status = 503;
   }
   return NextResponse.json({

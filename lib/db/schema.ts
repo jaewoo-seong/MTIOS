@@ -272,6 +272,98 @@ export const documents = pgTable("documents", {
   ...timestamps
 });
 
+export const documentConversions = pgTable("document_conversions", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  documentId: uuid("document_id").references(() => documents.id, { onDelete: "cascade" }).notNull(),
+  status: text("status").default("queued").notNull(),
+  engine: text("engine").notNull(),
+  engineVersion: text("engine_version").notNull(),
+  sourceHash: text("source_hash").notNull(),
+  language: text("language"),
+  ocrUsed: boolean("ocr_used").default(false).notNull(),
+  confidence: integer("confidence").default(0).notNull(),
+  warnings: jsonb("warnings").$type<string[]>().default([]).notNull(),
+  retryCount: integer("retry_count").default(0).notNull(),
+  errorCode: text("error_code"),
+  error: text("error"),
+  startedAt: timestamp("started_at", { withTimezone: true }),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  ...timestamps
+}, (table) => [
+  index("document_conversion_document_status_idx").on(table.documentId, table.status)
+]);
+
+export const documentPages = pgTable("document_pages", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  conversionId: uuid("conversion_id").references(() => documentConversions.id, { onDelete: "cascade" }).notNull(),
+  pageNumber: integer("page_number").notNull(),
+  width: integer("width"),
+  height: integer("height"),
+  text: text("text").default("").notNull(),
+  confidence: integer("confidence").default(0).notNull(),
+  imageStorageKey: text("image_storage_key"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
+}, (table) => [
+  uniqueIndex("document_page_conversion_number_idx").on(table.conversionId, table.pageNumber)
+]);
+
+export const documentBlocks = pgTable("document_blocks", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  pageId: uuid("page_id").references(() => documentPages.id, { onDelete: "cascade" }).notNull(),
+  blockType: text("block_type").notNull(),
+  position: integer("position").notNull(),
+  text: text("text").default("").notNull(),
+  bbox: jsonb("bbox").$type<{ x: number; y: number; width: number; height: number } | null>(),
+  confidence: integer("confidence").default(0).notNull(),
+  extractionMethod: text("extraction_method").notNull(),
+  aiRepaired: boolean("ai_repaired").default(false).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
+}, (table) => [
+  index("document_block_page_position_idx").on(table.pageId, table.position)
+]);
+
+export const documentTables = pgTable("document_tables", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  pageId: uuid("page_id").references(() => documentPages.id, { onDelete: "cascade" }).notNull(),
+  position: integer("position").notNull(),
+  cells: jsonb("cells").$type<string[][]>().default([]).notNull(),
+  bbox: jsonb("bbox").$type<{ x: number; y: number; width: number; height: number } | null>(),
+  confidence: integer("confidence").default(0).notNull(),
+  markdown: text("markdown").default("").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
+});
+
+export const documentImages = pgTable("document_images", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  pageId: uuid("page_id").references(() => documentPages.id, { onDelete: "cascade" }).notNull(),
+  position: integer("position").notNull(),
+  bbox: jsonb("bbox").$type<{ x: number; y: number; width: number; height: number } | null>(),
+  storageKey: text("storage_key").notNull(),
+  mimeType: text("mime_type").notNull(),
+  width: integer("width"),
+  height: integer("height"),
+  altText: text("alt_text").default("").notNull(),
+  confidence: integer("confidence").default(0).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
+});
+
+export const documentRevisions = pgTable("document_revisions", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  documentId: uuid("document_id").references(() => documents.id, { onDelete: "cascade" }).notNull(),
+  revision: integer("revision").notNull(),
+  markdown: text("markdown").notNull(),
+  contentHash: text("content_hash").notNull(),
+  source: text("source").notNull(),
+  conversionId: uuid("conversion_id").references(() => documentConversions.id, { onDelete: "set null" }),
+  createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+  approved: boolean("approved").default(false).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
+}, (table) => [
+  uniqueIndex("document_revision_document_number_idx").on(table.documentId, table.revision)
+]);
+
 export const storageObjects = pgTable("storage_objects", {
   id: uuid("id").defaultRandom().primaryKey(),
   organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),

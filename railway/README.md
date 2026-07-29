@@ -7,6 +7,8 @@ Create services for:
 - `redis`: cache, rate limiting, and transient coordination only.
 - `litellm`: deploy `railway/litellm/Dockerfile` and expose it only over Railway private networking.
 - `mcp-tools`: internal scoped tool adapters. Do not expose this service publicly.
+- `document-conversion`: private layout extraction, Korean/English OCR, page
+  previews, and PDF/DOCX export service.
 - `bucket`: generated reports, exports, and attachments.
 
 Managed Trigger.dev remains external. Set `TRIGGER_DISPATCH_URL` to the deployed command workflow endpoint and use the command ID as its idempotency key.
@@ -34,3 +36,12 @@ encrypted in PostgreSQL. Set the same three Gmail variables on the private
 `mcp-tools` service so its Gmail adapters can refresh and decrypt tokens.
 These credentials are separate from `MCP_SERVICE_SECRET` and must not be used
 as MCP transport authentication.
+
+Build `document-conversion` from
+`railway/document-conversion/Dockerfile`. Generate
+`DOCUMENT_CONVERSION_SERVICE_SECRET`, set it on `app` and
+`document-conversion`, and configure
+`DOCUMENT_CONVERSION_SERVICE_URL=http://document-conversion.railway.internal:3003`.
+Give the service Railway bucket variables so page previews and extracted
+images remain private objects. Its image includes English/Korean Tesseract and
+Noto CJK fonts for Korean OCR and exports.

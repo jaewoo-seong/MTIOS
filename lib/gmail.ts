@@ -15,12 +15,10 @@ import {
   gmailMessages,
   gmailOauthStates,
   gmailProjectLinks,
-  gmailThreads,
-  storageObjects
+  gmailThreads
 } from "@/lib/db/schema";
-import { convertToMarkdown } from "@/lib/documents/convert";
+import { ingestDocument } from "@/lib/documents/intelligence";
 import { MTI_OPERATOR_ID, MTI_ORGANIZATION_ID, repository } from "@/lib/repository";
-import { storeBinaryObject } from "@/lib/storage";
 
 export const GMAIL_SCOPES = [
   "https://www.googleapis.com/auth/gmail.readonly",
@@ -368,7 +366,9 @@ export async function importGmailAttachment(input: {
   attachmentId: string;
   projectId: string;
   fetcher?: Fetcher;
-  storeObject?: typeof storeBinaryObject;
+  storeObject?: (key: string, contentType: string, body: Buffer) => Promise<{
+    key: string; contentType: string; size: number;
+  }>;
 }) {
   const attachment = await getAttachment(input.attachmentId);
   if (!attachment) throw new Error("Gmail attachment not found.");
@@ -384,46 +384,34 @@ export async function importGmailAttachment(input: {
   const payload = await jsonResponse<{ data: string; size?: number }>(response, "Gmail attachment download failed.");
   const bytes = Buffer.from(payload.data, "base64url");
   const contentHash = sha256(bytes);
-  const storageKey = `gmail/${message.connectionId}/${message.gmailMessageId}/${contentHash}-${safeName(String(attachment.filename))}`;
-  await (input.storeObject ?? storeBinaryObject)(storageKey, String(attachment.mimeType), bytes);
-  if (db) {
-    await db.insert(storageObjects).values({
-      organizationId: MTI_ORGANIZATION_ID,
-      key: storageKey,
-      contentType: String(attachment.mimeType),
-      size: bytes.byteLength
-    }).onConflictDoNothing();
-  }
-  const converted = await convertToMarkdown(String(attachment.filename), String(attachment.mimeType), bytes)
-    .catch(() => ({
-      title: String(attachment.filename),
-      kind: "gmail_attachment",
-      pageCount: null,
-      wordCount: 0,
-      markdown: "",
-      truncated: false
-    }));
   const folders = await repository.listFolders();
   const folder = folders.find((item) => item.name === "Project files") ?? folders[0];
   if (!folder) throw new Error("Document folder not found.");
-  const document = await repository.createDocument({
+  const ingested = await ingestDocument({
     folderId: folder.id,
     projectId: input.projectId,
-    title: converted.title,
     filename: String(attachment.filename),
     mimeType: String(attachment.mimeType),
-    sourceKind: "gmail_attachment",
-    sizeBytes: bytes.byteLength,
-    pageCount: converted.pageCount,
-    wordCount: converted.wordCount,
-    markdown: [
-      `<!-- source:gmail message:${message.gmailMessageId} attachment:${attachment.gmailAttachmentId} hash:${contentHash} -->`,
-      converted.markdown
-    ].join("\n"),
-    storageKey
+    buffer: bytes,
+    storeOriginal: input.storeObject
   });
-  await markAttachmentImported(String(attachment.id), storageKey, contentHash, document.id);
-  return { attachmentId: attachment.id, document, reused: false };
+  await markAttachmentImported(
+    String(attachment.id),
+    ingested.document.storageKey ?? "",
+    contentHash,
+    ingested.document.id
+  );
+  return {
+    attachmentId: attachment.id,
+    document: ingested.document,
+    conversion: ingested.conversion,
+    provenance: {
+      gmailMessageId: message.gmailMessageId,
+      gmailAttachmentId: attachment.gmailAttachmentId,
+      contentHash
+    },
+    reused: false
+  };
 }
 
 type DraftInput = {
@@ -848,10 +836,6 @@ async function jsonResponse<T>(response: Response, fallback: string): Promise<T>
 
 function sha256(value: string | Buffer) {
   return createHash("sha256").update(value).digest("hex");
-}
-
-function safeName(value: string) {
-  return value.normalize("NFKC").replace(/[^a-zA-Z0-9._-]+/g, "-").slice(0, 180) || "attachment";
 }
 
 export function getGmailTestState() {

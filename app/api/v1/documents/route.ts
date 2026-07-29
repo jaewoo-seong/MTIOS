@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { MAX_UPLOAD_BYTES, convertToMarkdown } from "@/lib/documents/convert";
+import { MAX_UPLOAD_BYTES } from "@/lib/documents/convert";
+import { ingestDocument } from "@/lib/documents/intelligence";
 import { repository } from "@/lib/repository";
 
 export const runtime = "nodejs";
@@ -38,30 +39,15 @@ export async function POST(request: Request) {
   }
 
   const buffer = Buffer.from(await file.arrayBuffer());
-  let converted;
-  try {
-    converted = await convertToMarkdown(file.name, file.type, buffer);
-  } catch (reason) {
-    return NextResponse.json(
-      { error: "conversion_failed", detail: reason instanceof Error ? reason.message : "Could not read this file." },
-      { status: 422 }
-    );
-  }
-
   const projectId = String(form.get("projectId") ?? "") || null;
-  const document = await repository.createDocument({
+  const result = await ingestDocument({
     folderId: folder.id,
     projectId,
-    title: converted.title,
     filename: file.name,
     mimeType: file.type || "application/octet-stream",
-    sourceKind: converted.kind,
-    sizeBytes: file.size,
-    pageCount: converted.pageCount,
-    wordCount: converted.wordCount,
-    markdown: converted.markdown,
-    storageKey: null
+    buffer,
+    preferredLanguages: String(form.get("languages") ?? "en,ko").split(",").filter(Boolean)
   });
 
-  return NextResponse.json({ data: document, truncated: converted.truncated }, { status: 201 });
+  return NextResponse.json({ data: result.document, conversion: result.conversion }, { status: 201 });
 }

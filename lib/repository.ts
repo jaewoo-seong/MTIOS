@@ -950,7 +950,11 @@ export const repository = {
 
   async updateDocument(
     id: string,
-    input: Partial<Pick<WorkspaceDocumentDetail, "folderId" | "title" | "projectId" | "markdown">>
+    input: Partial<Pick<
+      WorkspaceDocumentDetail,
+      "folderId" | "title" | "projectId" | "markdown" | "pageCount" |
+      "wordCount" | "sourceKind" | "storageKey"
+    >>
   ) {
     // Body edits change the word count, so recompute it rather than letting the
     // stored figure drift away from the content.

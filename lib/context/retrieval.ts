@@ -17,6 +17,7 @@ import {
 } from "@/lib/db/schema";
 import { MTI_ORGANIZATION_ID, repository } from "@/lib/repository";
 import { listApprovedCreativeContext } from "@/lib/creative-work";
+import { getLatestApprovedDocumentRevision } from "@/lib/documents/intelligence";
 
 const DEFAULT_TOKEN_BUDGET = 8000;
 const EMBEDDING_ROUTE = process.env.LITELLM_EMBEDDING_ROUTE ?? "multilingual_embedding";
@@ -257,17 +258,17 @@ async function syncContextSources(projectId: string | null) {
       });
     }
     for (const document of documents.filter((item) => item.projectId === projectId).slice(0, 100)) {
-      const detail = await repository.getDocument(document.id);
-      if (!detail) continue;
+      const revision = await getLatestApprovedDocumentRevision(document.id);
+      if (!revision) continue;
       inputs.push({
         projectId,
         agendaId: null,
         sourceType: "document",
         sourceId: document.id,
         title: document.title,
-        content: detail.markdown,
-        authority: "working",
-        approvalStatus: "working"
+        content: String(revision.markdown),
+        authority: "approved",
+        approvalStatus: "approved"
       });
     }
   }
