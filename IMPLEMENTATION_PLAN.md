@@ -808,3 +808,49 @@ versions, test results, credentials still required, and unresolved risks.
     credential smoke tests; local tests use contract-faithful mocked responses.
   - Public APIs provide no SLA. Provider state remains visible and bounded
     fallback prevents silent evidence loss.
+
+### 2026-07-29 - Phase 8 Completed
+
+- Status: completed and verified locally.
+- Implementation commit: `PHASE_8_IMPLEMENTATION_COMMIT`.
+- Migration: `drizzle/0009_round_black_crow.sql`.
+- Delivered:
+  - Durable, organization-scoped client change sets linked to projects,
+    agendas, runs, destination databases, reviews, and idempotency keys.
+  - Insert, update, delete, and merge proposals with exact before/after
+    values, changed fields, confidence, validation warnings, duplicate links,
+    source evidence IDs, revision, and expiration.
+  - Project Command Center review surface with current/proposed comparison,
+    per-item selection, proposal editing, rejection, more-research requests,
+    JSON export, approval/application, conflict state, and rollback.
+  - Fresh one-time approval tokens stored only as hashes and bound to the
+    proposal content hash plus exact selected item IDs.
+  - Approval invalidation on proposal revision and fresh review submission
+    after operator edits.
+  - Transactional application guarded by a PostgreSQL advisory lock and
+    full-batch optimistic revalidation before any write.
+  - Durable application records and exact rollback snapshots for every
+    inserted, updated, deleted, or merged record.
+  - Direct record POST/DELETE routes blocked; Client & Data record view made
+    read-only; record mutations now enter through project proposals.
+  - MCP staging upgraded from an ephemeral payload to a durable submitted
+    change set. MCP invocation approval and client-data approval remain
+    separate controls.
+  - Generic review decisions now persist in PostgreSQL and update review
+    state instead of existing only in process memory.
+- Validation:
+  - `npm run typecheck` passed.
+  - `npm test` passed with 61 tests across 11 files.
+  - `npm run build` passed.
+  - Drizzle migration generation passed.
+  - Proposal idempotency, selective approval, approval invalidation,
+    concurrent conflict atomicity, exact rollback, and direct-write blocking
+    tested.
+- Deployment: not deployed in this phase. Run the Railway migration before
+  enabling client-data proposal application in production.
+- Credentials required: none.
+- Remaining risks:
+  - Production PostgreSQL migration and transactional smoke tests remain for
+    Phase 12.
+  - Bulk proposals should be load-tested against realistic record counts
+    before raising the current 1,000-item API limit.

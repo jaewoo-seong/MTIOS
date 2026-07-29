@@ -1,4 +1,5 @@
 import { and, asc, count, desc, eq, gt, max, sql as drizzleSql } from "drizzle-orm";
+import { createHash } from "node:crypto";
 import type {
   Agenda,
   AgentDefinition,
@@ -38,6 +39,8 @@ import {
   projectRecords,
   projects,
   reports,
+  reviewDecisions as reviewDecisionRows,
+  reviews,
   runEvents,
   runs,
   tasks
@@ -657,8 +660,36 @@ export const repository = {
   },
   async createReviewDecision(reviewId: string, input: Pick<ReviewDecision, "decision" | "note">) {
     const decision: ReviewDecision = { id: crypto.randomUUID(), reviewId, createdAt: now(), ...input };
-    store.reviewDecisions.unshift(decision);
-    return decision;
+    if (!db) {
+      store.reviewDecisions.unshift(decision);
+      return decision;
+    }
+    const [review] = await db.select().from(reviews).where(and(
+      eq(reviews.id, reviewId),
+      eq(reviews.organizationId, MTI_ORGANIZATION_ID)
+    )).limit(1);
+    if (!review) return null;
+    const [row] = await db.insert(reviewDecisionRows).values({
+      id: decision.id,
+      organizationId: MTI_ORGANIZATION_ID,
+      reviewId,
+      userId: MTI_OPERATOR_ID,
+      decision: input.decision,
+      note: input.note
+    }).returning();
+    await db.update(reviews).set({
+      status: input.decision === "approved"
+        ? "approved"
+        : input.decision === "rejected" ? "rejected" : "revision",
+      updatedAt: new Date()
+    }).where(eq(reviews.id, reviewId));
+    return {
+      id: row.id,
+      reviewId: row.reviewId,
+      decision: row.decision as ReviewDecision["decision"],
+      note: row.note,
+      createdAt: iso(row.createdAt)
+    };
   },
   async listReports() {
     if (!db) return store.reports;
@@ -970,6 +1001,84 @@ export const repository = {
       id: row.id, databaseId: row.databaseId,
       data: row.data as Record<string, string>, createdAt: iso(row.createdAt)
     }));
+  },
+
+  async getRecord(databaseId: string, id: string): Promise<ClientRecord | null> {
+    if (!db) {
+      return store.records.find((record) => record.databaseId === databaseId && record.id === id) ?? null;
+    }
+    const [row] = await db.select({ record: clientRecords })
+      .from(clientRecords)
+      .innerJoin(clientDatabases, eq(clientDatabases.id, clientRecords.databaseId))
+      .where(and(
+        eq(clientRecords.id, id),
+        eq(clientRecords.databaseId, databaseId),
+        eq(clientDatabases.organizationId, MTI_ORGANIZATION_ID)
+      )).limit(1);
+    return row ? {
+      id: row.record.id,
+      databaseId: row.record.databaseId,
+      data: row.record.data as Record<string, string>,
+      createdAt: iso(row.record.createdAt)
+    } : null;
+  },
+
+  async putRecord(databaseId: string, id: string, data: Record<string, string>): Promise<ClientRecord> {
+    if (!db) {
+      const existing = store.records.find((record) => record.databaseId === databaseId && record.id === id);
+      if (existing) {
+        existing.data = data;
+        return existing;
+      }
+      const record = { id, databaseId, data, createdAt: now() };
+      store.records.push(record);
+      return record;
+    }
+    const databases = await db.select({ id: clientDatabases.id }).from(clientDatabases).where(and(
+      eq(clientDatabases.id, databaseId),
+      eq(clientDatabases.organizationId, MTI_ORGANIZATION_ID)
+    )).limit(1);
+    if (databases.length === 0) throw new Error("Client database not found.");
+    const [row] = await db.insert(clientRecords).values({
+      id,
+      databaseId,
+      data,
+      fingerprint: createHash("sha256").update(JSON.stringify(data)).digest("hex")
+    }).onConflictDoUpdate({
+      target: clientRecords.id,
+      set: {
+        data,
+        fingerprint: createHash("sha256").update(JSON.stringify(data)).digest("hex"),
+        updatedAt: new Date()
+      }
+    }).returning();
+    return {
+      id: row.id,
+      databaseId: row.databaseId,
+      data: row.data as Record<string, string>,
+      createdAt: iso(row.createdAt)
+    };
+  },
+
+  async deleteRecordScoped(databaseId: string, id: string) {
+    if (!db) {
+      const index = store.records.findIndex((record) =>
+        record.databaseId === databaseId && record.id === id
+      );
+      if (index === -1) return false;
+      store.records.splice(index, 1);
+      return true;
+    }
+    const owned = await db.select({ id: clientDatabases.id }).from(clientDatabases).where(and(
+      eq(clientDatabases.id, databaseId),
+      eq(clientDatabases.organizationId, MTI_ORGANIZATION_ID)
+    )).limit(1);
+    if (owned.length === 0) return false;
+    const rows = await db.delete(clientRecords).where(and(
+      eq(clientRecords.id, id),
+      eq(clientRecords.databaseId, databaseId)
+    )).returning({ id: clientRecords.id });
+    return rows.length > 0;
   },
 
   async deleteRecord(id: string) {

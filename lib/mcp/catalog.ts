@@ -5,6 +5,7 @@ import { repository } from "@/lib/repository";
 import { searchWorkspace } from "@/lib/search";
 import { storeReportExport } from "@/lib/storage";
 import { runResearchQuery } from "@/lib/research/engine";
+import { createClientChangeSet, submitClientChangeSet } from "@/lib/client-changes";
 
 export type McpRiskLevel = "low" | "medium" | "high" | "critical";
 export type McpApprovalRequirement = "none" | "always";
@@ -80,14 +81,20 @@ export const internalToolCatalog = [
   },
   {
     name: "stage_client_records",
-    description: "Stage client database records for explicit review; never writes directly.",
+    description: "Create a durable client-data proposal for explicit review; never writes records directly.",
     group: "staged_write",
     riskLevel: "high",
     approvalRequirement: "always",
     permissions: ["client_data:propose"],
     budgetCents: 0,
     inputSchema: z.object({
+      projectId: z.string().uuid(),
+      agendaId: z.string().uuid().nullable().optional(),
+      runId: z.string().uuid().nullable().optional(),
       databaseId: z.string().uuid(),
+      title: z.string().trim().min(2).max(300),
+      reason: z.string().max(5000).default(""),
+      idempotencyKey: z.string().trim().min(8).max(200),
       records: z.array(z.record(z.string(), z.string())).min(1).max(500)
     })
   },
@@ -198,11 +205,26 @@ export async function executeInternalTool(name: InternalToolName, rawInput: unkn
     return { records: records.slice(0, Number(input.limit)) };
   }
   if (name === "stage_client_records") {
+    const changeSet = await createClientChangeSet({
+      projectId: String(input.projectId),
+      agendaId: typeof input.agendaId === "string" ? input.agendaId : null,
+      runId: typeof input.runId === "string" ? input.runId : null,
+      databaseId: String(input.databaseId),
+      title: String(input.title),
+      reason: String(input.reason),
+      idempotencyKey: String(input.idempotencyKey),
+      items: (input.records as Array<Record<string, string>>).map((record) => ({
+        operation: "insert" as const,
+        after: record
+      }))
+    });
+    const submitted = changeSet.status === "draft"
+      ? await submitClientChangeSet(changeSet.id)
+      : changeSet;
     return {
       staged: true,
-      databaseId: input.databaseId,
-      records: input.records,
-      message: "Records staged for review. No client data was changed."
+      changeSet: submitted,
+      message: "Proposal submitted for review. No client data was changed."
     };
   }
   if (name === "create_working_report") {

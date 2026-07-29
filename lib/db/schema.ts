@@ -691,6 +691,109 @@ export const clientRecords = pgTable("client_records", {
   ...timestamps
 });
 
+export const clientChangeSets = pgTable("client_change_sets", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  agendaId: uuid("agenda_id").references(() => agendas.id, { onDelete: "set null" }),
+  runId: uuid("run_id").references(() => runs.id, { onDelete: "set null" }),
+  databaseId: uuid("database_id").references(() => clientDatabases.id, { onDelete: "cascade" }).notNull(),
+  reviewId: uuid("review_id").references(() => reviews.id, { onDelete: "set null" }),
+  title: text("title").notNull(),
+  reason: text("reason").default("").notNull(),
+  status: text("status").default("draft").notNull(),
+  revision: integer("revision").default(1).notNull(),
+  contentHash: text("content_hash").notNull(),
+  idempotencyKey: text("idempotency_key").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  approvedAt: timestamp("approved_at", { withTimezone: true }),
+  approvedBy: uuid("approved_by").references(() => users.id, { onDelete: "set null" }),
+  appliedAt: timestamp("applied_at", { withTimezone: true }),
+  rolledBackAt: timestamp("rolled_back_at", { withTimezone: true }),
+  ...timestamps
+}, (table) => [
+  uniqueIndex("client_change_set_org_idempotency_idx").on(table.organizationId, table.idempotencyKey),
+  index("client_change_set_project_status_idx").on(table.projectId, table.status)
+]);
+
+export const clientChangeItems = pgTable("client_change_items", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  changeSetId: uuid("change_set_id").references(() => clientChangeSets.id, { onDelete: "cascade" }).notNull(),
+  operation: text("operation").notNull(),
+  recordId: uuid("record_id"),
+  mergeRecordId: uuid("merge_record_id"),
+  before: jsonb("before").$type<Record<string, string> | null>(),
+  mergeBefore: jsonb("merge_before").$type<Record<string, string> | null>(),
+  after: jsonb("after").$type<Record<string, string> | null>(),
+  changedFields: jsonb("changed_fields").$type<string[]>().default([]).notNull(),
+  sourceEvidenceIds: jsonb("source_evidence_ids").$type<string[]>().default([]).notNull(),
+  confidence: integer("confidence").default(0).notNull(),
+  validationWarnings: jsonb("validation_warnings").$type<string[]>().default([]).notNull(),
+  duplicateRecordIds: jsonb("duplicate_record_ids").$type<string[]>().default([]).notNull(),
+  status: text("status").default("pending").notNull(),
+  decisionNote: text("decision_note"),
+  position: integer("position").default(0).notNull(),
+  ...timestamps
+});
+
+export const reviewDecisions = pgTable("review_decisions", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  reviewId: uuid("review_id").references(() => reviews.id, { onDelete: "cascade" }).notNull(),
+  userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
+  decision: text("decision").notNull(),
+  note: text("note").default("").notNull(),
+  selectedItemIds: jsonb("selected_item_ids").$type<string[]>().default([]).notNull(),
+  proposalHash: text("proposal_hash"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
+});
+
+export const clientChangeApprovals = pgTable("client_change_approvals", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  changeSetId: uuid("change_set_id").references(() => clientChangeSets.id, { onDelete: "cascade" }).notNull(),
+  reviewDecisionId: uuid("review_decision_id").references(() => reviewDecisions.id, { onDelete: "cascade" }).notNull(),
+  tokenHash: text("token_hash").notNull().unique(),
+  proposalHash: text("proposal_hash").notNull(),
+  selectedItemIds: jsonb("selected_item_ids").$type<string[]>().default([]).notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  consumedAt: timestamp("consumed_at", { withTimezone: true }),
+  invalidatedAt: timestamp("invalidated_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
+});
+
+export const clientChangeApplications = pgTable("client_change_applications", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  changeSetId: uuid("change_set_id").references(() => clientChangeSets.id, { onDelete: "cascade" }).notNull().unique(),
+  approvalId: uuid("approval_id").references(() => clientChangeApprovals.id, { onDelete: "restrict" }).notNull(),
+  status: text("status").notNull(),
+  appliedItemIds: jsonb("applied_item_ids").$type<string[]>().default([]).notNull(),
+  conflictItemIds: jsonb("conflict_item_ids").$type<string[]>().default([]).notNull(),
+  error: text("error"),
+  appliedAt: timestamp("applied_at", { withTimezone: true }),
+  rolledBackAt: timestamp("rolled_back_at", { withTimezone: true }),
+  ...timestamps
+});
+
+export const clientChangeSnapshots = pgTable("client_change_snapshots", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  applicationId: uuid("application_id").references(() => clientChangeApplications.id, { onDelete: "cascade" }).notNull(),
+  itemId: uuid("item_id").references(() => clientChangeItems.id, { onDelete: "restrict" }).notNull(),
+  recordId: uuid("record_id").notNull(),
+  operation: text("operation").notNull(),
+  before: jsonb("before").$type<Record<string, string> | null>(),
+  after: jsonb("after").$type<Record<string, string> | null>(),
+  rolledBackAt: timestamp("rolled_back_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
+}, (table) => [
+  uniqueIndex("client_change_snapshot_application_item_record_idx").on(
+    table.applicationId,
+    table.itemId,
+    table.recordId
+  )
+]);
+
 export const canonicalCompanies = pgTable("canonical_companies", {
   id: uuid("id").defaultRandom().primaryKey(),
   organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),

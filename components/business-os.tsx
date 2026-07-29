@@ -28,6 +28,7 @@ import type {
   WorkspaceDocument
 } from "@/lib/domain";
 import { ClientDataView } from "@/components/client-data-view";
+import { ClientChangeReview } from "@/components/client-change-review";
 import { DocumentsView } from "@/components/documents-view";
 import { KnowledgeView } from "@/components/knowledge-view";
 import { LiveActivity } from "@/components/live-activity";
@@ -332,6 +333,7 @@ export function BusinessOS() {
                   selectedId={selectedProjectId}
                   onSelect={setSelectedProjectId}
                   onCreate={() => setCreateOpen(true)}
+                  onError={pushError}
                   onOpenDocument={(documentId) => {
                     setFocusDocumentId(documentId);
                     setPage("documents");
@@ -467,12 +469,13 @@ function Metric({ label, value, note, attention = false }: {
   );
 }
 
-function ProjectsView({ projects, project, selectedId, onSelect, onCreate, onOpenDocument }: {
+function ProjectsView({ projects, project, selectedId, onSelect, onCreate, onError, onOpenDocument }: {
   projects: Project[];
   project: ProjectDetail | null;
   selectedId: string | null;
   onSelect: (id: string) => void;
   onCreate: () => void;
+  onError: (message: string) => void;
   onOpenDocument: (documentId: string) => void;
 }) {
   if (projects.length === 0) {
@@ -551,6 +554,7 @@ function ProjectsView({ projects, project, selectedId, onSelect, onCreate, onOpe
             title="Deliverables"
             items={project.deliverables.map((item) => `${item.title} · ${item.status}`)}
           />
+          <ClientChangeReview projectId={project.id} onError={onError} />
           <ProjectFiles projectId={project.id} onOpenDocument={onOpenDocument} />
         </div>
       )}
