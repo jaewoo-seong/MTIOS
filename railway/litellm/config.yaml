@@ -1,23 +1,23 @@
 model_list:
   - model_name: executive_reasoning
     litellm_params:
-      model: openrouter/anthropic/claude-opus-5
+      model: openrouter/anthropic/claude-haiku-4.5
       api_key: os.environ/OPENROUTER_API_KEY
   - model_name: executive_review
     litellm_params:
-      model: openrouter/anthropic/claude-opus-5
+      model: openrouter/anthropic/claude-haiku-4.5
       api_key: os.environ/OPENROUTER_API_KEY
   - model_name: worker_research
     litellm_params:
-      model: openrouter/google/gemini-3.5-flash
+      model: openrouter/openrouter/free
       api_key: os.environ/OPENROUTER_API_KEY
   - model_name: worker_structured
     litellm_params:
-      model: openrouter/google/gemini-3.1-flash-lite-preview
+      model: openrouter/openrouter/free
       api_key: os.environ/OPENROUTER_API_KEY
   - model_name: worker_fast
     litellm_params:
-      model: openrouter/google/gemini-3.1-flash-lite-preview
+      model: openrouter/openrouter/free
       api_key: os.environ/OPENROUTER_API_KEY
 
 router_settings:
