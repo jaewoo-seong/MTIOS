@@ -18,10 +18,13 @@ import {
 import { MTI_ORGANIZATION_ID, repository } from "@/lib/repository";
 import { listApprovedCreativeContext } from "@/lib/creative-work";
 import { getLatestApprovedDocumentRevision } from "@/lib/documents/intelligence";
+import { requestEmbeddings } from "@/lib/ai/litellm";
 
 const DEFAULT_TOKEN_BUDGET = 8000;
 const EMBEDDING_ROUTE = process.env.LITELLM_EMBEDDING_ROUTE ?? "multilingual_embedding";
 const MAX_SOURCE_CHARS = 200_000;
+const EMBEDDING_DIMENSIONS = 1536;
+const MAX_EMBEDDING_CANDIDATES = 100;
 
 type SourceInput = {
   projectId: string | null;
@@ -60,20 +63,36 @@ const memory = globalContext.__businessOsContextStore ??= {
   packs: []
 };
 
-export async function buildContextPack(input: PackInput): Promise<ContextPack> {
+export async function buildContextPack(
+  input: PackInput,
+  embed: (inputs: string[]) => Promise<number[][]> = requestEmbeddings
+): Promise<ContextPack> {
   const query = input.query.trim();
   const tokenBudget = clamp(input.tokenBudget ?? DEFAULT_TOKEN_BUDGET, 500, 32_000);
   await syncContextSources(input.projectId ?? null);
 
   const queryLanguage = detectLanguage(query);
   const candidates = await listCandidateChunks(input.projectId ?? null);
-  const scored = candidates
+  const lexicalScored = candidates
     .map(({ source, chunk }) => ({
       source,
       chunk,
       score: scoreChunk(query, queryLanguage, source, chunk, input)
     }))
     .filter((item) => item.score > 0)
+    .sort((a, b) => b.score - a.score || a.chunk.contentHash.localeCompare(b.chunk.contentHash));
+  const embeddingCandidates = lexicalScored.slice(0, MAX_EMBEDDING_CANDIDATES);
+  const vectors = await retrieveEmbeddings(query, embeddingCandidates, embed);
+  const scored = lexicalScored
+    .map((item) => {
+      const semantic = vectors.query && vectors.chunks.get(item.chunk.id)
+        ? cosineSimilarity(vectors.query, vectors.chunks.get(item.chunk.id)!)
+        : null;
+      return {
+        ...item,
+        score: item.score + (semantic === null ? 0 : Math.max(0, semantic) * 0.45)
+      };
+    })
     .sort((a, b) => b.score - a.score || a.chunk.contentHash.localeCompare(b.chunk.contentHash));
 
   const selected: typeof scored = [];
@@ -311,6 +330,7 @@ async function upsertSource(input: SourceInput) {
       language: detectLanguage(piece),
       tokenEstimate: estimateTokens(piece),
       embeddingRoute: null,
+      embedding: null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     })));
@@ -552,10 +572,72 @@ function chunkRow(row: typeof contextChunks.$inferSelect): ContextChunk {
     contentHash: row.contentHash,
     language: row.language as ContextLanguage,
     tokenEstimate: row.tokenEstimate,
+    embedding: row.embedding,
     embeddingRoute: row.embeddingRoute,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString()
   };
+}
+
+async function retrieveEmbeddings(
+  query: string,
+  candidates: Array<{ chunk: ContextChunk }>,
+  embed: (inputs: string[]) => Promise<number[][]>
+) {
+  const chunks = new Map<string, number[]>();
+  for (const candidate of candidates) {
+    if (validEmbedding(candidate.chunk.embedding)) {
+      chunks.set(candidate.chunk.id, candidate.chunk.embedding);
+    }
+  }
+  const missing = candidates.filter((candidate) => !chunks.has(candidate.chunk.id));
+  try {
+    const inputs = [query, ...missing.map((candidate) => candidate.chunk.content)];
+    const vectors = await embed(inputs);
+    if (vectors.length !== inputs.length || !vectors.every(validEmbedding)) {
+      return { query: null, chunks };
+    }
+    const queryVector = vectors[0];
+    if (!queryVector) return { query: null, chunks };
+    await Promise.all(missing.map(async (candidate, index) => {
+      const vector = vectors[index + 1];
+      if (!vector) return;
+      chunks.set(candidate.chunk.id, vector);
+      candidate.chunk.embedding = vector;
+      candidate.chunk.embeddingRoute = EMBEDDING_ROUTE;
+      if (db) {
+        await db.update(contextChunks).set({
+          embedding: vector,
+          embeddingRoute: EMBEDDING_ROUTE,
+          updatedAt: new Date()
+        }).where(eq(contextChunks.id, candidate.chunk.id));
+      }
+    }));
+    return { query: queryVector, chunks };
+  } catch {
+    return { query: null, chunks };
+  }
+}
+
+function validEmbedding(value: number[] | null | undefined): value is number[] {
+  return Array.isArray(value) && value.length === EMBEDDING_DIMENSIONS &&
+    value.every(Number.isFinite);
+}
+
+export function cosineSimilarity(left: number[], right: number[]) {
+  if (left.length === 0 || left.length !== right.length) return 0;
+  let dot = 0;
+  let leftMagnitude = 0;
+  let rightMagnitude = 0;
+  for (let index = 0; index < left.length; index += 1) {
+    const a = left[index] ?? 0;
+    const b = right[index] ?? 0;
+    dot += a * b;
+    leftMagnitude += a * a;
+    rightMagnitude += b * b;
+  }
+  if (leftMagnitude === 0 || rightMagnitude === 0) return 0;
+  return dot / Math.sqrt(leftMagnitude * rightMagnitude);
 }
 
 function tokenize(value: string) {

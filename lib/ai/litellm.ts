@@ -55,6 +55,12 @@ export async function requestLiteLLM(
 }
 
 export async function requestEmbedding(input: string): Promise<number[]> {
+  const [embedding] = await requestEmbeddings([input]);
+  if (!embedding) throw new Error("LiteLLM returned no embedding.");
+  return embedding;
+}
+
+export async function requestEmbeddings(inputs: string[]): Promise<number[][]> {
   const baseUrl = process.env.LITELLM_BASE_URL;
   const apiKey = process.env.LITELLM_API_KEY;
   const model = process.env.LITELLM_EMBEDDING_ROUTE ?? "multilingual_embedding";
@@ -65,15 +71,18 @@ export async function requestEmbedding(input: string): Promise<number[]> {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json"
     },
-    body: JSON.stringify({ model, input })
+    body: JSON.stringify({ model, input: inputs })
   });
   if (!response.ok) {
     throw new Error(`LiteLLM embedding request failed with status ${response.status}`);
   }
-  const payload = await response.json() as { data?: Array<{ embedding?: number[] }> };
-  const embedding = payload.data?.[0]?.embedding;
-  if (!embedding) throw new Error("LiteLLM returned no embedding.");
-  return embedding;
+  const payload = await response.json() as { data?: Array<{ index?: number; embedding?: number[] }> };
+  const embeddings = (payload.data ?? [])
+    .sort((a, b) => (a.index ?? 0) - (b.index ?? 0))
+    .map((item) => item.embedding)
+    .filter((embedding): embedding is number[] => Array.isArray(embedding));
+  if (embeddings.length !== inputs.length) throw new Error("LiteLLM returned incomplete embeddings.");
+  return embeddings;
 }
 
 export async function requestReranking(query: string, documents: string[]) {

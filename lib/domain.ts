@@ -182,6 +182,7 @@ export interface ContextChunk {
   contentHash: string;
   language: ContextLanguage;
   tokenEstimate: number;
+  embedding: number[] | null;
   embeddingRoute: string | null;
   createdAt: string;
   updatedAt: string;
