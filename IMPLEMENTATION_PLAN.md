@@ -812,7 +812,7 @@ versions, test results, credentials still required, and unresolved risks.
 ### 2026-07-29 - Phase 8 Completed
 
 - Status: completed and verified locally.
-- Implementation commit: `PHASE_8_IMPLEMENTATION_COMMIT`.
+- Implementation commit: `9aee2cb`.
 - Migration: `drizzle/0009_round_black_crow.sql`.
 - Delivered:
   - Durable, organization-scoped client change sets linked to projects,
