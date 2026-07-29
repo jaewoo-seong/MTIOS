@@ -152,7 +152,15 @@ export interface ContextSource {
   organizationId: string;
   projectId: string | null;
   agendaId: string | null;
-  sourceType: "project" | "agenda" | "document" | "report" | "knowledge" | "client_record";
+  sourceType:
+    | "project"
+    | "agenda"
+    | "document"
+    | "report"
+    | "knowledge"
+    | "client_record"
+    | "brand_profile"
+    | "marketing_campaign";
   sourceId: string;
   title: string;
   language: ContextLanguage;

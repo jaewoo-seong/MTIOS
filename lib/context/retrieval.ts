@@ -16,6 +16,7 @@ import {
   contextSources
 } from "@/lib/db/schema";
 import { MTI_ORGANIZATION_ID, repository } from "@/lib/repository";
+import { listApprovedCreativeContext } from "@/lib/creative-work";
 
 const DEFAULT_TOKEN_BUDGET = 8000;
 const EMBEDDING_ROUTE = process.env.LITELLM_EMBEDDING_ROUTE ?? "multilingual_embedding";
@@ -191,6 +192,46 @@ async function syncContextSources(projectId: string | null) {
       repository.listReports(),
       repository.listDocuments()
     ]);
+    const creative = await listApprovedCreativeContext(projectId);
+    for (const brand of creative.brands) {
+      inputs.push({
+        projectId: typeof brand.projectId === "string" ? brand.projectId : null,
+        agendaId: null,
+        sourceType: "brand_profile",
+        sourceId: brand.id,
+        title: String(brand.name),
+        content: JSON.stringify({
+          audience: brand.audience,
+          positioning: brand.positioning,
+          voice: brand.voice,
+          approvedClaims: brand.approvedClaims,
+          prohibitedClaims: brand.prohibitedClaims,
+          competitors: brand.competitors
+        }),
+        authority: "approved",
+        approvalStatus: "approved"
+      });
+    }
+    for (const campaign of creative.campaigns) {
+      inputs.push({
+        projectId,
+        agendaId: typeof campaign.agendaId === "string" ? campaign.agendaId : null,
+        sourceType: "marketing_campaign",
+        sourceId: campaign.id,
+        title: String(campaign.name),
+        content: JSON.stringify({
+          objective: campaign.objective,
+          audiences: campaign.audiences,
+          positioning: campaign.positioning,
+          channels: campaign.channels,
+          formats: campaign.formats,
+          assumptions: campaign.assumptions,
+          successMetrics: campaign.successMetrics
+        }),
+        authority: "approved",
+        approvalStatus: "approved"
+      });
+    }
     for (const agenda of agendas) {
       inputs.push({
         projectId,

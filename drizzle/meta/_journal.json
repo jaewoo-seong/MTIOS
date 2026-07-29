@@ -43,6 +43,13 @@
       "when": 1785298002800,
       "tag": "0005_regular_ikaris",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1785298283050,
+      "tag": "0006_opposite_nicolaos",
+      "breakpoints": true
     }
   ]
 }

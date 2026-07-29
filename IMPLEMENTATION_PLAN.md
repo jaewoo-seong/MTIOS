@@ -642,3 +642,48 @@ versions, test results, credentials still required, and unresolved risks.
   - Client-database write proposals and approvals arrive in Phase 8.
   - Campaign orchestration can use these APIs now; provider-specific discovery
     connectors arrive with MCP tools in Phase 6.
+
+### 2026-07-29 - Phase 5 Completed
+
+- Status: completed and verified locally.
+- Implementation commit: recorded after verification in follow-up log commit.
+- Migration: `drizzle/0006_opposite_nicolaos.sql`.
+- Delivered:
+  - Durable brand profiles containing audiences, positioning, structured voice,
+    approved/prohibited claims, competitors, revision, and approval state.
+  - Marketing campaigns linked to projects, agendas, and brand profiles with
+    objectives, audiences, positioning alternatives, channels, formats,
+    assumptions, success metrics, lifecycle, and approval state.
+  - Persistent concepts and channel/format variants with shortlist, approval,
+    rejection, and mandatory decision reasoning.
+  - Content calendar items linked to campaigns and optional content variants.
+  - Brainstorming sessions retaining prompts, evaluation criteria,
+    assumptions, alternatives, scores, shortlist/rejection decisions, reasons,
+    and final decision summaries.
+  - Durable experiment plans linked to campaigns or brainstorming sessions.
+  - Editable creative outputs normalized into working reports for briefs,
+    campaign plans, calendars, copy, concepts, decision memos, and experiments.
+  - Approved brand and campaign context integrated into bounded context packs;
+    drafts and rejected material are not treated as authoritative policy.
+  - External publication, send, and ad-activation requests create pending
+    review records and review-required proposals. No execution endpoint exists.
+  - REST APIs for all Phase 5 creation, decision, approval, calendar, output,
+    experiment, and external-action proposal flows.
+- Validation:
+  - `npm run typecheck` passed.
+  - `npm test` passed with 44 tests across 8 files.
+  - `npm run build` passed.
+  - Drizzle migration generation passed.
+  - Draft-context exclusion, approved-context retrieval, durable concept and
+    idea rejection reasons, calendar planning, editable report outputs,
+    experiment creation, and review-gated external actions tested.
+- Deployment: not deployed in this phase; Railway migration and REST smoke
+  remain required.
+- Credentials required: none.
+- Remaining risks:
+  - External action execution remains intentionally absent until MCP provider
+    tools and Phase 8 approval-token enforcement exist.
+  - Production UI composition for marketing and brainstorming remains part of
+    later design/release phases; current surfaces are REST and agent-driven.
+  - Calendar entries are internal plans, not connected to external calendar or
+    publishing providers.

@@ -306,6 +306,131 @@ export const knowledgeEntries = pgTable("knowledge_entries", {
   ...timestamps
 });
 
+export const brandProfiles = pgTable("brand_profiles", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  audience: jsonb("audience").$type<Array<Record<string, unknown>>>().default([]).notNull(),
+  positioning: text("positioning").default("").notNull(),
+  voice: jsonb("voice").$type<Record<string, unknown>>().default({}).notNull(),
+  approvedClaims: jsonb("approved_claims").$type<string[]>().default([]).notNull(),
+  prohibitedClaims: jsonb("prohibited_claims").$type<string[]>().default([]).notNull(),
+  competitors: jsonb("competitors").$type<string[]>().default([]).notNull(),
+  status: text("status").default("draft").notNull(),
+  revision: integer("revision").default(1).notNull(),
+  ...timestamps
+}, (table) => [
+  uniqueIndex("brand_profile_org_project_name_idx").on(table.organizationId, table.projectId, table.name)
+]);
+
+export const marketingCampaigns = pgTable("marketing_campaigns", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  agendaId: uuid("agenda_id").references(() => agendas.id, { onDelete: "set null" }),
+  brandProfileId: uuid("brand_profile_id").references(() => brandProfiles.id, { onDelete: "set null" }),
+  name: text("name").notNull(),
+  objective: text("objective").notNull(),
+  audiences: jsonb("audiences").$type<Array<Record<string, unknown>>>().default([]).notNull(),
+  positioning: jsonb("positioning").$type<string[]>().default([]).notNull(),
+  channels: jsonb("channels").$type<string[]>().default([]).notNull(),
+  formats: jsonb("formats").$type<string[]>().default([]).notNull(),
+  assumptions: jsonb("assumptions").$type<string[]>().default([]).notNull(),
+  successMetrics: jsonb("success_metrics").$type<Array<Record<string, unknown>>>().default([]).notNull(),
+  status: text("status").default("draft").notNull(),
+  approvalState: text("approval_state").default("working").notNull(),
+  ...timestamps
+});
+
+export const marketingConcepts = pgTable("marketing_concepts", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  campaignId: uuid("campaign_id").references(() => marketingCampaigns.id, { onDelete: "cascade" }).notNull(),
+  title: text("title").notNull(),
+  rationale: text("rationale").default("").notNull(),
+  content: jsonb("content").$type<Record<string, unknown>>().default({}).notNull(),
+  status: text("status").default("proposed").notNull(),
+  decisionReason: text("decision_reason"),
+  position: integer("position").default(0).notNull(),
+  ...timestamps
+});
+
+export const marketingVariants = pgTable("marketing_variants", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  conceptId: uuid("concept_id").references(() => marketingConcepts.id, { onDelete: "cascade" }).notNull(),
+  name: text("name").notNull(),
+  channel: text("channel").notNull(),
+  format: text("format").notNull(),
+  content: text("content").default("").notNull(),
+  status: text("status").default("draft").notNull(),
+  decisionReason: text("decision_reason"),
+  ...timestamps
+});
+
+export const contentCalendarItems = pgTable("content_calendar_items", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  campaignId: uuid("campaign_id").references(() => marketingCampaigns.id, { onDelete: "cascade" }).notNull(),
+  variantId: uuid("variant_id").references(() => marketingVariants.id, { onDelete: "set null" }),
+  title: text("title").notNull(),
+  channel: text("channel").notNull(),
+  scheduledFor: timestamp("scheduled_for", { withTimezone: true }),
+  status: text("status").default("planned").notNull(),
+  ...timestamps
+});
+
+export const brainstormingSessions = pgTable("brainstorming_sessions", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  agendaId: uuid("agenda_id").references(() => agendas.id, { onDelete: "set null" }),
+  prompt: text("prompt").notNull(),
+  evaluationCriteria: jsonb("evaluation_criteria").$type<string[]>().default([]).notNull(),
+  assumptions: jsonb("assumptions").$type<string[]>().default([]).notNull(),
+  status: text("status").default("active").notNull(),
+  decisionSummary: text("decision_summary").default("").notNull(),
+  ...timestamps
+});
+
+export const brainstormingIdeas = pgTable("brainstorming_ideas", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  sessionId: uuid("session_id").references(() => brainstormingSessions.id, { onDelete: "cascade" }).notNull(),
+  title: text("title").notNull(),
+  description: text("description").default("").notNull(),
+  scores: jsonb("scores").$type<Record<string, number>>().default({}).notNull(),
+  status: text("status").default("candidate").notNull(),
+  decisionReason: text("decision_reason"),
+  position: integer("position").default(0).notNull(),
+  ...timestamps
+});
+
+export const marketingExperiments = pgTable("marketing_experiments", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  campaignId: uuid("campaign_id").references(() => marketingCampaigns.id, { onDelete: "set null" }),
+  sessionId: uuid("session_id").references(() => brainstormingSessions.id, { onDelete: "set null" }),
+  hypothesis: text("hypothesis").notNull(),
+  method: text("method").notNull(),
+  metrics: jsonb("metrics").$type<string[]>().default([]).notNull(),
+  result: jsonb("result").$type<Record<string, unknown>>().default({}).notNull(),
+  status: text("status").default("planned").notNull(),
+  decision: text("decision"),
+  ...timestamps
+});
+
+export const externalActionProposals = pgTable("external_action_proposals", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  campaignId: uuid("campaign_id").references(() => marketingCampaigns.id, { onDelete: "set null" }),
+  actionType: text("action_type").notNull(),
+  payload: jsonb("payload").$type<Record<string, unknown>>().default({}).notNull(),
+  status: text("status").default("review_required").notNull(),
+  reviewId: uuid("review_id").references(() => reviews.id, { onDelete: "set null" }),
+  executedAt: timestamp("executed_at", { withTimezone: true }),
+  ...timestamps
+});
+
 export const contextSources = pgTable("context_sources", {
   id: uuid("id").defaultRandom().primaryKey(),
   organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
