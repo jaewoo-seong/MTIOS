@@ -6,12 +6,13 @@ import { and, eq } from "drizzle-orm";
 const executiveToolScopes = [
   "project:read", "knowledge:read", "plan:create", "task:delegate",
   "workspace:read", "client_data:read", "client_data:propose",
-  "report:create", "document:read", "storage:write", "research:read"
+  "report:create", "document:read", "storage:write", "research:read",
+  "research:query"
 ];
 const workerToolScopes = [
   "project:read", "knowledge:read", "output:propose", "workspace:read",
   "client_data:read", "report:create", "document:read", "storage:write",
-  "research:read"
+  "research:read", "research:query"
 ];
 
 export async function seedDefaultWorkspace() {

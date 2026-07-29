@@ -57,6 +57,13 @@
       "when": 1785298634599,
       "tag": "0007_worthless_cloak",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1785299078617,
+      "tag": "0008_stale_wendell_rand",
+      "breakpoints": true
     }
   ]
 }

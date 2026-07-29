@@ -744,3 +744,67 @@ versions, test results, credentials still required, and unresolved risks.
     manifest externally was not authorized; Phase 12 must resolve or formally
     accept production-relevant findings.
   - Approval decision hardening and one-time approval tokens arrive in Phase 8.
+
+### 2026-07-29 - Phase 7 Completed
+
+- Status: completed and verified locally.
+- Implementation commit: recorded after verification in follow-up log commit.
+- Migration: `drizzle/0008_stale_wendell_rand.sql`.
+- Delivered:
+  - Organization-scoped provider registry for Tavily, Brave, SEC EDGAR,
+    U.S. Census, World Bank, FRED, Korean Public Data Portal, KOSIS, OpenAlex,
+    Crossref, Semantic Scholar, Wikimedia, and Wikidata.
+  - Provider metadata covering categories, endpoint, credential environment,
+    priority, request rate, concurrency, daily limits, cache TTL, cost,
+    quality score, policy URL, and structured policy requirements.
+  - Policy-aware settings verified against current official documentation:
+    SEC identified automation below 10 requests/second, Crossref polite-pool
+    contact/caching/rate headers, Wikimedia identified User-Agent and 2026
+    rate/Retry-After rules, OpenAlex credits/rate limits, and keyless World
+    Bank V2 access.
+  - Provider-specific adapters with normalized source output and bounded
+    primary/fallback routing.
+  - Durable agenda-scoped research queries, query budgets, query counts,
+    provider coverage, costs, attempts, HTTP state, backoff, fallback origin,
+    duration, and errors.
+  - Exponential retry with bounded attempts and `Retry-After` handling for
+    `429` and `503` responses.
+  - Durable response cache keyed by provider/language/query plus visible
+    cache-hit state and source TTL.
+  - Normalized evidence containing publisher, title, URL, excerpt, language,
+    license, content hash, working citation, confidence, quality, publication
+    date, retrieval date, expiry, and evidence state.
+  - Original provider evidence stored separately from model summaries.
+  - Explicit unavailable, blocked, stale, low-confidence, rate-limited, and
+    contradictory states exposed through query status APIs.
+  - Durable contradiction records linking all conflicting evidence.
+  - Domain policy registry with block/allow controls, API/robots policy mode,
+    request limits, reason, and last policy check.
+  - New governed MCP `research_sources` tool and REST query/status/
+    contradiction endpoints.
+- Validation:
+  - `npm run typecheck` passed after build.
+  - `npm test` passed with 56 tests across 10 files.
+  - `npm run build` passed.
+  - Drizzle migration generation passed.
+  - Provider registration, policy limits, primary outage fallback, original
+    evidence retention, citations, cache reuse, `Retry-After`, stale evidence,
+    contradiction visibility, source coverage, and domain blocking tested.
+- Deployment: not deployed in this phase. Run Railway migration, configure an
+  identified production `RESEARCH_USER_AGENT`, then smoke each enabled
+  provider under its production quota.
+- Credentials required to enable corresponding providers:
+  `TAVILY_API_KEY`, `BRAVE_SEARCH_API_KEY`, `FRED_API_KEY`,
+  `CENSUS_API_KEY`, `KOREAN_PUBLIC_DATA_SERVICE_KEY`,
+  `KOREAN_PUBLIC_DATA_ENDPOINT`, `KOSIS_API_KEY`, `KOSIS_API_ENDPOINT`, and
+  optionally `OPENALEX_API_KEY` and `SEMANTIC_SCHOLAR_API_KEY`.
+- Credentials not required for SEC EDGAR, World Bank, Crossref, Wikimedia,
+  and Wikidata. Crossref polite access should configure
+  `RESEARCH_CONTACT_EMAIL`.
+- Remaining risks:
+  - Korean Public Data and KOSIS require dataset/statistic-specific endpoint
+    selection before calls can run.
+  - Live provider response fixtures and quota behavior require production
+    credential smoke tests; local tests use contract-faithful mocked responses.
+  - Public APIs provide no SLA. Provider state remains visible and bounded
+    fallback prevents silent evidence loss.

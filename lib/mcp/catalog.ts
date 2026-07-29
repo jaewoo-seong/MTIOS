@@ -4,6 +4,7 @@ import { findCompanyMatches } from "@/lib/company-research";
 import { repository } from "@/lib/repository";
 import { searchWorkspace } from "@/lib/search";
 import { storeReportExport } from "@/lib/storage";
+import { runResearchQuery } from "@/lib/research/engine";
 
 export type McpRiskLevel = "low" | "medium" | "high" | "critical";
 export type McpApprovalRequirement = "none" | "always";
@@ -142,6 +143,24 @@ export const internalToolCatalog = [
         value: z.string().trim().min(1).max(200)
       })).max(100).default([])
     })
+  },
+  {
+    name: "research_sources",
+    description: "Run a budgeted, cached, cited query across governed research providers.",
+    group: "research",
+    riskLevel: "medium",
+    approvalRequirement: "none",
+    permissions: ["research:query"],
+    budgetCents: 5,
+    inputSchema: z.object({
+      projectId: z.string().uuid(),
+      agendaId: z.string().uuid(),
+      query: z.string().trim().min(2).max(2000),
+      category: z.enum(["web", "company", "government", "economic", "korean", "academic", "reference"]),
+      language: z.string().trim().min(2).max(10).default("en"),
+      queryBudget: z.number().int().min(1).max(100).default(10),
+      maxResults: z.number().int().min(1).max(100).default(20)
+    })
   }
 ] as const satisfies readonly InternalToolDefinition[];
 
@@ -213,6 +232,17 @@ export async function executeInternalTool(name: InternalToolName, rawInput: unkn
         identifiers: input.identifiers as Array<{ type: string; value: string }>
       })
     };
+  }
+  if (name === "research_sources") {
+    return runResearchQuery({
+      projectId: String(input.projectId),
+      agendaId: String(input.agendaId),
+      query: String(input.query),
+      category: input.category as "web" | "company" | "government" | "economic" | "korean" | "academic" | "reference",
+      language: String(input.language),
+      queryBudget: Number(input.queryBudget),
+      maxResults: Number(input.maxResults)
+    });
   }
   throw new Error(`Tool handler not implemented: ${name}`);
 }
