@@ -687,3 +687,60 @@ versions, test results, credentials still required, and unresolved risks.
     later design/release phases; current surfaces are REST and agent-driven.
   - Calendar entries are internal plans, not connected to external calendar or
     publishing providers.
+
+### 2026-07-29 - Phase 6 Completed
+
+- Status: completed and verified locally.
+- Implementation commit: recorded after verification in follow-up log commit.
+- Migration: `drizzle/0007_worthless_cloak.sql`.
+- Delivered:
+  - Official MCP TypeScript SDK `1.30.0` with authenticated stateless
+    Streamable HTTP transport.
+  - Separate `mcp-tools` Express service, Railway Dockerfile, private-network
+    URL configuration, health endpoint, and shared service-secret auth.
+  - Application MCP host/client for discovery and calls without direct
+    coupling between orchestration and provider SDKs.
+  - Organization-scoped server, tool, resource, prompt, role/project grant,
+    discovery, and invocation registries.
+  - Tool governance metadata covering schemas, group, permissions, risk,
+    approval requirement, per-tool budget, active state, and health.
+  - Project-specific deny precedence over global grants, scoped call limits,
+    scoped cost limits, and agent-definition permission derivation.
+  - Durable discovery and invocation audits with input, output, status, error,
+    duration, cost, run/worker/project scope, and linked review.
+  - Sensitive tools pause before transport invocation and resume only against
+    a linked approved review.
+  - Initial internal tools for workspace search, cited project context,
+    approved knowledge, client-data reads, staged client writes, working
+    reports, editable documents, Railway storage exports, and canonical
+    company matching.
+  - Staged client writes never mutate client records.
+  - Governance resource and scoped-tool-use prompt exposed through MCP.
+  - Explicit extension groups for CRM, calendar, analytics, publishing, ERP,
+    accounting, cloud storage, and manufacturing adapters.
+  - REST endpoints for role-scoped discovery/calls and protected internal
+    server discovery.
+- Validation:
+  - `npm run typecheck` passed after build.
+  - `npm test` passed with 50 tests across 9 files.
+  - `npm run build` passed.
+  - Drizzle migration generation passed.
+  - Real localhost Streamable HTTP discovery verified tool, resource, and
+    prompt discovery under bearer authentication.
+  - Unauthorized requests, role permission filtering, project deny
+    precedence, call limits, budget rejection, invocation failure audit, and
+    approval pause/resume tested.
+- Deployment: not deployed in this phase. Create a private Railway
+  `mcp-tools` service from `railway/mcp-tools/Dockerfile`, set matching
+  `MCP_SERVICE_SECRET` values, set `MCP_SERVICE_URL` to Railway private DNS,
+  run migration, then execute production discovery smoke.
+- Credentials required: generated `MCP_SERVICE_SECRET`; no provider OAuth
+  tokens are accepted or forwarded by this service.
+- Remaining risks:
+  - External provider adapters arrive in later phases and require separate
+    provider-specific OAuth/token custody.
+  - `npm install` reports 27 vulnerabilities across the full dependency tree.
+    Detailed registry audit was not run because sending the local dependency
+    manifest externally was not authorized; Phase 12 must resolve or formally
+    accept production-relevant findings.
+  - Approval decision hardening and one-time approval tokens arrive in Phase 8.

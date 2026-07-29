@@ -1,6 +1,18 @@
 import { agentDefinitions, memberships, organizations, users } from "@/lib/db/schema";
 import { requireDatabase } from "@/lib/db/client";
 import { MTI_OPERATOR_ID, MTI_ORGANIZATION_ID } from "@/lib/repository";
+import { and, eq } from "drizzle-orm";
+
+const executiveToolScopes = [
+  "project:read", "knowledge:read", "plan:create", "task:delegate",
+  "workspace:read", "client_data:read", "client_data:propose",
+  "report:create", "document:read", "storage:write", "research:read"
+];
+const workerToolScopes = [
+  "project:read", "knowledge:read", "output:propose", "workspace:read",
+  "client_data:read", "report:create", "document:read", "storage:write",
+  "research:read"
+];
 
 export async function seedDefaultWorkspace() {
   const database = requireDatabase();
@@ -30,7 +42,7 @@ export async function seedDefaultWorkspace() {
         role: "executive",
         modelRoute: "executive_reasoning",
         capabilities: ["research", "marketing", "brainstorming", "content", "data_enrichment", "document", "communication", "analysis", "operations", "custom"],
-        toolScopes: ["project:read", "knowledge:read", "plan:create", "task:delegate"],
+        toolScopes: executiveToolScopes,
         reviewRequired: true
       },
       {
@@ -39,9 +51,23 @@ export async function seedDefaultWorkspace() {
         role: "worker",
         modelRoute: "worker_fast",
         capabilities: ["research", "marketing", "brainstorming", "content", "data_enrichment", "document", "analysis", "operations"],
-        toolScopes: ["project:read", "knowledge:read", "output:propose"],
+        toolScopes: workerToolScopes,
         reviewRequired: false
       }
     ]);
   }
+  await database.update(agentDefinitions).set({
+    toolScopes: executiveToolScopes,
+    updatedAt: new Date()
+  }).where(and(
+    eq(agentDefinitions.organizationId, MTI_ORGANIZATION_ID),
+    eq(agentDefinitions.role, "executive")
+  ));
+  await database.update(agentDefinitions).set({
+    toolScopes: workerToolScopes,
+    updatedAt: new Date()
+  }).where(and(
+    eq(agentDefinitions.organizationId, MTI_ORGANIZATION_ID),
+    eq(agentDefinitions.role, "worker")
+  ));
 }

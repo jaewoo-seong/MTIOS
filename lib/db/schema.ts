@@ -431,6 +431,121 @@ export const externalActionProposals = pgTable("external_action_proposals", {
   ...timestamps
 });
 
+export const mcpServers = pgTable("mcp_servers", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  name: text("name").notNull(),
+  transport: text("transport").default("streamable_http").notNull(),
+  endpoint: text("endpoint").notNull(),
+  authSecretRef: text("auth_secret_ref").notNull(),
+  status: text("status").default("active").notNull(),
+  healthStatus: text("health_status").default("unknown").notNull(),
+  lastHealthCheckAt: timestamp("last_health_check_at", { withTimezone: true }),
+  capabilities: jsonb("capabilities").$type<Record<string, unknown>>().default({}).notNull(),
+  ...timestamps
+}, (table) => [
+  uniqueIndex("mcp_server_org_name_idx").on(table.organizationId, table.name)
+]);
+
+export const mcpTools = pgTable("mcp_tools", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  serverId: uuid("server_id").references(() => mcpServers.id, { onDelete: "cascade" }).notNull(),
+  name: text("name").notNull(),
+  description: text("description").default("").notNull(),
+  inputSchema: jsonb("input_schema").$type<Record<string, unknown>>().default({}).notNull(),
+  outputSchema: jsonb("output_schema").$type<Record<string, unknown>>().default({}).notNull(),
+  group: text("group").notNull(),
+  riskLevel: text("risk_level").default("low").notNull(),
+  approvalRequirement: text("approval_requirement").default("none").notNull(),
+  budgetCents: bigint("budget_cents", { mode: "number" }),
+  permissions: jsonb("permissions").$type<string[]>().default([]).notNull(),
+  active: boolean("active").default(true).notNull(),
+  discoveredAt: timestamp("discovered_at", { withTimezone: true }).defaultNow().notNull(),
+  ...timestamps
+}, (table) => [
+  uniqueIndex("mcp_tool_server_name_idx").on(table.serverId, table.name),
+  index("mcp_tool_org_group_idx").on(table.organizationId, table.group)
+]);
+
+export const mcpResources = pgTable("mcp_resources", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  serverId: uuid("server_id").references(() => mcpServers.id, { onDelete: "cascade" }).notNull(),
+  uri: text("uri").notNull(),
+  name: text("name").notNull(),
+  description: text("description").default("").notNull(),
+  mimeType: text("mime_type"),
+  permissions: jsonb("permissions").$type<string[]>().default([]).notNull(),
+  active: boolean("active").default(true).notNull(),
+  ...timestamps
+}, (table) => [
+  uniqueIndex("mcp_resource_server_uri_idx").on(table.serverId, table.uri)
+]);
+
+export const mcpPrompts = pgTable("mcp_prompts", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  serverId: uuid("server_id").references(() => mcpServers.id, { onDelete: "cascade" }).notNull(),
+  name: text("name").notNull(),
+  description: text("description").default("").notNull(),
+  arguments: jsonb("arguments").$type<Array<Record<string, unknown>>>().default([]).notNull(),
+  permissions: jsonb("permissions").$type<string[]>().default([]).notNull(),
+  active: boolean("active").default(true).notNull(),
+  ...timestamps
+}, (table) => [
+  uniqueIndex("mcp_prompt_server_name_idx").on(table.serverId, table.name)
+]);
+
+export const mcpToolGrants = pgTable("mcp_tool_grants", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  toolId: uuid("tool_id").references(() => mcpTools.id, { onDelete: "cascade" }).notNull(),
+  role: text("role").notNull(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }),
+  allowed: boolean("allowed").default(true).notNull(),
+  maxCalls: integer("max_calls"),
+  maxCostCents: bigint("max_cost_cents", { mode: "number" }),
+  ...timestamps
+}, (table) => [
+  uniqueIndex("mcp_tool_grant_scope_idx").on(table.toolId, table.role, table.projectId)
+]);
+
+export const mcpDiscoveries = pgTable("mcp_discoveries", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  serverId: uuid("server_id").references(() => mcpServers.id, { onDelete: "cascade" }).notNull(),
+  status: text("status").notNull(),
+  toolsCount: integer("tools_count").default(0).notNull(),
+  resourcesCount: integer("resources_count").default(0).notNull(),
+  promptsCount: integer("prompts_count").default(0).notNull(),
+  payload: jsonb("payload").$type<Record<string, unknown>>().default({}).notNull(),
+  durationMs: integer("duration_ms").default(0).notNull(),
+  error: text("error"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
+});
+
+export const mcpInvocations = pgTable("mcp_invocations", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  serverId: uuid("server_id").references(() => mcpServers.id, { onDelete: "cascade" }).notNull(),
+  toolId: uuid("tool_id").references(() => mcpTools.id, { onDelete: "cascade" }).notNull(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }),
+  runId: uuid("run_id").references(() => runs.id, { onDelete: "set null" }),
+  workerRunId: uuid("worker_run_id").references(() => workerRuns.id, { onDelete: "set null" }),
+  reviewId: uuid("review_id").references(() => reviews.id, { onDelete: "set null" }),
+  role: text("role").notNull(),
+  input: jsonb("input").$type<Record<string, unknown>>().default({}).notNull(),
+  output: jsonb("output").$type<Record<string, unknown>>(),
+  status: text("status").notNull(),
+  durationMs: integer("duration_ms").default(0).notNull(),
+  costCents: bigint("cost_cents", { mode: "number" }).default(0).notNull(),
+  error: text("error"),
+  startedAt: timestamp("started_at", { withTimezone: true }).defaultNow().notNull(),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  ...timestamps
+});
+
 export const contextSources = pgTable("context_sources", {
   id: uuid("id").defaultRandom().primaryKey(),
   organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),

@@ -18,3 +18,9 @@ creates the extension, full-text index, and HNSW vector index. Configure
 `LITELLM_EMBEDDING_ROUTE` with a multilingual embedding route exposed by the
 private LiteLLM service. Keep embedding provider/model credentials in LiteLLM,
 not the application service.
+
+Build `mcp-tools` from `railway/mcp-tools/Dockerfile`. Set
+`MCP_SERVICE_SECRET` to the same generated secret on `app` and `mcp-tools`,
+and set `MCP_SERVICE_URL` on `app` to
+`http://mcp-tools.railway.internal:3002/mcp`. Keep the service private; only
+its `/health` endpoint is used by Railway health checks.

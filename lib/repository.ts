@@ -97,7 +97,11 @@ const emptyStore = (): Store => ({
         "research", "marketing", "brainstorming", "content", "data_enrichment",
         "document", "communication", "analysis", "operations", "custom"
       ],
-      toolScopes: ["project:read", "knowledge:read", "plan:create", "task:delegate"],
+      toolScopes: [
+        "project:read", "knowledge:read", "plan:create", "task:delegate",
+        "workspace:read", "client_data:read", "client_data:propose",
+        "report:create", "document:read", "storage:write", "research:read"
+      ],
       budgetCents: null,
       outputSchema: {},
       reviewRequired: true,
@@ -115,7 +119,11 @@ const emptyStore = (): Store => ({
         "research", "marketing", "brainstorming", "content", "data_enrichment",
         "document", "analysis", "operations"
       ],
-      toolScopes: ["project:read", "knowledge:read", "output:propose"],
+      toolScopes: [
+        "project:read", "knowledge:read", "output:propose",
+        "workspace:read", "client_data:read", "report:create",
+        "document:read", "storage:write", "research:read"
+      ],
       budgetCents: null,
       outputSchema: {},
       reviewRequired: false,
