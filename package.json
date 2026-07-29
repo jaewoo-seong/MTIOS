@@ -14,7 +14,8 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:seed": "tsx lib/db/run-seed.ts",
-    "db:deploy": "npm run db:migrate && npm run db:seed",
+    "db:repair": "tsx lib/db/ensure-schema.ts",
+    "db:deploy": "npm run db:repair && npm run db:migrate && npm run db:seed",
     "test:production": "node scripts/smoke-production.mjs"
   },
   "dependencies": {
