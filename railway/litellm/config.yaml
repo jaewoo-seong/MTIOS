@@ -6,9 +6,7 @@ model_list:
   - model_name: executive_review
     litellm_params: *executive
   - model_name: premium_fallback
-    litellm_params:
-      model: os.environ/PREMIUM_FALLBACK_MODEL
-      api_key: os.environ/OPENROUTER_API_KEY
+    litellm_params: *executive
 
   - model_name: worker_research
     litellm_params: &nvidia_worker
