@@ -599,7 +599,7 @@ versions, test results, credentials still required, and unresolved risks.
 ### 2026-07-29 - Phase 4 Completed
 
 - Status: completed and verified locally.
-- Implementation commit: recorded after verification in follow-up log commit.
+- Implementation commit: `1344af9`.
 - Migration: `drizzle/0005_regular_ikaris.sql`.
 - Delivered:
   - Organization-wide canonical company registry with normalized names and
