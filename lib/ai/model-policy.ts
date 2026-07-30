@@ -55,19 +55,58 @@ export const modelRoutePolicies: Record<ModelRoute, ModelRoutePolicy> = {
   premium_fallback: { purpose: "Admin-approved premium fallback", maxCostMicros: 300_000, structuredOutput: true, candidates: [haiku] }
 };
 
+const toolCallSchema = z.object({
+  id: z.string().min(1).max(200),
+  type: z.literal("function"),
+  function: z.object({
+    name: z.string().min(1).max(200),
+    arguments: z.string().max(50000)
+  })
+});
+
+/**
+ * A discriminated shape, not one loose object: `assistant` may carry
+ * `tool_calls` with no content (the model is still mid-turn), and `tool`
+ * feeds one call's result back. Keeping `system`/`user` at `min(1)` content
+ * preserves today's validation for every existing caller.
+ */
+const chatMessageSchema = z.discriminatedUnion("role", [
+  z.object({
+    role: z.enum(["system", "user"]),
+    content: z.string().min(1).max(100000)
+  }),
+  z.object({
+    role: z.literal("assistant"),
+    content: z.string().max(100000).nullable().optional(),
+    tool_calls: z.array(toolCallSchema).max(20).optional()
+  }),
+  z.object({
+    role: z.literal("tool"),
+    tool_call_id: z.string().min(1).max(200),
+    content: z.string().max(100000)
+  })
+]);
+
+const toolDefinitionSchema = z.object({
+  type: z.literal("function"),
+  function: z.object({
+    name: z.string().min(1).max(200),
+    description: z.string().max(2000).optional(),
+    parameters: z.record(z.string(), z.unknown())
+  })
+});
+
 export const modelRequestSchema = z.object({
   model: z.enum([
     "executive_reasoning", "executive_review", "worker_research",
     "worker_creative", "worker_writing", "worker_editing", "worker_structured",
     "worker_translation", "worker_fast"
   ]),
-  messages: z.array(z.object({
-    role: z.enum(["system", "user", "assistant"]),
-    content: z.string().min(1).max(100000)
-  })).min(1).max(100),
+  messages: z.array(chatMessageSchema).min(1).max(100),
   runId: z.string().uuid().optional(),
   maxCostMicros: z.number().int().positive().max(1_000_000).optional(),
-  structuredOutput: z.boolean().optional()
+  structuredOutput: z.boolean().optional(),
+  tools: z.array(toolDefinitionSchema).max(20).optional()
 });
 
 export function resolveModelPolicy(

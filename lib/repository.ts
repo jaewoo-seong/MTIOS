@@ -657,6 +657,23 @@ export const repository = {
       return row;
     });
   },
+  /**
+   * Total model spend charged to one run, in micros. `runs.cost_micros` is the
+   * running total recordModelCall already maintains, so this reads the same
+   * figure the budget ledger is derived from rather than a second tally that
+   * could drift from it.
+   */
+  async getRunCostMicros(id: string): Promise<number> {
+    if (!db) {
+      return store.modelUsage
+        .filter((call) => call.runId === id)
+        .reduce((total, call) => total + call.costMicros, 0);
+    }
+    const [row] = await db.select({ costMicros: runs.costMicros })
+      .from(runs).where(eq(runs.id, id)).limit(1);
+    return row?.costMicros ?? 0;
+  },
+
   async getRun(id: string) {
     if (!db) return store.runs.find((item) => item.id === id);
     const [row] = await db.select({

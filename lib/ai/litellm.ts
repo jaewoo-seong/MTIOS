@@ -1,4 +1,34 @@
-type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
+/**
+ * OpenAI-compatible tool-calling shapes, passed through LiteLLM unchanged.
+ * A tool's JSON Schema lives in `parameters`; LiteLLM forwards `tools`
+ * verbatim to whichever provider backs a route, so this only works for
+ * routes whose configured provider actually supports tool-calling.
+ */
+export type ToolDefinition = {
+  type: "function";
+  function: {
+    name: string;
+    description?: string;
+    parameters: Record<string, unknown>;
+  };
+};
+
+export type ToolCall = {
+  id: string;
+  type: "function";
+  function: { name: string; arguments: string };
+};
+
+/**
+ * Exported so a tool-calling loop can build a conversation array with the
+ * right shape at each turn: the assistant's own tool_calls, then one `tool`
+ * message per call carrying that tool's result back.
+ */
+export type ChatMessage =
+  | { role: "system" | "user"; content: string }
+  | { role: "assistant"; content?: string | null; tool_calls?: ToolCall[] }
+  | { role: "tool"; tool_call_id: string; content: string };
+
 export const modelRoutes = [
   "executive_reasoning",
   "executive_review",
@@ -18,6 +48,8 @@ export type ModelRoute = typeof modelRoutes[number];
 export type ModelRequestOptions = {
   maxCostMicros?: number;
   responseFormat?: { type: "json_object" };
+  /** Omitted entirely from the request body when empty — byte-identical to a pre-tools call. */
+  tools?: ToolDefinition[];
 };
 
 export async function requestLiteLLM(
@@ -42,6 +74,9 @@ export async function requestLiteLLM(
       messages,
       temperature: 0.2,
       ...(options.responseFormat ? { response_format: options.responseFormat } : {}),
+      ...(options.tools && options.tools.length > 0
+        ? { tools: options.tools, tool_choice: "auto" }
+        : {}),
       metadata: {
         route: model,
         max_cost_micros: options.maxCostMicros
@@ -53,6 +88,14 @@ export async function requestLiteLLM(
     throw new Error(`LiteLLM request failed with status ${response.status}`);
   }
   return response.json();
+}
+
+/** Pulls the tool calls a model requested off a chat-completion response, if any. */
+export function extractToolCalls(response: unknown): ToolCall[] {
+  const message = (response as {
+    choices?: Array<{ message?: { tool_calls?: ToolCall[] } }>;
+  } | null | undefined)?.choices?.[0]?.message;
+  return message?.tool_calls ?? [];
 }
 
 export async function requestEmbedding(input: string): Promise<number[]> {
@@ -111,14 +154,20 @@ export async function requestReranking(query: string, documents: string[]) {
 export async function requestModel(
   model: ModelRoute,
   messages: ChatMessage[],
-  telemetry?: { runId?: string; maxCostMicros?: number; structuredOutput?: boolean }
+  telemetry?: {
+    runId?: string;
+    maxCostMicros?: number;
+    structuredOutput?: boolean;
+    tools?: ToolDefinition[];
+  }
 ) {
   const internalUrl = process.env.BUSINESS_OS_INTERNAL_URL;
   const callbackSecret = process.env.WORKFLOW_CALLBACK_SECRET;
   if (!internalUrl || !callbackSecret) {
     return requestLiteLLM(model, messages, {
       maxCostMicros: telemetry?.maxCostMicros,
-      responseFormat: telemetry?.structuredOutput ? { type: "json_object" } : undefined
+      responseFormat: telemetry?.structuredOutput ? { type: "json_object" } : undefined,
+      tools: telemetry?.tools
     });
   }
 
@@ -133,7 +182,8 @@ export async function requestModel(
       messages,
       runId: telemetry?.runId,
       maxCostMicros: telemetry?.maxCostMicros,
-      structuredOutput: telemetry?.structuredOutput
+      structuredOutput: telemetry?.structuredOutput,
+      tools: telemetry?.tools
     })
   });
   if (!response.ok) {

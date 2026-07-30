@@ -13,6 +13,11 @@ internal services. Managed Trigger.dev executes background workflows.
 PostgreSQL remains authoritative, and the application communicates with model
 providers only through LiteLLM.
 
+See `IMPLEMENTATION_PLAN_V2.md` for the current outstanding-work punch list
+(security gaps, documentation-vs-reality drift, and planned-but-unbuilt
+capability). This document stays the historical record of what was built and
+why; that one tracks what's left.
+
 ## Mandatory Handoff and Audit Protocol
 
 Before implementing any phase:
@@ -449,6 +454,205 @@ work in one workspace.
 - A project can generate English, Korean, or bilingual deliverables.
 - Settings accurately reflects live routing and integration state.
 - Configuration changes are tested, approved, versioned, and reversible.
+
+---
+
+## Phase 13 - Generalized Collection Campaigns and Document Linkage
+
+### Objective
+
+Let a project instruction of the shape "find N entities matching criteria,
+produce a linked document per entity, present as a database" work for any
+entity type the user describes, not only companies. Connect subsystems that
+were each verified individually but were never wired to one another.
+
+### Verified Gap (read before implementing)
+
+Audited 2026-07-29. Phases 3, 4, 6, and 7 are each individually implemented
+and tested, but not connected:
+
+- `trigger/executive-agent.ts` plans a fixed list of at most 20 tasks and runs
+  each through exactly one `requestModel` call. No worker can call a tool,
+  search the web, or write to any table. `lib/ai/litellm.ts`'s
+  `requestLiteLLM` does not send a `tools` parameter and no code path reads
+  `tool_calls` from a response, despite Phase 3's spec calling for persisted
+  tool-call records.
+- `lib/company-research.ts` (Phase 4: campaigns, candidates, fingerprint
+  dedupe, `claimCandidate`'s `pg_advisory_xact_lock` lease) is fully built and
+  reachable only by direct API call (`app/api/v1/research-campaigns/**`) or
+  test. Nothing in the executive-agent workflow calls into it.
+- A worker's `WorkerResult.artifacts` (`lib/workflows/contracts.ts`) are
+  persisted as opaque JSON on `worker_runs.output`
+  (`persistWorkerResult` in `lib/workflows/state.ts`) and never become
+  `client_records` rows or `documents` rows. The workflow's only terminal
+  output is one `reports` row.
+- Net effect: a "research 100 companies, one document each, linked in a
+  database" instruction today produces one narrative markdown report, not a
+  populated database with clickable linked documents.
+
+### Tool-Loop Harness Decision
+
+Evaluated hand-rolling a loop inside the existing Trigger.dev task against
+adopting an open-source agent framework.
+
+| Option | Verdict |
+| --- | --- |
+| Native tool-calling via LiteLLM (`tools` / `tool_calls`, OpenAI-compatible shape) | Required regardless of the choice below. `requestLiteLLM` must pass `tools` through; this is a small, surgical fix, not a framework decision. |
+| Hand-rolled loop over native tool-calling | **Recommended.** `invokeMcpTool` already does the hard governance work (scope, budget, approval). The loop itself is call model, read `tool_calls`, run `invokeMcpTool`, append result, repeat to a step cap — roughly 80-120 lines inside the existing Trigger.dev task. Keeps `/api/internal/model` as the single choke point that already records cost and enforces budget for every model call in the app; no second parallel model-calling code path to keep in sync or audit. No new dependency. |
+| Vercel AI SDK (`ai` package) | Legitimate alternative, not the current choice. TypeScript-native, works against any OpenAI-compatible endpoint (LiteLLM already is one), `tool()` + step-limit primitives are close to what the hand-rolled loop above does anyway. Reach for this if the loop logic grows real complexity (streaming, multi-turn UI, parallel tool calls within one step) — pin the version if adopted, do not track `latest`. |
+| Mastra | Rejected for now. TS-native workflow graph, but overlaps with orchestration Trigger.dev already provides (retries, concurrency, persistence); smaller community, more API churn risk than AI SDK. |
+| LangGraph.js | Rejected. Real fit only if the workflow becomes branchy (conditional paths, human-in-the-loop pauses, cyclic re-planning). Two bounded nested loops (discovery, then per-candidate) do not need a full graph/checkpoint state model that would duplicate what Trigger.dev + PostgreSQL already give this app. |
+| OpenAI Agents SDK | Rejected. Built around OpenAI's specific API/tracing surface. Actual traffic here is Claude via OpenRouter and NVIDIA NIM through LiteLLM; running an OpenAI-branded framework against non-OpenAI models through a proxy is exactly where subtle incompatibilities surface later. |
+| CrewAI | Rejected. Python-only. Would require a new Railway service, a network hop from the existing TypeScript Trigger.dev tasks, and re-implementing the MCP scope/budget/approval system in a second language for no offsetting benefit. |
+| AutoGPT/BabyAGI-style autonomous loops | Rejected. Not production-grade, no real guardrail model, actively fights the approval-gate and budget system already built (`invokeMcpTool`, `resolveApproval`). |
+
+### Named Pipeline Stages
+
+Two kinds of stage: **Foundation** stages are built once and never run again
+per project (they're infrastructure). **Flow** stages run every time someone
+starts a project shaped like "find N entities matching criteria, one
+document each, presented as a database" — Stage 2 onward is the part that
+adapts itself to *any* entity type via the Blueprint step, not just
+companies. Guardrails is cross-cutting — it doesn't run on its own, it
+constrains Stage 3 and Stage 4 while they run.
+
+| Stage | Name | What it does | Tools / APIs used |
+| --- | --- | --- | --- |
+| 0 · Foundation | **Tool Bridge** | Lets a model call a tool mid-task and get the result back, instead of returning one unverifiable JSON blob and stopping | LiteLLM `/chat/completions` `tools` parameter (OpenAI-compatible tool-calling shape) — `lib/ai/litellm.ts`, `app/api/internal/model/route.ts` |
+| 1 · Foundation | **Generic Ledger** | Schema-agnostic storage for "N entities matching criteria" — the same tables work whether the entities are companies, papers, or SKUs | PostgreSQL + Drizzle, new `collection_campaigns` / `collection_candidates` tables; `pg_advisory_xact_lock` for the claim/lease (same primitive `claimCandidate` already uses) |
+| 2 · Flow | **Blueprint** | Reads the user's own instruction once and decides, for *this* project, what a database row and a document look like — the "thinking on the spot" step | `executive_reasoning` route (Claude Haiku via OpenRouter today) — one call, structured JSON output, no tools needed |
+| 3 · Flow | **Scouting Loop** | Finds candidate entities, dedupes against what's already known, keeps going until the target is hit or nothing new turns up | `worker_structured` route + Tool Bridge; Tavily (primary) / Brave (fallback) web search exposed as governed MCP tools (`invokeMcpTool`, so cost/budget/approval still apply); writes into the Generic Ledger |
+| 4 · Flow | **Dossier Loop** | One worker claims one candidate, researches it specifically, writes its document — many of these run at once | Trigger.dev `batchTriggerAndWait` (concurrency-limited fan-out, same queue pattern as today's `workerAgentTask`); `claimCandidate` (Ledger's lock) per worker; `worker_structured` + web search for research; `worker_writing` for the document body — deliberately a different, stronger route, see Model Routing |
+| 5 · Flow | **Cross-Link** | Connects the database row this candidate produced to the document this candidate produced | `repository.createRecords()` / `repository.createDocument()`, extended with an optional linking field; writes go through the existing Phase 8 staged-change approval flow, not a direct write |
+| 6 · Flow | **Surface** | Lets a person click from a database row straight into its linked report | Frontend only — `components/client-data-view.tsx`, opens the existing `DocumentsView` modal; no model or tool call |
+| Cross-cutting | **Guardrails** | Keeps Scouting Loop and Dossier Loop from running away in cost or time | `clampCostCeiling` (`lib/mcp/platform.ts`); a step counter inside each loop; a hard ceiling on total candidates per campaign run |
+
+### Implementation
+
+- **Stage 0 — Tool Bridge (13.0, prerequisite).** Add `tools` to
+  `requestLiteLLM`'s request body and parse `tool_calls` from the response in
+  `lib/ai/litellm.ts` and `app/api/internal/model/route.ts`. No behavior
+  change for existing callers that omit `tools`.
+- **Stage 1 — Generic Ledger (13.1).** New `lib/collection-research.ts`, a
+  sibling to `lib/company-research.ts`, not a modification of it — existing
+  company-research tests and flows stay untouched. New tables
+  `collection_campaigns` (mirrors `research_campaigns`, adds
+  `entity_schema jsonb`, `document_template text`) and `collection_candidates`
+  (`id`, `campaign_id`, `fingerprint`, `data jsonb`, `resolution`,
+  `linked_record_id`, `linked_document_id`). Reuse the exact
+  `pg_advisory_xact_lock` claim/lease pattern from `claimCandidate` unchanged.
+- **Stage 2 — Blueprint (13.2).** Extend the `executive_reasoning` planning
+  prompt (`trigger/executive-agent.ts`) with a `collection_project` plan type
+  whose output includes `entitySchema`, `documentTemplate`, `dedupeKey`, and
+  `targetCount | saturationRule`, inferred from the user's own instruction
+  text. New Zod schema in `lib/workflows/contracts.ts`.
+- **Stage 3 — Scouting Loop (13.3).** One bounded loop (step cap ~15) using
+  the Tool Bridge: query Tavily/Brave (`lib/research/engine.ts`, already
+  built) with queries derived from `entitySchema`, extract candidates via the
+  `worker_structured` route, add each through the Generic Ledger's
+  `addCandidate` (Stage 1), stop on `targetCount` or on no new distinct
+  entity across several consecutive rounds.
+- **Stage 4 — Dossier Loop (13.4).** New Trigger task
+  `collectionWorkerTask`, fanned out via `batchTriggerAndWait`
+  (`concurrencyLimit` matches the existing `workerAgentTask` queue). Each
+  run: `claimCandidate` &rarr; short single-entity research loop &rarr; extract
+  fields matching `entitySchema` via `worker_structured` &rarr; generate the
+  document body from `documentTemplate` via `worker_writing` &rarr; write both
+  rows (Stage 5) &rarr; release the claim. Route discovery/extraction and
+  document synthesis to different model routes — see Model Routing below.
+- **Stage 5 — Cross-Link (13.5).** Extend `repository.createRecords()` to
+  accept an optional `documentId` per row and `repository.createDocument()`
+  to accept a `clientRecordId`. A reserved `data.__document_id` key is the
+  lower-risk option if a schema migration is undesirable at this point; a
+  first-class column is cleaner if a migration is already in flight for
+  Stage 1. Written record rows route through the Phase 8 staged-change flow
+  (`client-changes.ts` / `ClientChangeReview`) rather than writing directly —
+  bulk research output is exactly the kind of write Phase 8 exists to gate;
+  do not bypass it for this phase.
+- **Stage 6 — Surface (13.6).** In `components/client-data-view.tsx`, detect
+  a linked-document field on a table's rows and render that cell as a "View
+  report" action instead of raw text, opening the existing `DocumentsView`
+  modal. No new UI surface — a linking affordance inside one that already
+  exists.
+- **Cross-cutting — Guardrails (13.7).** Step cap and per-candidate cost cap
+  (reuse `clampCostCeiling` from `lib/mcp/platform.ts`, currently applied
+  only to direct MCP invocations); a hard ceiling on total candidates
+  researched per campaign run so an underspecified instruction cannot
+  trigger an unbounded fan-out.
+
+> **Status (all of Phase 13): written and unit-tested, not yet run for real.**
+> Stages 0-6 and the guardrails are implemented; 160 tests, typecheck, and a
+> production build pass. Nothing has touched a live Postgres, LiteLLM, or MCP
+> provider, migrations `0018`/`0019` are unapplied, and Stage 6's button has
+> never been rendered in a browser. See `IMPLEMENTATION_PLAN_V2.md`
+> ("What 'Built' means here") for the authoritative gap list and the four
+> guardrail bounds as actually implemented.
+
+### Model Routing
+
+Extends Phase 11's existing route split rather than adding new routes.
+`worker_structured` for the Scouting Loop and Dossier Loop's discovery and
+field-extraction calls (Stages 3-4) — these run 100+ times per campaign, are
+mechanical and schema-checked, and are where a cheap or free candidate
+(NVIDIA, once Phase 11's production-approval gate is satisfied) earns its
+cost. `worker_writing` for the Dossier Loop's per-entity document synthesis
+(Stage 4) — also runs once per candidate, but its output is what the user
+actually opens and reads; do not route this to a discount model to save on a
+call that is user-facing 100 times over.
+
+### Current-State and Target-State Flow
+
+```mermaid
+flowchart TD
+    A["User instruction<br/>(Executive Command)"] --> B["executive_reasoning<br/>plans <=20 fixed tasks"]
+    B --> C["workerAgentTask x N<br/>(parallel, waves of 10)"]
+    C --> D["ONE requestModel call per task<br/>no web search, no tool calls, no DB access"]
+    D --> E["JSON result:<br/>summary + findings + up to 20 text artifacts"]
+    E --> F["executive_review<br/>synthesizes every worker output"]
+    F --> G["ONE markdown Report row saved"]
+    G -.->|never happens| H[("client_records - 100 rows")]
+    G -.->|never happens| I[("documents - 100 linked files")]
+```
+
+```mermaid
+flowchart TD
+    A2["User instruction<br/>(any project, any entity type)"] --> B2["Stage 2 - Blueprint<br/>infers entity schema, document template,<br/>dedupe key, saturation rule"]
+    B2 --> C2["Stage 1 - Generic Ledger<br/>creates collection_campaign<br/>+ client_database with inferred columns"]
+    C2 --> D2["Stage 3 - Scouting Loop<br/>search -> extract candidates -> dedupe -> store<br/>(Tool Bridge + Tavily/Brave)"]
+    D2 --> E2{"Saturated?"}
+    E2 -- no --> D2
+    E2 -- yes --> F2["Stage 4 - Dossier Loop fan-out<br/>(batchTriggerAndWait, concurrency-limited)"]
+    F2 --> G2["Worker: claimCandidate -> research loop<br/>-> extract fields -> write document<br/>(worker_structured then worker_writing)"]
+    G2 --> H2[("client_records row<br/>Stage 5 - Cross-Link<br/>via Phase 8 staged change")]
+    G2 --> I2[("documents row, linked<br/>Stage 5 - Cross-Link")]
+    H2 --> J2["Stage 6 - Surface<br/>'View report' opens linked document"]
+    I2 --> J2
+
+    K2["Guardrails<br/>(cross-cutting)"] -.constrains.-> D2
+    K2 -.constrains.-> F2
+```
+
+### Credentials Required When Approved
+
+None beyond what Phase 7 and Phase 11 already require (Tavily, Brave, NVIDIA
+API key). No new provider.
+
+### Acceptance
+
+- A project instruction describing an unfamiliar entity type (not companies)
+  produces a database with agent-inferred columns and one linked document per
+  row, without code changes for that entity type.
+- Two workers never research the same candidate; a crashed worker's lease
+  expires and another worker can pick the candidate back up.
+- Bulk-researched records enter through the Phase 8 staged-change review, not
+  as a direct write.
+- Discovery/extraction and document-writing calls are visibly routed to
+  different model routes in `settings/models` cost/call records.
+- The 100-row Kickstarter example in this document's design notes runs
+  end-to-end: campaign created, candidates discovered and deduplicated,
+  saturation reported, workers fan out under the concurrency limit, each
+  candidate produces one linked document, and Client & Data shows a clickable
+  path from row to report.
 
 ---
 

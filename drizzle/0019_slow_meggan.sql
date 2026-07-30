@@ -1,0 +1,4 @@
+ALTER TABLE "collection_campaigns" ADD COLUMN "database_id" uuid;--> statement-breakpoint
+ALTER TABLE "collection_campaigns" ADD COLUMN "change_set_id" uuid;--> statement-breakpoint
+ALTER TABLE "collection_campaigns" ADD CONSTRAINT "collection_campaigns_database_id_client_databases_id_fk" FOREIGN KEY ("database_id") REFERENCES "public"."client_databases"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "collection_campaigns" ADD CONSTRAINT "collection_campaigns_change_set_id_client_change_sets_id_fk" FOREIGN KEY ("change_set_id") REFERENCES "public"."client_change_sets"("id") ON DELETE set null ON UPDATE no action;

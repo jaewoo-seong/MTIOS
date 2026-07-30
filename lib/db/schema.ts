@@ -1315,6 +1315,76 @@ export const companyResearchClaims = pgTable("company_research_claims", {
   index("company_research_lease_idx").on(table.leaseExpiresAt)
 ]);
 
+// Phase 13 Stage 1 - Generic Ledger. A sibling to the company-research tables
+// above, not a replacement: those stay company-specific (canonical registry,
+// org-wide fingerprint reuse across projects). These are schema-agnostic —
+// `entitySchema`/`data` hold whatever columns a given campaign's Blueprint
+// step decided on, so dedupe is scoped per-campaign, not per-organization,
+// since two campaigns can describe entities with nothing in common.
+export const collectionCampaigns = pgTable("collection_campaigns", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  agendaId: uuid("agenda_id").references(() => agendas.id, { onDelete: "set null" }),
+  name: text("name").notNull(),
+  entitySchema: jsonb("entity_schema").$type<Array<{ name: string; description: string }>>().default([]).notNull(),
+  documentTemplate: text("document_template").default("").notNull(),
+  dedupeKeys: jsonb("dedupe_keys").$type<string[]>().default([]).notNull(),
+  qualificationRules: jsonb("qualification_rules").$type<string[]>().default([]).notNull(),
+  targetCount: integer("target_count"),
+  saturationRule: text("saturation_rule"),
+  status: text("status").default("draft").notNull(),
+  discoveredCount: integer("discovered_count").default(0).notNull(),
+  acceptedCount: integer("accepted_count").default(0).notNull(),
+  rejectedCount: integer("rejected_count").default(0).notNull(),
+  duplicateCount: integer("duplicate_count").default(0).notNull(),
+  saturationReason: text("saturation_reason"),
+  // Stage 5 (Cross-Link): where this campaign publishes. The change set is the
+  // staged, human-approvable proposal for the client-data rows - records do
+  // not exist until someone approves and applies it.
+  databaseId: uuid("database_id").references(() => clientDatabases.id, { onDelete: "set null" }),
+  changeSetId: uuid("change_set_id").references(() => clientChangeSets.id, { onDelete: "set null" }),
+  costCents: bigint("cost_cents", { mode: "number" }).default(0).notNull(),
+  ...timestamps
+});
+
+export const collectionCandidates = pgTable("collection_candidates", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  campaignId: uuid("campaign_id").references(() => collectionCampaigns.id, { onDelete: "cascade" }).notNull(),
+  fingerprint: text("fingerprint").notNull(),
+  data: jsonb("data").$type<Record<string, unknown>>().default({}).notNull(),
+  resolution: text("resolution").default("new").notNull(),
+  resolutionReason: text("resolution_reason"),
+  // Stage 4 (Dossier Loop) outcome - separate from `resolution` above, which
+  // is the entity's discovery identity and never changes after Stage 3.
+  // pending | researching | completed | disqualified | failed
+  dossierStatus: text("dossier_status").default("pending").notNull(),
+  dossierMarkdown: text("dossier_markdown"),
+  dossierReason: text("dossier_reason"),
+  linkedRecordId: uuid("linked_record_id").references(() => clientRecords.id, { onDelete: "set null" }),
+  linkedDocumentId: uuid("linked_document_id").references(() => documents.id, { onDelete: "set null" }),
+  lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).defaultNow().notNull(),
+  ...timestamps
+}, (table) => [
+  uniqueIndex("collection_candidate_campaign_fingerprint_idx").on(table.campaignId, table.fingerprint)
+]);
+
+export const collectionCandidateClaims = pgTable("collection_candidate_claims", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  campaignId: uuid("campaign_id").references(() => collectionCampaigns.id, { onDelete: "cascade" }).notNull(),
+  candidateId: uuid("candidate_id").references(() => collectionCandidates.id, { onDelete: "cascade" }).notNull(),
+  workerRunId: uuid("worker_run_id").references(() => workerRuns.id, { onDelete: "set null" }),
+  leaseToken: text("lease_token").notNull(),
+  leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }).notNull(),
+  releasedAt: timestamp("released_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
+}, (table) => [
+  uniqueIndex("collection_candidate_active_claim_idx").on(table.campaignId, table.candidateId),
+  index("collection_candidate_lease_idx").on(table.leaseExpiresAt)
+]);
+
 export const researchProviders = pgTable("research_providers", {
   id: uuid("id").defaultRandom().primaryKey(),
   organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),

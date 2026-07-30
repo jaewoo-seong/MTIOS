@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  Archive,
+  ArchiveRestore,
   BookOpen,
   Bot,
   CircleAlert,
@@ -157,14 +159,21 @@ export function BusinessOS() {
   }, []);
 
   useEffect(() => {
-    Promise.all([
-      loadProjects(),
-      loadReports(),
-      api<{ data: AppSession }>("/api/v1/auth/session").then((payload) => setSession(payload.data))
-    ])
+    Promise.all([loadProjects(), loadReports()])
       .catch((reason: Error) => pushError(reason.message))
       .finally(() => setLoading(false));
   }, [loadProjects, loadReports, pushError]);
+
+  useEffect(() => {
+    // A session check failing here means the cookie expired or was revoked
+    // between the last full page load and now — the same condition the 30
+    // minute refresh below already treats as "go log in again," not as a
+    // dismissible error. Bundling this into the Promise.all above used to
+    // surface the raw "unauthorized" API error string as a toast instead.
+    api<{ data: AppSession }>("/api/v1/auth/session")
+      .then((payload) => setSession(payload.data))
+      .catch(() => window.location.assign("/login"));
+  }, []);
 
   useEffect(() => {
     const refresh = window.setInterval(() => {
@@ -366,6 +375,7 @@ export function BusinessOS() {
                   onSelect={setSelectedProjectId}
                   onCreate={() => setCreateOpen(true)}
                   onError={pushError}
+                  onProjectsChanged={loadProjects}
                   onOpenDocument={(documentId) => {
                     setFocusDocumentId(documentId);
                     setPage("documents");
@@ -380,7 +390,15 @@ export function BusinessOS() {
                   onFocusHandled={() => setFocusDocumentId(null)}
                 />
               )}
-              {page === "data" && <ClientDataView onError={pushError} />}
+              {page === "data" && (
+                <ClientDataView
+                  onError={pushError}
+                  onOpenDocument={(documentId) => {
+                    setFocusDocumentId(documentId);
+                    setPage("documents");
+                  }}
+                />
+              )}
               {page === "knowledge" && <KnowledgeView onError={pushError} />}
               {page === "settings" && <SettingsView onError={pushError} role={session?.user.role ?? "member"} />}
             </>
@@ -504,37 +522,88 @@ function Metric({ label, value, note, attention = false }: {
   );
 }
 
-function ProjectsView({ projects, project, selectedId, onSelect, onCreate, onError, onOpenDocument }: {
+function ProjectsView({ projects, project, selectedId, onSelect, onCreate, onError, onProjectsChanged, onOpenDocument }: {
   projects: Project[];
   project: ProjectDetail | null;
   selectedId: string | null;
   onSelect: (id: string) => void;
   onCreate: () => void;
   onError: (message: string) => void;
+  onProjectsChanged: () => Promise<void>;
   onOpenDocument: (documentId: string) => void;
 }) {
   const { formatCurrency, formatNumber, t } = useI18n();
+  const [showArchived, setShowArchived] = useState(false);
+  const [archiving, setArchiving] = useState(false);
   if (projects.length === 0) {
     return <EmptyModule icon={FolderKanban} title={t("No projects")} text={t("Create a project to establish context, constraints, agendas, and output requirements.")} action={t("Create project")} onAction={onCreate} />;
   }
+
+  const archivedCount = projects.filter((item) => item.status === "archived").length;
+  // The selected project stays visible even when it's archived and the filter
+  // is off, so archiving the project you're looking at doesn't yank it out
+  // from under you.
+  const visibleProjects = projects.filter((item) =>
+    showArchived || item.status !== "archived" || item.id === selectedId
+  );
+
+  async function setArchived(target: boolean) {
+    if (!project) return;
+    setArchiving(true);
+    try {
+      const response = await fetch(`/api/v1/projects/${project.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: target ? "archived" : "active" })
+      });
+      if (!response.ok) throw new Error(target ? "Could not archive the project." : "Could not restore the project.");
+      await onProjectsChanged();
+    } catch (reason) {
+      onError(reason instanceof Error ? reason.message : "Could not update the project.");
+    } finally {
+      setArchiving(false);
+    }
+  }
+
   return (
     <div className="project-layout">
       <aside className="project-list">
-        <div className="list-heading"><span>{t("Projects")}</span><button onClick={onCreate}><Plus size={14} /></button></div>
-        {projects.map((item) => (
+        <div className="list-heading">
+          <span>{t("Projects")}</span>
+          <button onClick={onCreate} aria-label={t("Create project")} title={t("Create project")}><Plus size={14} /></button>
+        </div>
+        {visibleProjects.map((item) => (
           <button key={item.id} className={selectedId === item.id ? "project-row selected" : "project-row"} onClick={() => onSelect(item.id)}>
             <strong>{item.name}</strong>
-            <span>{item.status}</span>
+            <span>{t(item.status)}</span>
           </button>
         ))}
+        {archivedCount > 0 && (
+          <button className="quiet project-list-toggle" onClick={() => setShowArchived((value) => !value)}>
+            {showArchived ? t("Hide archived") : t("Show archived ({count})", { count: archivedCount })}
+          </button>
+        )}
       </aside>
       {project && (
         <div className="project-center">
           <section className="project-title">
             <div><span className="eyebrow">{t("Project command center")}</span><h2>{project.name}</h2><p>{project.objective}</p></div>
-            <span className={`pill ${project.status === "active" ? "good" : project.status === "archived" ? "" : "warn"}`}>
-              {project.status}
-            </span>
+            <div className="project-title-actions">
+              <span className={`pill ${project.status === "active" ? "good" : project.status === "archived" ? "" : "warn"}`}>
+                {t(project.status)}
+              </span>
+              {project.status === "archived" ? (
+                <button className="secondary" onClick={() => void setArchived(false)} disabled={archiving}>
+                  {archiving ? <Loader2 size={13} className="spin" aria-hidden /> : <ArchiveRestore size={13} aria-hidden />}
+                  {t("Restore")}
+                </button>
+              ) : (
+                <button className="secondary" onClick={() => void setArchived(true)} disabled={archiving}>
+                  {archiving ? <Loader2 size={13} className="spin" aria-hidden /> : <Archive size={13} aria-hidden />}
+                  {t("Archive")}
+                </button>
+              )}
+            </div>
           </section>
           <div className="project-context">
             <ContextBlock label={t("Context")} value={project.context} />

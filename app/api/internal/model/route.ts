@@ -49,14 +49,15 @@ export async function POST(request: Request) {
     const structuredOutput = parsed.data.structuredOutput ?? policy.structuredOutput;
     const response = await requestLiteLLM(selectedRoute, parsed.data.messages, {
       maxCostMicros: policy.maxCostMicros,
-      responseFormat: structuredOutput ? { type: "json_object" } : undefined
+      responseFormat: structuredOutput ? { type: "json_object" } : undefined,
+      tools: parsed.data.tools
     });
     if (parsed.data.runId) {
       const payload = response as {
         model?: string;
         provider?: string;
         usage?: { prompt_tokens?: number; completion_tokens?: number; cost?: number };
-        choices?: Array<{ message?: { content?: string } }>;
+        choices?: Array<{ message?: { content?: string; tool_calls?: unknown[] } }>;
         _hidden_params?: {
           response_cost?: number; fallback_reason?: string; api_base?: string;
           model_id?: string;
@@ -67,8 +68,11 @@ export async function POST(request: Request) {
       if (costMicros > policy.maxCostMicros) {
         throw new Error(`Model call exceeded route budget for ${parsed.data.model}.`);
       }
+      // A turn that ends in a tool call, not final content, isn't a
+      // structured-output failure — it hasn't produced its answer yet.
+      const requestedTool = (payload.choices?.[0]?.message?.tool_calls?.length ?? 0) > 0;
       let structuredOutputValid: boolean | null = null;
-      if (structuredOutput) {
+      if (structuredOutput && !requestedTool) {
         try {
           JSON.parse(payload.choices?.[0]?.message?.content ?? "");
           structuredOutputValid = true;

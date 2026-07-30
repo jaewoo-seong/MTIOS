@@ -1,12 +1,18 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Database, Loader2, Plus } from "lucide-react";
+import { Database, FileText, Loader2, Plus } from "lucide-react";
+import { DOSSIER_DOCUMENT_COLUMN } from "@/lib/collection-columns";
 import type { ClientDatabase, ClientRecord } from "@/lib/domain";
 import { PromptDialog } from "@/components/ui/dialogs";
 import { useI18n } from "@/lib/i18n";
 
-export function ClientDataView({ onError }: { onError: (message: string) => void }) {
+export function ClientDataView({
+  onError, onOpenDocument
+}: {
+  onError: (message: string) => void;
+  onOpenDocument?: (documentId: string) => void;
+}) {
   const { formatNumber, t } = useI18n();
   const [databases, setDatabases] = useState<ClientDatabase[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -81,7 +87,9 @@ export function ClientDataView({ onError }: { onError: (message: string) => void
   }
 
   const active = databases.find((database) => database.id === activeId);
-  const columns = records.length > 0 ? Object.keys(records[0].data) : [];
+  // Union across every row, not just the first: a database holding rows from
+  // more than one source would otherwise hide any column the first row lacks.
+  const columns = [...new Set(records.flatMap((record) => Object.keys(record.data)))];
 
   return (
     <div className="documents-layout">
@@ -130,7 +138,20 @@ export function ClientDataView({ onError }: { onError: (message: string) => void
               <tbody>
                 {records.map((record) => (
                   <tr key={record.id}>
-                    {columns.map((column) => <td key={column}>{record.data[column] ?? ""}</td>)}
+                    {columns.map((column) => (
+                      <td key={column}>
+                        {column === DOSSIER_DOCUMENT_COLUMN && record.data[column]
+                          ? (
+                            <button
+                              className="link-button"
+                              onClick={() => onOpenDocument?.(record.data[column])}
+                            >
+                              <FileText size={13} aria-hidden /> {t("View report")}
+                            </button>
+                          )
+                          : record.data[column] ?? ""}
+                      </td>
+                    ))}
                   </tr>
                 ))}
               </tbody>

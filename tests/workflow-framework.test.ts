@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  collectionPlanSchema,
   executionPlanSchema,
+  plannerResponseSchema,
   workerCatalog,
   workerResultSchema,
   workerTypes
@@ -55,6 +57,78 @@ describe("workflow contracts", () => {
       workerType: "marketing_strategy",
       summary: ""
     })).toThrow();
+  });
+});
+
+const collectionPlan = {
+  kind: "collection_project" as const,
+  campaignName: "Kickstarter hardware scan",
+  objective: "Find hardware companies on Kickstarter that could use our PCBA services.",
+  entitySchema: [
+    { name: "companyName", description: "The company or campaign name." },
+    { name: "productCategory", description: "What kind of hardware they make." }
+  ],
+  documentTemplate: "# {{companyName}}\n\n## Product\n\n{{productCategory}}",
+  dedupeKeys: ["companyName"],
+  qualificationRules: ["Must be actively fundraising or recently funded."],
+  discoveryQueries: ["site:kickstarter.com hardware startup 2026"],
+  targetCount: 100,
+  saturationRule: null
+};
+
+describe("Stage 2 - Blueprint", () => {
+  it("accepts a well-formed collection plan", () => {
+    expect(collectionPlanSchema.parse(collectionPlan).campaignName).toBe("Kickstarter hardware scan");
+  });
+
+  it("rejects a dedupe key that isn't one of the plan's own declared fields", () => {
+    expect(() => collectionPlanSchema.parse({
+      ...collectionPlan,
+      dedupeKeys: ["notADeclaredField"]
+    })).toThrow(/not one of the declared entity fields/i);
+  });
+
+  it("requires a targetCount or a saturationRule so the loop knows when to stop", () => {
+    expect(() => collectionPlanSchema.parse({
+      ...collectionPlan,
+      targetCount: null,
+      saturationRule: null
+    })).toThrow(/saturationRule/i);
+    // Either one alone is enough.
+    expect(collectionPlanSchema.parse({
+      ...collectionPlan,
+      targetCount: null,
+      saturationRule: "Stop after three consecutive rounds with no new company."
+    }).targetCount).toBeNull();
+  });
+
+  it("discriminates between the fixed task pipeline and a collection project by kind", () => {
+    const taskPlan = plannerResponseSchema.parse({ ...plan, kind: "tasks" });
+    expect(taskPlan.kind).toBe("tasks");
+    if (taskPlan.kind === "tasks") {
+      expect(taskPlan.tasks).toHaveLength(2);
+    }
+
+    const parsedCollectionPlan = plannerResponseSchema.parse(collectionPlan);
+    expect(parsedCollectionPlan.kind).toBe("collection_project");
+    if (parsedCollectionPlan.kind === "collection_project") {
+      expect(parsedCollectionPlan.entitySchema).toHaveLength(2);
+    }
+  });
+
+  it("still enforces unique task keys when the union resolves to the tasks branch", () => {
+    expect(() => plannerResponseSchema.parse({
+      ...plan,
+      kind: "tasks",
+      tasks: [plan.tasks[0], plan.tasks[0]]
+    })).toThrow(/unique/i);
+  });
+
+  it("still enforces the dedupe-key rule when the union resolves to the collection branch", () => {
+    expect(() => plannerResponseSchema.parse({
+      ...collectionPlan,
+      dedupeKeys: ["notADeclaredField"]
+    })).toThrow(/not one of the declared entity fields/i);
   });
 });
 
