@@ -289,6 +289,17 @@ function isDefaultRoleAllowed(tool: RegisteredTool, scope: McpScope) {
   return true;
 }
 
+/**
+ * A caller may only tighten an agent's configured spending ceiling for a
+ * single call, never raise it — otherwise a client-supplied `maxCostCents`
+ * widens the agent's real budget instead of scoping one invocation under it.
+ */
+export function clampCostCeiling(requested: number | null | undefined, agentBudgetCents: number | null) {
+  if (agentBudgetCents === null) return requested ?? null;
+  if (requested === null || requested === undefined) return agentBudgetCents;
+  return Math.min(requested, agentBudgetCents);
+}
+
 export async function invokeMcpTool(input: {
   toolName: string;
   arguments: Record<string, unknown>;

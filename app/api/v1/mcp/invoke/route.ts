@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { parseJson } from "@/lib/http";
-import { invokeMcpTool } from "@/lib/mcp/platform";
+import { clampCostCeiling, invokeMcpTool } from "@/lib/mcp/platform";
 import { repository } from "@/lib/repository";
 
 const schema = z.object({
@@ -34,7 +34,10 @@ export async function POST(request: Request) {
         runId: parsed.data.runId,
         workerRunId: parsed.data.workerRunId,
         permissions: agent.toolScopes,
-        maxCostCents: parsed.data.maxCostCents ?? agent.budgetCents
+        // The caller may only tighten the agent's configured ceiling, never
+        // raise it — otherwise a client-supplied maxCostCents widens the
+        // agent's real spending limit instead of scoping a single call under it.
+        maxCostCents: clampCostCeiling(parsed.data.maxCostCents, agent.budgetCents)
       }
     });
     return NextResponse.json({ data: result }, {

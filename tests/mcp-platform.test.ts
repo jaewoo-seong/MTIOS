@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { request, type Server } from "node:http";
 import {
+  clampCostCeiling,
   discoverMcpServer,
   getMcpTestState,
   grantMcpTool,
@@ -197,5 +198,28 @@ describe("MCP Streamable HTTP service", () => {
     expect(discovery.resources.map((resource) => resource.uri)).toContain("mti://tool-governance");
     expect(discovery.prompts.map((prompt) => prompt.name)).toContain("scoped-tool-use");
     expect(getMcpTestState().discoveries.at(-1)).toMatchObject({ status: "completed" });
+  });
+});
+
+describe("clampCostCeiling", () => {
+  it("lets a caller tighten the agent's budget", () => {
+    expect(clampCostCeiling(500, 2000)).toBe(500);
+  });
+
+  it("never lets a caller raise the ceiling above the agent's configured budget", () => {
+    // This is the exact bug: a client passing a large maxCostCents used to
+    // widen the agent's real spending limit instead of scoping one call
+    // under it, letting tools blocked by the agent's normal budget through.
+    expect(clampCostCeiling(1_000_000, 2000)).toBe(2000);
+  });
+
+  it("falls back to the agent's budget when the caller omits a ceiling", () => {
+    expect(clampCostCeiling(null, 2000)).toBe(2000);
+    expect(clampCostCeiling(undefined, 2000)).toBe(2000);
+  });
+
+  it("leaves an unbudgeted agent's ceiling to the caller", () => {
+    expect(clampCostCeiling(500, null)).toBe(500);
+    expect(clampCostCeiling(null, null)).toBeNull();
   });
 });

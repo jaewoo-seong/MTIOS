@@ -18,6 +18,21 @@ type Claims = {
   expiresAt: number;
 };
 
+/**
+ * Edge middleware: signature + expiry only. It cannot reach Postgres (Edge
+ * runtime has no TCP sockets, and — confirmed empirically, not assumed —
+ * this Next.js version's middleware `config` schema is `.strict()` with no
+ * `runtime` key, so declaring `runtime: "nodejs"` doesn't switch runtimes,
+ * it fails schema validation and Next drops the middleware entirely with no
+ * build error. Do not reintroduce that without confirming the manifest at
+ * .next/server/middleware-manifest.json is non-empty after the build).
+ *
+ * Because this can't check `revoked_at`, it cannot detect logout, admin
+ * revocation, or a post-password-change kill — those are enforced by
+ * `currentSession()` (lib/auth.ts), which every route handling sensitive
+ * data must call explicitly. This is the known, tracked gap: most routes
+ * currently rely on this signature-only check alone.
+ */
 export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname;
   if (PUBLIC_PATHS.has(path)) return NextResponse.next();

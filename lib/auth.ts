@@ -110,14 +110,18 @@ export async function authenticate(
   const railwayAdminPassword = isRailwayAdmin
     ? process.env.ADMIN_PASSWORD
     : null;
+  // The Railway break-glass admin authenticates against an env-var password
+  // instead of the stored hash, but it is still the account.user row above
+  // and must be subject to the exact same lockout as every other account —
+  // otherwise it is the one account with unlimited password guesses.
   const accepted = account?.user.status === "active" &&
-    (isRailwayAdmin || !account.user.lockedUntil || account.user.lockedUntil <= now) &&
+    (!account.user.lockedUntil || account.user.lockedUntil <= now) &&
     (railwayAdminPassword
       ? safeEqual(password, railwayAdminPassword)
       : Boolean(account.user.passwordHash) &&
         await verify(String(account.user.passwordHash), password).catch(() => false));
   if (!accepted) {
-    if (account?.user && !isRailwayAdmin) {
+    if (account?.user) {
       const attempts = account.user.failedLoginAttempts + 1;
       await database.update(users).set({
         failedLoginAttempts: attempts,
@@ -173,11 +177,19 @@ export async function authenticate(
   return { token, claims };
 }
 
-export async function currentSession(options: { admin?: boolean; allowPasswordChange?: boolean } = {}) {
-  const cookieStore = await cookies();
-  const token = cookieStore.get(SESSION_COOKIE)?.value;
-  const claims = parseSession(token);
-  if (!claims || !token || !db) throw new AuthError("unauthorized", 401);
+/**
+ * The single source of truth for "is this cookie still a live session" —
+ * checked against the database, not just the HMAC signature. A signature-only
+ * check (the old middleware behavior) accepts a token for up to its 12h idle
+ * window even after logout, admin revocation, or a password change, because
+ * none of those rewrite the signature, only the `revoked_at` column.
+ *
+ * Callable from Node.js middleware and from route handlers alike, so there is
+ * exactly one place session validity is decided.
+ */
+export async function verifySessionToken(token: string | undefined | null): Promise<SessionClaims | null> {
+  const claims = parseSession(token ?? null);
+  if (!claims || !token || !db) return null;
   const [session] = await db.select().from(userSessions).where(and(
     eq(userSessions.id, claims.sessionId),
     eq(userSessions.tokenHash, digest(token)),
@@ -185,7 +197,13 @@ export async function currentSession(options: { admin?: boolean; allowPasswordCh
     gt(userSessions.idleExpiresAt, new Date()),
     gt(userSessions.absoluteExpiresAt, new Date())
   )).limit(1);
-  if (!session) throw new AuthError("unauthorized", 401);
+  return session ? claims : null;
+}
+
+export async function currentSession(options: { admin?: boolean; allowPasswordChange?: boolean } = {}) {
+  const cookieStore = await cookies();
+  const claims = await verifySessionToken(cookieStore.get(SESSION_COOKIE)?.value);
+  if (!claims) throw new AuthError("unauthorized", 401);
   if (options.admin && claims.role !== "admin") throw new AuthError("forbidden", 403);
   return claims;
 }
