@@ -151,7 +151,18 @@ Deployment order:
    conversion services on Railway private networking.
 2. Set app and service variables. Generate distinct workflow, MCP, document
    conversion, Gmail encryption, LiteLLM, and Basic Auth secrets.
-3. Run `npm run db:deploy` once against production PostgreSQL.
+3. Apply migrations. `DATABASE_URL` resolves to `postgres.railway.internal`,
+   unreachable from a laptop, so run them through the Postgres service's
+   public proxy — the credential stays inside the child process:
+
+   ```bash
+   railway run --service Postgres sh -c 'DATABASE_URL="$DATABASE_PUBLIC_URL" npx drizzle-kit migrate'
+   ```
+
+   Then confirm against `information_schema` rather than trusting the output.
+   Do **not** set this as a Railway pre-deploy command: `drizzle-kit` is a
+   devDependency and Railway installs with `--omit=dev`, so it would fail and
+   block every future deploy.
 4. Deploy Trigger.dev production tasks and verify production concurrency.
 5. Deploy the app, require `/api/health` status `ok`, then run
    `npm run test:production`.
