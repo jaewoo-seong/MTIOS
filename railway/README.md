@@ -94,12 +94,30 @@ Settings advertise a provider that cannot serve a request.
 
 > **The litellm service does not deploy from GitHub.** Its build context is a
 > local upload (`Dockerfile` + `config.yaml`, ~631 bytes) — deployments carry
-> no commit metadata, unlike `app`. Editing
-> `railway/litellm/config.yaml` in the repo changes nothing in production
-> until you run `railway up` from `railway/litellm/`. Verified 2026-07-30: the
-> running proxy had `openrouter/anthropic/claude-3.5-haiku` registered, the
-> literal that the repo had already replaced with `os.environ/EXECUTIVE_MODEL`.
-> Set the variables *before* uploading a config that references them.
+> no commit metadata, unlike `app`. Editing `railway/litellm/config.yaml` in
+> the repo changes nothing in production until you upload it. Set the
+> variables *before* uploading a config that references them.
+>
+> **Do not run `railway up` from inside this repo.** It takes its build
+> context from the **git root**, not the current directory, so running it in
+> `railway/litellm/` uploads the whole repo; RAILPACK then detects the Next.js
+> project and deploys *the app* onto the litellm service, taking model routing
+> down. The deploy still reports SUCCESS — only the runtime logs reveal it
+> (`next start` instead of Uvicorn). This happened on 2026-07-30.
+>
+> Setting `rootDirectory` + `dockerfilePath` does **not** fix it; the builder
+> stays RAILPACK and fails with "Script start.sh not found".
+>
+> Correct procedure — stage the two files outside any git repo:
+>
+> ```bash
+> mkdir /tmp/litellm-deploy
+> cp railway/litellm/Dockerfile railway/litellm/config.yaml /tmp/litellm-deploy/
+> cd /tmp/litellm-deploy && railway up --service litellm --ci
+> ```
+>
+> Then confirm from the runtime logs that Uvicorn is serving on port 4000, and
+> that no unexpected model literal appears in the `register_model` warnings.
 
 `NVIDIA_PRODUCTION_APPROVED` is moot while no NVIDIA candidate exists — the
 flag gates a candidate, it cannot conjure one. Leave it unset. Note also that
