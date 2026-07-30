@@ -164,6 +164,18 @@ Deployment order:
    devDependency and Railway installs with `--omit=dev`, so it would fail and
    block every future deploy.
 4. Deploy Trigger.dev production tasks and verify production concurrency.
+
+   Pin the CLI to the installed SDK version — do **not** use `@latest`:
+
+   ```bash
+   npx trigger.dev@4.5.8 deploy   # must match @trigger.dev/sdk in package.json
+   ```
+
+   `npx trigger.dev@latest` aborts with "Version mismatch detected while
+   running in CI" the moment the published CLI moves ahead of the pinned SDK,
+   which it did on 2026-07-30 (CLI 4.5.9 vs SDK 4.5.8). Confirm the summary
+   line reports the expected task count — the app triggers tasks by id, so a
+   task missing from the deploy fails only when something calls it.
 5. Deploy the app, require `/api/health` status `ok`, then run
    `npm run test:production`.
 6. Test one Executive call, worker fallback, embedding, reranking, MCP read,
