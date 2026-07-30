@@ -1,0 +1,4 @@
+companyName,country,industry,stage,fundingGoalUsd,website,contactEmail,launchDate,reportFile
+Acme Robotics,USA,Industrial robotics,live,50000,https://acme.example,hello@acme.example,2026-03-14,acme-robotics.md
+Bolt Devices,Korea,Consumer electronics,pre-launch,12000,https://bolt.example,unknown,2026-05-02,bolt-devices.md
+Cinder Optics,Japan,Optical components,live,unknown,https://cinder.example,sales@cinder.example,2026-01-20,cinder-optics.md
