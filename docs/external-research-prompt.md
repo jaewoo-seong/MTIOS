@@ -50,6 +50,10 @@ exactly the same things.
 > - Write numbers as plain strings: `50000`, not `$50,000` or `50k`. Keep
 >   units in the column name (`fundingGoalUsd`).
 > - Use ISO dates: `2026-03-14`.
+> - Always include `contactName` and `contactEmail`. A qualifying entity
+>   nobody can be reached at is not actionable. Where either is genuinely
+>   unpublished, write `unknown` — do not guess an address from a pattern like
+>   `firstname@company.com`, which reads as verified and bounces.
 > - Keep columns under about twelve. A field only some entities have belongs
 >   in the report, not the table.
 >
@@ -120,10 +124,10 @@ exactly the same things.
 `companies.csv`
 
 ```csv
-companyName,country,fundingGoalUsd,stage,launchDate,reportFile
-Acme Robotics,USA,50000,live,2026-03-14,acme-robotics.md
-Bolt Devices,Korea,12000,pre-launch,2026-05-02,bolt-devices.md
-Cinder Optics,Japan,unknown,live,2026-01-20,cinder-optics.md
+companyName,country,fundingGoalUsd,stage,contactName,contactEmail,launchDate,reportFile
+Acme Robotics,USA,50000,live,Dana Whitfield,hello@acme.example,2026-03-14,acme-robotics.md
+Bolt Devices,Korea,12000,pre-launch,unknown,unknown,2026-05-02,bolt-devices.md
+Cinder Optics,Japan,unknown,live,Rei Nakamura,sales@cinder.example,2026-01-20,cinder-optics.md
 ```
 
 Note: `Cinder Optics` has an unknown funding goal written as `unknown`, not

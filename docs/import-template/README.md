@@ -17,7 +17,7 @@ npx tsx scripts/import-research.mjs docs/import-template --database <uuid> --pro
 
 ## The database template
 
-`companies.csv` uses nine columns. Only `reportFile` is required by the
+`companies.csv` uses ten columns. Only `reportFile` is required by the
 importer; everything else is yours to choose, and each column becomes a field
 in the client database exactly as named.
 
@@ -29,6 +29,7 @@ in the client database exactly as named.
 | `stage` | A small fixed vocabulary (`live`, `pre-launch`, `funded`) beats prose. |
 | `fundingGoalUsd` | Unit lives in the **name**, so values stay plain numbers. |
 | `website` | |
+| `contactName` | Who to write to. An address with no name is far less likely to get a reply, and it is the field most often missing from scraped research. |
 | `contactEmail` | `unknown` where absent — never blank, never `N/A`. |
 | `launchDate` | ISO `YYYY-MM-DD`, so dates sort correctly as text. |
 | `reportFile` | **The join key.** The filename of this row's report. |
