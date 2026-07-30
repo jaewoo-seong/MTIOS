@@ -18,6 +18,7 @@ import {
   Send,
   Settings,
   Sparkles,
+  Target,
   X
 } from "lucide-react";
 import type {
@@ -31,6 +32,7 @@ import type {
   Report,
   WorkspaceDocument
 } from "@/lib/domain";
+import { CampaignsView } from "@/components/campaigns-view";
 import { ClientDataView } from "@/components/client-data-view";
 import { ClientChangeReview } from "@/components/client-change-review";
 import { DocumentsView } from "@/components/documents-view";
@@ -45,7 +47,7 @@ import {
   PasswordSettings
 } from "@/components/account-settings";
 
-type PageId = "agent" | "projects" | "documents" | "data" | "knowledge" | "settings";
+type PageId = "agent" | "projects" | "campaigns" | "documents" | "data" | "knowledge" | "settings";
 type ProjectDetail = Project & {
   agendas: Agenda[];
   milestones: Milestone[];
@@ -59,6 +61,7 @@ type AppSession = {
 const navItems: Array<{ id: PageId; label: string; icon: typeof Bot }> = [
   { id: "agent", label: "Executive Agent", icon: Bot },
   { id: "projects", label: "Projects", icon: FolderKanban },
+  { id: "campaigns", label: "Campaigns", icon: Target },
   { id: "documents", label: "Documents", icon: FileText },
   { id: "data", label: "Client & Data", icon: Database },
   { id: "knowledge", label: "Knowledge Base", icon: BookOpen },
@@ -77,6 +80,12 @@ const pageCopy: Record<PageId, { title: string; subtitle: string; command: strin
     subtitle: "Long-lived context, agendas, execution, and outputs",
     command: "Add a project agenda, change scope, run the next batch, or request an output.",
     actions: ["Add agenda", "Run next batch", "Change scope", "Review plan"]
+  },
+  campaigns: {
+    title: "Collection Campaigns",
+    subtitle: "Multi-entity research, its reports, and mid-flight steering",
+    command: "Steer a running campaign, raise its ceiling, or continue what is still pending.",
+    actions: ["Refocus the search", "Continue campaign", "Review reports"]
   },
   documents: {
     title: "Documents",
@@ -376,6 +385,16 @@ export function BusinessOS() {
                   onCreate={() => setCreateOpen(true)}
                   onError={pushError}
                   onProjectsChanged={loadProjects}
+                  onOpenDocument={(documentId) => {
+                    setFocusDocumentId(documentId);
+                    setPage("documents");
+                  }}
+                />
+              )}
+              {page === "campaigns" && (
+                <CampaignsView
+                  projects={projects}
+                  onError={pushError}
                   onOpenDocument={(documentId) => {
                     setFocusDocumentId(documentId);
                     setPage("documents");

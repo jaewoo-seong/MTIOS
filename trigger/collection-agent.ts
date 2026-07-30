@@ -35,6 +35,10 @@ export type ScoutingPayload = {
   entitySchema: EntityFieldSchema[];
   qualificationRules: string[];
   discoveryQueries: string[];
+  /** Null means "run until saturation", bounded only by the step ceiling. */
+  targetCount?: number | null;
+  /** Set on a continuation run, so discovery knows what already exists. */
+  alreadyDiscovered?: number;
 };
 
 export type ScoutingResult = {
@@ -43,10 +47,35 @@ export type ScoutingResult = {
   saturated: boolean;
   discovered: number;
   duplicates: number;
+  steering: string[];
 };
 
-const MAX_STEPS = 15;
+/**
+ * Hard ceiling on discovery rounds, independent of what a campaign asked for.
+ * The working limit comes from `discoveryStepLimit` below; this only exists so
+ * a campaign with no target cannot loop indefinitely.
+ */
+const MAX_STEPS_HARD_LIMIT = 60;
 const CONSECUTIVE_EMPTY_LIMIT = 3;
+
+/**
+ * How many discovery rounds this campaign gets.
+ *
+ * The old fixed 15 was the real reason a large campaign quietly under-
+ * delivered: reaching 100 entities inside 15 rounds requires sustaining about
+ * seven net-new finds every round, and a round that returns five is normal.
+ * The loop would hit its cap at 60 or 70 found, correctly report that it had
+ * not saturated, and then fan out only what it had.
+ *
+ * One round per five expected entities, floored at the old value so small
+ * campaigns behave exactly as before, and capped so this can never become
+ * unbounded.
+ */
+export function discoveryStepLimit(targetCount: number | null | undefined, alreadyDiscovered = 0) {
+  if (targetCount === null || targetCount === undefined) return 15;
+  const remaining = Math.max(0, targetCount - alreadyDiscovered);
+  return Math.max(15, Math.min(MAX_STEPS_HARD_LIMIT, Math.ceil(remaining / 5) + 5));
+}
 
 const SEARCH_WEB_TOOL: ToolDefinition = {
   type: "function",
@@ -184,11 +213,28 @@ export async function runScoutingLoop(
   // cap cut it off, or the budget did. Only the first means "done".
   let saturated = false;
   let lastCoverage: CoverageSnapshot = null;
+  const steering: string[] = [];
+  const maxSteps = discoveryStepLimit(payload.targetCount, payload.alreadyDiscovered);
 
-  for (let step = 0; step < MAX_STEPS; step++) {
+  for (let step = 0; step < maxSteps; step++) {
     const budget = await readBudget(payload, deps);
     if (budget.exhausted) {
       stopReason = `${budget.reason} Discovery stopped before finishing.`;
+      break;
+    }
+
+    // Steering is picked up between rounds, not mid-round. A directive
+    // therefore changes the next query the model chooses while everything
+    // already discovered stays exactly as it is - which is the whole point of
+    // steering rather than restarting.
+    const steer = await readSteering(payload, deps, "scouting");
+    if (steer.directives.length > 0) {
+      steering.push(...steer.directives.map((directive) => directive.summary));
+      messages.push({ role: "user", content: steeringMessage(steer.directives) });
+    }
+    if (steer.stopDiscovery) {
+      stopReason = "Discovery stopped on request. Everything found so far is kept.";
+      saturated = true;
       break;
     }
 
@@ -240,7 +286,8 @@ export async function runScoutingLoop(
   }
 
   if (!stopReason) {
-    stopReason = `Reached the ${MAX_STEPS}-step discovery limit before saturating.`;
+    stopReason = `Reached the ${maxSteps}-step discovery limit before saturating. ` +
+      "Continuing the campaign resumes discovery without rediscovering anything.";
   }
 
   const concluded = await deps.callWorkflowApp<{ coverage: CoverageSnapshot }>({
@@ -257,8 +304,62 @@ export async function runScoutingLoop(
     stopReason,
     saturated,
     discovered: finalCoverage?.discovered ?? 0,
-    duplicates: finalCoverage?.duplicates ?? 0
+    duplicates: finalCoverage?.duplicates ?? 0,
+    steering
   };
+}
+
+type AbsorbedDirective = { kind: string; instruction: string; summary: string };
+
+/** Mirrors the steering_poll response in app/api/internal/workflow/route.ts. */
+type SteeringSnapshot = {
+  directives?: Array<{ kind?: string; instruction?: string }>;
+  stopDiscovery?: boolean;
+  qualificationRules?: string[];
+};
+
+/**
+ * Reads any directive a person has written since the last round.
+ *
+ * Unlike the budget check, this fails *open*. An unreachable steering poll
+ * means nobody has steered as far as this loop can tell, and stopping a
+ * campaign because an optional instruction channel was briefly unavailable
+ * would be a worse failure than missing a nudge for one round - the directive
+ * stays pending and is picked up next round either way.
+ */
+async function readSteering(
+  payload: { runId: string; campaignId: string },
+  deps: { callWorkflowApp: typeof callWorkflowApp },
+  stage: "scouting" | "dossier"
+): Promise<{ directives: AbsorbedDirective[]; stopDiscovery: boolean; qualificationRules: string[] }> {
+  try {
+    const snapshot = await deps.callWorkflowApp<SteeringSnapshot>({
+      action: "steering_poll",
+      runId: payload.runId,
+      campaignId: payload.campaignId,
+      stage
+    });
+    const directives = (snapshot?.directives ?? []).map((directive) => {
+      const kind = String(directive.kind ?? "refocus");
+      const instruction = String(directive.instruction ?? "");
+      return { kind, instruction, summary: instruction ? `${kind}: ${instruction}` : kind };
+    });
+    return {
+      directives,
+      stopDiscovery: snapshot?.stopDiscovery === true,
+      qualificationRules: snapshot?.qualificationRules ?? []
+    };
+  } catch {
+    return { directives: [], stopDiscovery: false, qualificationRules: [] };
+  }
+}
+
+function steeringMessage(directives: AbsorbedDirective[]) {
+  return [
+    "Updated instructions from the operator. Apply these from now on.",
+    "Keep everything already found - this redirects the search, it does not restart it.",
+    ...directives.map((directive) => `- ${directive.summary}`)
+  ].join("\n");
 }
 
 async function runOneToolCall(
@@ -275,6 +376,7 @@ async function runOneToolCall(
         runId: payload.runId,
         projectId: payload.projectId,
         agendaId: payload.agendaId,
+        campaignId: payload.campaignId,
         query: String(args.query ?? "").slice(0, 2000)
       });
       // Truncated, not because the model can't handle more, but because an
@@ -384,6 +486,18 @@ export async function runDossierLoop(
     return { candidateId: payload.candidateId, status: "budget_exhausted", reason: budget.reason };
   }
 
+  // Absorbed before claiming, not after. A worker that has not claimed yet is
+  // a worker whose entity nobody has started, so applying a new criterion here
+  // is what makes "steering governs work not yet begun" true; a worker already
+  // past this point finishes its entity under the rules it started with, which
+  // is why steering never leaves a half-written dossier. The host also
+  // persists any added criterion onto the campaign, so it reaches siblings
+  // that polled before it was written.
+  const steer = await readSteering(payload, deps, "dossier");
+  const qualificationRules = steer.qualificationRules.length > 0
+    ? steer.qualificationRules
+    : payload.qualificationRules;
+
   const claim = await deps.callWorkflowApp<{ claimed: boolean; leaseToken: string | null }>({
     action: "dossier_claim",
     runId: payload.runId,
@@ -408,8 +522,8 @@ export async function runDossierLoop(
         content: [
           "Fill in the declared fields for one entity from the supplied evidence.",
           `Fields: ${JSON.stringify(payload.entitySchema)}.`,
-          payload.qualificationRules.length > 0
-            ? `The entity qualifies only if: ${payload.qualificationRules.join("; ")}.`
+          qualificationRules.length > 0
+            ? `The entity qualifies only if: ${qualificationRules.join("; ")}.`
             : "No extra qualification rules beyond the field descriptions.",
           'Return JSON only: {"qualifies":true|false,"reason":"string","fields":{"field_name":"value"}}.',
           "Omit any field the evidence does not support. Never guess a value to fill a gap - an " +
@@ -526,6 +640,11 @@ async function gatherDossierEvidence(
         runId: payload.runId,
         projectId: payload.projectId,
         agendaId: payload.agendaId,
+        // Passing both ids is what lets the host answer from the campaign's
+        // evidence pool instead of paying for a lookup a sibling worker
+        // already made, and attribute the result when it does pay.
+        campaignId: payload.campaignId,
+        candidateId: payload.candidateId,
         query: query.slice(0, 2000)
       });
       evidence.push(result);

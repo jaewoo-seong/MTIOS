@@ -906,6 +906,31 @@ export const repository = {
   },
 
   /**
+   * Runs started by one command, newest first.
+   *
+   * A command can own more than one run - a retried dispatch, or a campaign
+   * continuation - so cancelling has to reach all of them rather than assuming
+   * the newest is the only live one.
+   */
+  async listRunsForCommand(commandId: string) {
+    if (!db) {
+      return store.runs
+        .filter((run) => run.commandId === commandId)
+        .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    }
+    const rows = await db.select({ run: runs, projectId: commands.projectId })
+      .from(runs)
+      .innerJoin(commands, eq(runs.commandId, commands.id))
+      .where(and(eq(runs.commandId, commandId), eq(commands.organizationId, MTI_ORGANIZATION_ID)))
+      .orderBy(desc(runs.createdAt));
+    return rows.map((row) => ({
+      id: row.run.id, commandId: row.run.commandId, projectId: row.projectId,
+      status: row.run.status as AgentRun["status"], workflowRunId: row.run.triggerRunId,
+      progress: row.run.progress, createdAt: iso(row.run.createdAt), updatedAt: iso(row.run.updatedAt)
+    }));
+  },
+
+  /**
    * Flattened, chronologically ordered event feed across every run in a project.
    * `after` is an ISO timestamp cursor so the caller can poll for only what is new.
    */

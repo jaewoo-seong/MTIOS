@@ -529,6 +529,48 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 }
 .link-button:hover { text-decoration-thickness: 2px; }
 
+/* ── Collection campaigns ─────────────────────────────────────────────── */
+.campaign-progress { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-4); border-bottom: 1px solid var(--line); }
+.campaign-progress-row { display: grid; grid-template-columns: 72px 1fr 96px; align-items: center; gap: var(--sp-3); font-size: var(--t-meta); }
+.campaign-progress-row > span:first-child { font-family: var(--mono); font-size: var(--t-label); letter-spacing: .07em; text-transform: uppercase; color: var(--ink-faint); }
+.campaign-progress-row > span:last-child { font-variant-numeric: tabular-nums; text-align: right; }
+.campaign-bar { height: 6px; border-radius: 999px; background: var(--sunk); overflow: hidden; }
+/* Discovery and reporting move at different times; two bars rather than one
+   so a campaign that has found everything but written nothing reads correctly
+   instead of looking stalled. */
+.campaign-bar-fill { height: 100%; border-radius: 999px; transition: width .3s ease; }
+.campaign-bar-fill.discovery { background: var(--accent-line); }
+.campaign-bar-fill.dossier { background: var(--accent); }
+.campaign-progress-note { margin: var(--sp-1) 0 0; color: var(--ink-mute); font-size: var(--t-meta); line-height: 1.6; }
+
+.campaign-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: var(--sp-3); padding: var(--sp-4); border-bottom: 1px solid var(--line); }
+.campaign-metric { display: flex; flex-direction: column; gap: 2px; }
+.campaign-metric strong { font-size: var(--t-section); font-weight: 620; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+.campaign-metric-label { font-family: var(--mono); font-size: var(--t-label); letter-spacing: .07em; text-transform: uppercase; color: var(--ink-faint); }
+.campaign-metric-detail { color: var(--ink-mute); font-size: var(--t-meta); }
+
+.campaign-continue, .campaign-steering { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-4); border-bottom: 1px solid var(--line); }
+.campaign-continue h3, .campaign-steering h3 { margin: 0; font-size: var(--t-section); font-weight: 620; letter-spacing: -.008em; }
+.campaign-continue p, .campaign-steering p { margin: 0; color: var(--ink-soft); font-size: var(--t-meta); line-height: 1.6; }
+.campaign-continue-row, .campaign-steering-row { display: flex; flex-wrap: wrap; align-items: end; gap: var(--sp-2); margin-top: var(--sp-1); }
+.campaign-continue-row label { display: flex; flex-direction: column; gap: 2px; }
+.campaign-continue-row label span { font-family: var(--mono); font-size: var(--t-label); letter-spacing: .07em; text-transform: uppercase; color: var(--ink-faint); }
+.campaign-continue-row input { width: 120px; }
+.campaign-steering-row select { flex: 0 0 auto; }
+.campaign-steering-row input { flex: 1 1 260px; min-width: 200px; }
+
+.campaign-directives { display: flex; flex-direction: column; gap: var(--sp-1); margin: var(--sp-2) 0 0; padding: 0; list-style: none; }
+.campaign-directives li { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--sp-2); font-size: var(--t-meta); }
+.campaign-directives strong { font-family: var(--mono); font-size: var(--t-label); letter-spacing: .07em; text-transform: uppercase; color: var(--ink-faint); }
+.campaign-directives span { color: var(--ink-soft); }
+.campaign-directives em { color: var(--ink-faint); font-size: var(--t-label); font-style: normal; }
+
+.campaign-status { display: inline-flex; align-items: center; padding: 1px 8px; border-radius: 999px; background: var(--sunk); font-family: var(--mono); font-size: var(--t-label); letter-spacing: .04em; text-transform: uppercase; }
+.campaign-status.completed { background: var(--accent-line); color: var(--ink); }
+.campaign-status.failed { background: #f6dcdc; color: #6b1f1f; }
+.campaign-status.disqualified { color: var(--ink-mute); }
+.campaign-status-reason { display: block; margin-top: 2px; max-width: 320px; color: var(--ink-faint); font-size: var(--t-label); white-space: normal; }
+
 /* ── Knowledge ────────────────────────────────────────────────────────── */
 .knowledge-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: var(--sp-3); }
 .knowledge-card { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-4); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); }

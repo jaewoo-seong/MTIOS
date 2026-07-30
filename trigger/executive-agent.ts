@@ -163,7 +163,11 @@ export const executiveAgentWorkflow = task({
         agendaId: created.agendaId,
         entitySchema: plan.entitySchema,
         qualificationRules: plan.qualificationRules,
-        discoveryQueries: plan.discoveryQueries
+        discoveryQueries: plan.discoveryQueries,
+        // Discovery sizes its own round budget from this. Without it every
+        // campaign got the same fifteen rounds regardless of whether it was
+        // asked for five entities or five hundred.
+        targetCount: plan.targetCount
       });
       if (!scouting.ok) {
         throw new Error("Scouting Loop failed before any candidates could be confirmed.");
@@ -231,7 +235,12 @@ export const executiveAgentWorkflow = task({
           `${unfinished} unfinished, from ${scouting.output.discovered} discovered candidate(s). ` +
           (budgetStopped > 0
             ? `${budgetStopped} candidate(s) were left unresearched because the campaign hit its ` +
-              "spend ceiling - raise the project budget to continue them. "
+              "spend ceiling - raise the campaign's ceiling and continue it to research them " +
+              "without rediscovering anything. "
+            : "") +
+          (unfinished > 0
+            ? `${unfinished} candidate(s) did not finish and stay pending - continuing the ` +
+              "campaign retries them. "
             : "") +
           `${crossLink.published} document(s) created and staged as client-data rows for review; ` +
           "the rows are not in the database until approved."

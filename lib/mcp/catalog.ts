@@ -172,6 +172,10 @@ export const internalToolCatalog = [
     inputSchema: z.object({
       projectId: z.string().uuid(),
       agendaId: z.string().uuid(),
+      // Optional, but supplying it is what lets a run's external research
+      // spend be attributed back to that run. Without it the query is
+      // recorded with a null run and no budget can ever see its cost.
+      runId: z.string().uuid().nullable().optional(),
       query: z.string().trim().min(2).max(2000),
       category: z.enum(["web", "company", "government", "economic", "korean", "academic", "reference"]),
       language: z.string().trim().min(2).max(10).default("en"),
@@ -374,6 +378,7 @@ export async function executeInternalTool(name: InternalToolName, rawInput: unkn
     return runResearchQuery({
       projectId: String(input.projectId),
       agendaId: String(input.agendaId),
+      runId: typeof input.runId === "string" ? input.runId : null,
       query: String(input.query),
       category: input.category as "web" | "company" | "government" | "economic" | "korean" | "academic" | "reference",
       language: String(input.language),

@@ -1345,8 +1345,81 @@ export const collectionCampaigns = pgTable("collection_campaigns", {
   databaseId: uuid("database_id").references(() => clientDatabases.id, { onDelete: "set null" }),
   changeSetId: uuid("change_set_id").references(() => clientChangeSets.id, { onDelete: "set null" }),
   costCents: bigint("cost_cents", { mode: "number" }).default(0).notNull(),
+  // The research half of `costCents`, kept separately so the surface can show
+  // where a campaign's money actually went. External search credits dominate
+  // per-entity cost on a large campaign while model spend dominates on a
+  // small one, and a single total hides which one is moving.
+  researchCostCents: bigint("research_cost_cents", { mode: "number" }).default(0).notNull(),
+  // What earlier runs of this campaign already spent.
+  //
+  // Spend is tracked per run (`runs.cost_micros`, `research_queries`), but a
+  // ceiling is a property of the campaign, so a continuation run starting from
+  // zero would hand the campaign a fresh allowance every time it was
+  // continued — turning the ceiling into a per-run limit that any number of
+  // continuations could walk straight through. Snapshotted when a
+  // continuation begins, and added to the live run's spend.
+  priorSpentCents: bigint("prior_spent_cents", { mode: "number" }).default(0).notNull(),
+  // The campaign's own spend ceiling. Null means "use the module default".
+  // This exists because the default is deliberately low for an
+  // underspecified instruction, and a project budget can only tighten a
+  // ceiling, never raise one — so without a per-campaign field there is no
+  // configuration that authorizes a deliberately large campaign.
+  ceilingCents: bigint("ceiling_cents", { mode: "number" }),
   ...timestamps
 });
+
+// Phase 13 Steering. A directive changes what a live campaign does next
+// without discarding what it has already finished. Both loops already call
+// the app once per iteration (the budget check), so absorption rides along
+// with a call that exists rather than adding a new interrupt path.
+//
+// `status` is the whole mechanism: a directive is pending until a loop reads
+// it, then absorbed. It is never applied twice, and a directive written
+// after a campaign ends stays pending forever rather than silently
+// affecting a later run.
+export const collectionDirectives = pgTable("collection_directives", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  campaignId: uuid("campaign_id").references(() => collectionCampaigns.id, { onDelete: "cascade" }).notNull(),
+  // refocus | add_criteria | stop_discovery
+  kind: text("kind").notNull(),
+  instruction: text("instruction").default("").notNull(),
+  status: text("status").default("pending").notNull(),
+  absorbedStage: text("absorbed_stage"),
+  createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+  absorbedAt: timestamp("absorbed_at", { withTimezone: true }),
+  ...timestamps
+}, (table) => [
+  index("collection_directive_pending_idx").on(table.campaignId, table.status)
+]);
+
+// Phase 13 shared context. Dossier workers each planned their own searches
+// from scratch and saw only their own entity, so sibling workers paid twice
+// for near-identical queries and no worker could benefit from what the rest
+// of the campaign had already established.
+//
+// `queryNormalized` is the exact-match dedupe key; `queryEmbedding` catches
+// the near-miss the hash cannot ("Acme Corp funding" vs "Acme Corporation
+// funding rounds"). Scoped per campaign because relevance is campaign-
+// specific, and because a campaign is the unit a person reasons about when
+// they ask why it cost what it cost.
+export const collectionEvidence = pgTable("collection_evidence", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  campaignId: uuid("campaign_id").references(() => collectionCampaigns.id, { onDelete: "cascade" }).notNull(),
+  // Null for discovery-stage evidence, which belongs to the campaign rather
+  // than to any one entity.
+  candidateId: uuid("candidate_id").references(() => collectionCandidates.id, { onDelete: "cascade" }),
+  query: text("query").notNull(),
+  queryNormalized: text("query_normalized").notNull(),
+  queryEmbedding: vector("query_embedding", { dimensions: 1536 }),
+  evidence: jsonb("evidence").$type<unknown>().default({}).notNull(),
+  reuseCount: integer("reuse_count").default(0).notNull(),
+  ...timestamps
+}, (table) => [
+  uniqueIndex("collection_evidence_campaign_query_idx").on(table.campaignId, table.queryNormalized),
+  index("collection_evidence_candidate_idx").on(table.candidateId)
+]);
 
 export const collectionCandidates = pgTable("collection_candidates", {
   id: uuid("id").defaultRandom().primaryKey(),

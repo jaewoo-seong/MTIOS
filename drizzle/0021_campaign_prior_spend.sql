@@ -1,0 +1,1 @@
+ALTER TABLE "collection_campaigns" ADD COLUMN "prior_spent_cents" bigint DEFAULT 0 NOT NULL;

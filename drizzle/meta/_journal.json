@@ -141,6 +141,20 @@
       "when": 1785381071889,
       "tag": "0019_slow_meggan",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1785421377785,
+      "tag": "0020_collection_controls",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1785421888998,
+      "tag": "0021_campaign_prior_spend",
+      "breakpoints": true
     }
   ]
 }

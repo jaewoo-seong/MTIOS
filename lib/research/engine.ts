@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql as drizzleSql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import {
   researchCache,
@@ -726,6 +726,30 @@ function censusRows(raw: unknown[]) {
   return rows.filter(Array.isArray).map((row) =>
     Object.fromEntries(headers.map((key, index) => [String(key), row[index]]))
   );
+}
+
+/**
+ * Total external research spend charged to one run, in whole cents.
+ *
+ * Read from `research_queries.cost_cents`, the same figure the research
+ * surface reports, rather than a second tally that could drift from it. This
+ * is deliberately separate from `runs.cost_micros`, which only ever tracks
+ * model calls - the two costs come from different ledgers because they are
+ * incurred by different systems, and a campaign budget needs to see both.
+ */
+export async function getRunResearchCostCents(runId: string): Promise<number> {
+  if (!db) {
+    return memory.queries
+      .filter((query) => query.runId === runId)
+      .reduce((sum, query) => sum + (typeof query.costCents === "number" ? query.costCents : 0), 0);
+  }
+  const [row] = await db.select({
+    total: drizzleSql<number>`coalesce(sum(${researchQueries.costCents}), 0)::int`
+  }).from(researchQueries).where(and(
+    eq(researchQueries.organizationId, MTI_ORGANIZATION_ID),
+    eq(researchQueries.runId, runId)
+  ));
+  return row?.total ?? 0;
 }
 
 export function getResearchTestState() {
