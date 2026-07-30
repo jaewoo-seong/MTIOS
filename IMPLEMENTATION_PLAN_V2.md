@@ -146,22 +146,26 @@ successful test call is rejected by the API, not just discouraged in the UI.
 
 ## 3. Localization gap - known, not fixed
 
-### 3.1 47 UI strings have no Korean translation `[OPEN]`
+### 3.1 UI strings with no Korean translation `[CLOSED]`
 
-**What's wrong:** `lib/i18n.tsx`'s `ko` dictionary has 241 keys; 218 distinct
-`t()` call sites exist across `components/*.tsx` and `app/**/*.tsx`; 47 of
-those calls fall through to the English fallback. Concentrated in the
-document editor (`Edit`, `Done`, `Heading 1`-`4`, `Folder`, `Choose files`)
-and a handful of settings/search strings. Fallback is graceful - the app
-never crashes or shows a raw key - but a Korean-speaking operator sees
-English exactly where they work most (editing documents).
+**Resolved, and the original count was wrong.** This item claimed 47
+untranslated strings. The real number when measured was **one** (`View
+report`, added by Phase 13 Stage 6). The other 46 had already been
+translated in a comma-first block (`,"key": "값"`) that the original audit
+regex - anchored to the start of a line - never matched. The gap was in the
+measurement, not the translations.
 
-**What to do:** Run the same audit script used to find the gap (regex for
-`(?<![A-Za-z0-9_$.])t\(\s*"((?:[^"\\]|\\.)+)"` across component files, diff
-against `ko` dictionary keys) and add the missing 47 entries. Not
-architectural work - translation content only.
+`lib/i18n.tsx` now covers all 223 `t()` call sites with 359 keys.
 
-**Acceptance:** The same audit script reports zero missing keys.
+**Why this is worth remembering:** a count written into a document goes stale
+silently and then gets planned against. `tests/i18n-coverage.test.ts` now
+asserts the coverage instead, and separately asserts that every placeholder
+token (`{count}`, `{title}`, `{percent}`) survives translation - a dropped
+token is the one localization bug a reader cannot work around. Both guards
+were checked against deliberately broken input to confirm they fail when they
+should.
+
+Prefer an executable check over a documented number for anything countable.
 
 ---
 

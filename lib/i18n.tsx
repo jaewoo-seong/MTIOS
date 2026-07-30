@@ -285,6 +285,7 @@ const ko: Record<string, string> = {
   ,"Invalid JSON.": "유효하지 않은 JSON입니다."
   ,"Korean medical device manufacturers": "한국 의료기기 제조사"
   ,"Link URL": "링크 URL"
+  ,"View report": "보고서 보기"
   ,"More research": "추가 조사"
   ,"No matches for “{query}”.": "“{query}”에 대한 결과가 없습니다."
   ,"Original {title}": "{title} 원본"
