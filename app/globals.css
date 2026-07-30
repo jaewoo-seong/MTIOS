@@ -785,6 +785,38 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 }
 .span-2 { grid-column: span 2; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: var(--sp-2); margin-top: var(--sp-5); }
+
+/* ── Research import ──────────────────────────────────────────────────── */
+.import-body { display: grid; gap: var(--sp-4); }
+.import-dropzone {
+  display: grid; justify-items: center; gap: var(--sp-1);
+  padding: var(--sp-6) var(--sp-4); width: 100%;
+  border: 1px dashed var(--line-strong); border-radius: var(--r-md);
+  background: var(--sunk); color: var(--ink); cursor: pointer; text-align: center;
+}
+.import-dropzone:hover:not(:disabled) { border-color: var(--accent); background: var(--accent-wash); }
+.import-dropzone:disabled { opacity: .6; cursor: default; }
+.import-dropzone span { color: var(--ink-mute); font-size: var(--t-meta); }
+.import-summary { display: grid; gap: var(--sp-1); margin: 0; padding: 0; list-style: none; }
+.import-summary li {
+  display: flex; align-items: center; gap: var(--sp-2);
+  font-size: var(--t-meta); color: var(--ink-mute); overflow-wrap: anywhere;
+}
+/* Bordered rather than only coloured: the reason a selection was rejected has
+   to survive a viewer who cannot distinguish the warn hue from body text. */
+.import-problem {
+  margin: 0; padding: var(--sp-3); border: 1px solid var(--warn);
+  border-radius: var(--r-md); background: var(--warn-wash);
+  color: var(--warn); font-size: var(--t-meta); line-height: 1.6;
+}
+.import-field { display: grid; gap: var(--sp-1); color: var(--ink-mute); font-size: var(--t-meta); }
+.import-field select {
+  height: var(--ctl-h); padding: 0 var(--sp-2);
+  border: 1px solid var(--line-strong); border-radius: var(--r-md);
+  background: var(--surface); color: var(--ink);
+}
+.import-note { margin: 0; color: var(--ink-mute); font-size: var(--t-meta); line-height: 1.6; }
+.import-done .metric-row { padding: var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--sunk); }
 .field-error { margin-bottom: var(--sp-3); color: var(--crit); font-size: var(--t-meta); }
 .confirm-body { margin: 0 0 var(--sp-5); color: var(--ink-soft); font-size: var(--t-body); line-height: 1.6; }
 .danger { border-color: var(--crit); background: var(--crit); color: #fff; }

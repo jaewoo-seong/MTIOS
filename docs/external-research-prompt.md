@@ -3,11 +3,21 @@
 Give this to whatever agent does the research. Its output drops straight into
 `scripts/import-research.mjs` with no reshaping.
 
-Validate before importing — costs nothing, catches everything:
+## Two ways to import
+
+**In the app** — Client & Data, pick the database, **Import research**. Select
+the CSV and every `.md` together, choose a project, import. Selection is
+validated in the browser before anything uploads.
+
+**From a terminal**, for large sets or scripting:
 
 ```bash
-node scripts/import-research.mjs ./research-output --database <uuid> --project <uuid> --dry-run
+npx tsx scripts/import-research.mjs ./research-output --database <uuid> --project <uuid> --dry-run
 ```
+
+Drop `--dry-run` and prefix with `railway run --service app` to run it for
+real. Both paths share `lib/research-import.ts`, so they accept and reject
+exactly the same things.
 
 ---
 

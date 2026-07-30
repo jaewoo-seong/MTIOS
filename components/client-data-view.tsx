@@ -1,17 +1,19 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Database, FileText, Loader2, Plus } from "lucide-react";
+import { Database, FileText, Loader2, Plus, Upload } from "lucide-react";
 import { DOSSIER_DOCUMENT_COLUMN } from "@/lib/collection-columns";
-import type { ClientDatabase, ClientRecord } from "@/lib/domain";
+import type { ClientDatabase, ClientRecord, Project } from "@/lib/domain";
 import { PromptDialog } from "@/components/ui/dialogs";
+import { ResearchImportDialog } from "@/components/research-import-dialog";
 import { useI18n } from "@/lib/i18n";
 
 export function ClientDataView({
-  onError, onOpenDocument
+  onError, onOpenDocument, projects = []
 }: {
   onError: (message: string) => void;
   onOpenDocument?: (documentId: string) => void;
+  projects?: Project[];
 }) {
   const { formatNumber, t } = useI18n();
   const [databases, setDatabases] = useState<ClientDatabase[]>([]);
@@ -19,6 +21,7 @@ export function ClientDataView({
   const [records, setRecords] = useState<ClientRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [importing, setImporting] = useState(false);
 
   const loadDatabases = useCallback(async () => {
     const response = await fetch("/api/v1/client-databases");
@@ -119,6 +122,9 @@ export function ClientDataView({
           <div className="surface-tools">
             <span>{t(records.length === 1 ? "{count} record" : "{count} records", { count: formatNumber(records.length) })}</span>
             <span>{t("Changes require project approval")}</span>
+            <button className="secondary" onClick={() => setImporting(true)} disabled={!active}>
+              <Upload size={14} aria-hidden /> {t("Import research")}
+            </button>
           </div>
         </div>
 
@@ -126,6 +132,9 @@ export function ClientDataView({
           <div className="document-dropzone">
             <strong>{t("No records yet")}</strong>
             <p>{t("Approve a client-data proposal from a project workspace to add records.")}</p>
+            <button className="secondary" onClick={() => setImporting(true)} disabled={!active}>
+              <Upload size={14} aria-hidden /> {t("Import research")}
+            </button>
           </div>
         ) : (
           <div className="table-scroll">
@@ -167,6 +176,19 @@ export function ClientDataView({
           placeholder={t("Korean medical device manufacturers")}
           onSubmit={createDatabase}
           onCancel={() => setCreating(false)}
+        />
+      )}
+
+      {importing && active && (
+        <ResearchImportDialog
+          databaseId={active.id}
+          databaseName={active.name}
+          projects={projects}
+          onClose={() => setImporting(false)}
+          // Records are staged, not written, so the table cannot change yet —
+          // reloading here would look like the import did nothing.
+          onImported={() => undefined}
+          onError={onError}
         />
       )}
     </div>

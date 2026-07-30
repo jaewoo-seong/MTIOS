@@ -23,10 +23,14 @@
  */
 
 import { readdir, readFile } from "node:fs/promises";
-import { basename, extname, join } from "node:path";
-
-const LINK_COLUMN = "Dossier Document";
-const MAX_ITEMS = 1000;
+import { basename, join } from "node:path";
+import {
+  buildChangeSetItems,
+  ImportError,
+  LINK_COLUMN,
+  partitionImportFiles,
+  planResearchImport
+} from "../lib/research-import.ts";
 
 function fail(message) {
   console.error(`\n  ${message}\n`);
@@ -54,102 +58,29 @@ const password = process.env.ADMIN_PASSWORD;
 // touches no network, and demanding a login to do it would discourage the
 // cheap check that catches the expensive mistakes.
 
-// ── CSV ──────────────────────────────────────────────────────────────────
-/**
- * RFC 4180 parsing, written out rather than pulled in as a dependency: a
- * naive split on commas corrupts any field containing a comma, which for
- * company data means addresses and legal names — the fields most likely to
- * be wrong in a way nobody notices until the row is already approved.
- */
-function parseCsv(text) {
-  const rows = [];
-  let row = [];
-  let field = "";
-  let quoted = false;
-
-  for (let index = 0; index < text.length; index += 1) {
-    const char = text[index];
-    if (quoted) {
-      if (char === '"') {
-        if (text[index + 1] === '"') { field += '"'; index += 1; }
-        else quoted = false;
-      } else field += char;
-      continue;
-    }
-    if (char === '"') { quoted = true; continue; }
-    if (char === ",") { row.push(field); field = ""; continue; }
-    if (char === "\r") continue;
-    if (char === "\n") { row.push(field); rows.push(row); row = []; field = ""; continue; }
-    field += char;
-  }
-  if (field.length > 0 || row.length > 0) { row.push(field); rows.push(row); }
-  return rows.filter((entry) => entry.some((cell) => cell.trim() !== ""));
-}
-
-function rowsToRecords(rows) {
-  const [header, ...body] = rows;
-  if (!header) fail("The CSV is empty.");
-  const columns = header.map((name) => name.trim());
-
-  if (new Set(columns).size !== columns.length) {
-    fail("The CSV has duplicate column names; each becomes a database field, so they must be unique.");
-  }
-  if (columns.includes(LINK_COLUMN)) {
-    fail(`Remove the "${LINK_COLUMN}" column — this script fills it with the uploaded report's id.`);
-  }
-  if (!columns.includes("reportFile")) {
-    fail('The CSV needs a "reportFile" column naming each entity\'s .md file.');
-  }
-
-  return body.map((cells, index) => {
-    const record = {};
-    columns.forEach((column, position) => {
-      // Every value is stringified: the change-set API validates `after` as
-      // Record<string,string>, so an unquoted number is rejected outright.
-      record[column] = String(cells[position] ?? "").trim();
-    });
-    if (!record.reportFile) fail(`Row ${index + 2} has no reportFile value.`);
-    return record;
-  });
-}
-
 // ── load and validate ────────────────────────────────────────────────────
+// Shared with the in-app importer so the CLI cannot accept a shape the UI
+// rejects, or the reverse.
 const entries = await readdir(dir, { withFileTypes: true }).catch(() => fail(`Cannot read folder: ${dir}`));
-const files = entries.filter((entry) => entry.isFile()).map((entry) => entry.name);
+const filenames = entries.filter((entry) => entry.isFile()).map((entry) => entry.name);
 
-const csvFiles = files.filter((name) => extname(name).toLowerCase() === ".csv");
-const markdownFiles = files.filter((name) => extname(name).toLowerCase() === ".md");
-const rejected = files.filter((name) => ![".csv", ".md"].includes(extname(name).toLowerCase()));
-
-if (csvFiles.length !== 1) {
-  fail(`Expected exactly one .csv in ${dir}, found ${csvFiles.length}.`);
+let selection;
+let plan;
+try {
+  selection = partitionImportFiles(filenames);
+  plan = planResearchImport(await readFile(join(dir, selection.csv), "utf8"), selection.markdown);
+} catch (error) {
+  if (error instanceof ImportError) fail(error.message);
+  throw error;
 }
-if (rejected.length > 0) {
-  fail(`Only .csv and .md are accepted. Convert or remove: ${rejected.slice(0, 8).join(", ")}${rejected.length > 8 ? ` (+${rejected.length - 8} more)` : ""}`);
-}
+const records = plan.rows;
 
-const records = rowsToRecords(parseCsv(await readFile(join(dir, csvFiles[0]), "utf8")));
-if (records.length === 0) fail("The CSV has a header but no rows.");
-if (records.length > MAX_ITEMS) {
-  fail(`${records.length} rows exceeds the ${MAX_ITEMS}-item change-set limit. Split the CSV.`);
-}
-
-// Every referenced report must exist before anything is uploaded — a missing
-// file discovered at row 87 would otherwise leave 86 orphaned documents.
-const available = new Set(markdownFiles);
-const missing = records.filter((record) => !available.has(record.reportFile));
-if (missing.length > 0) {
-  fail(`${missing.length} row(s) reference a missing .md file, first: "${missing[0].reportFile}"`);
-}
-const referenced = new Set(records.map((record) => record.reportFile));
-const orphans = markdownFiles.filter((name) => !referenced.has(name));
-
-console.log(`\n  ${csvFiles[0]}: ${records.length} rows, ${records[0] ? Object.keys(records[0]).length : 0} columns`);
-console.log(`  reports:  ${records.length} matched${orphans.length > 0 ? `, ${orphans.length} unreferenced .md ignored` : ""}`);
+console.log(`\n  ${selection.csv}: ${records.length} rows, ${plan.columns.length} columns`);
+console.log(`  reports:  ${records.length} matched${plan.unreferenced.length > 0 ? `, ${plan.unreferenced.length} unreferenced .md ignored` : ""}`);
 console.log(`  linking:  "${LINK_COLUMN}" -> uploaded document id`);
 
 if (dryRun) {
-  console.log(`\n  Dry run — nothing uploaded. Columns: ${Object.keys(records[0]).join(", ")}\n`);
+  console.log(`\n  Dry run — nothing uploaded. Columns: ${plan.columns.join(", ")}\n`);
   process.exit(0);
 }
 
@@ -192,12 +123,7 @@ for (const [index, record] of records.entries()) {
 console.log(`\r  uploaded  ${documentIds.size}/${records.length} reports        `);
 
 // ── stage the change set ─────────────────────────────────────────────────
-const items = records.map((record) => {
-  const after = { ...record, [LINK_COLUMN]: documentIds.get(record.reportFile) };
-  // reportFile was routing information, not a field anyone wants as a column.
-  delete after.reportFile;
-  return { operation: "insert", after };
-});
+const items = buildChangeSetItems(records, documentIds);
 
 const created = await fetch(`${baseUrl}/api/v1/client-change-sets`, {
   method: "POST",

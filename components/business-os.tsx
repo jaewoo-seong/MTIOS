@@ -394,6 +394,7 @@ export function BusinessOS() {
               {page === "data" && (
                 <ClientDataView
                   onError={pushError}
+                  projects={projects}
                   onOpenDocument={(documentId) => {
                     setFocusDocumentId(documentId);
                     setPage("documents");
