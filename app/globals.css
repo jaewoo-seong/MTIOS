@@ -548,6 +548,61 @@ button:disabled { cursor: not-allowed; opacity: .45; }
   border-radius: var(--r-md); background: var(--surface);
 }
 .settings-form button { align-self: end; }
+/* ── Settings shell ───────────────────────────────────────────────────── */
+.settings-shell { display: grid; gap: var(--sp-4); }
+.settings-tabs { display: flex; flex-wrap: wrap; gap: var(--sp-1); border-bottom: 1px solid var(--line); }
+.settings-tabs button {
+  padding: var(--sp-2) var(--sp-4); border: 0; background: transparent;
+  color: var(--ink-mute); font-size: var(--t-meta); font-weight: 500;
+  border-bottom: 2px solid transparent; margin-bottom: -1px; cursor: pointer;
+}
+.settings-tabs button:hover { color: var(--ink); }
+.settings-tabs button.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* A titled group inside one surface — keeps a queue of pending changes
+   visually distinct from the list of live routes above it. */
+.settings-block { padding: var(--sp-4); border-top: 1px solid var(--line); display: grid; gap: var(--sp-3); }
+.settings-block h3 {
+  font-family: var(--mono); font-size: var(--t-label); font-weight: 600;
+  letter-spacing: .07em; text-transform: uppercase; color: var(--ink-faint);
+}
+
+.status-cards {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--sp-3); padding: var(--sp-4);
+}
+.status-card { display: grid; gap: var(--sp-2); padding: var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--sunk); align-content: start; }
+.status-card-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
+.status-card-head strong { font-size: var(--t-body); }
+.status-card p { color: var(--ink-mute); font-size: var(--t-meta); margin: 0; }
+.status-keys { display: grid; gap: var(--sp-1); margin: 0; padding: 0; list-style: none; }
+.status-keys li { display: flex; align-items: center; gap: var(--sp-2); font-size: var(--t-meta); color: var(--ink-mute); }
+.status-keys code { font-family: var(--mono); font-size: var(--t-label); overflow-wrap: anywhere; }
+.status-keys .dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; }
+.status-keys .dot.on { background: var(--good); }
+.status-keys .dot.off { background: var(--warn); }
+
+/* Three explicit columns — identity, what is serving it, controls — so the
+   model in use is scannable down a single line instead of buried among
+   inputs, which was the main complaint about the old single-row layout. */
+.model-routes { display: grid; }
+.model-route {
+  display: grid; grid-template-columns: minmax(180px, 1fr) minmax(160px, 1.2fr) auto;
+  gap: var(--sp-4); align-items: center;
+  padding: var(--sp-3) var(--sp-4); border-top: 1px solid var(--line);
+}
+.model-route:first-child { border-top: 0; }
+.model-route-id { display: grid; gap: 2px; min-width: 0; }
+.model-route-id strong { font-family: var(--mono); font-size: var(--t-meta); overflow-wrap: anywhere; }
+.model-route-id span { color: var(--ink-mute); font-size: var(--t-meta); }
+.model-route-serving { display: flex; flex-wrap: wrap; gap: var(--sp-2); min-width: 0; }
+.model-route-serving .pill { font-family: var(--mono); overflow-wrap: anywhere; }
+.model-route-controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); justify-content: flex-end; }
+
+.metric-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: var(--sp-3); }
+.metric-row > div { display: grid; gap: 2px; }
+.metric-row strong { font-family: var(--mono); font-size: var(--t-meta); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+
 .settings-table { max-height: 440px; overflow: auto; }
 .model-route-row { display: grid; grid-template-columns: minmax(210px, .8fr) minmax(320px, 2fr); gap: var(--sp-4); padding: var(--sp-3) var(--sp-4); border-top: 1px solid var(--line); }
 .model-route-row:first-child { border-top: 0; }
@@ -764,6 +819,8 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 @media (max-width: 1100px) {
   .settings-form { grid-template-columns: repeat(2, minmax(140px, 1fr)); }
   .model-route-row { grid-template-columns: 1fr; }
+  .model-route { grid-template-columns: 1fr; gap: var(--sp-2); }
+  .model-route-controls { justify-content: flex-start; }
   .admin-create-row, .quota-create { grid-template-columns: 1fr 1fr; }
   .admin-user-row { grid-template-columns: minmax(220px, 1fr) 100px 76px; }
   .admin-user-row button { grid-column: auto; }

@@ -770,20 +770,161 @@ function SettingsView({ onError, role }: {
   role: "admin" | "member";
 }) {
   const { t } = useI18n();
+  // Tabs rather than one long scroll: the sections answer different questions
+  // ("is it working", "what is it costing", "who can do what") and mixing them
+  // in one column meant scanning past AI internals to change a date format.
+  const tabs = role === "admin"
+    ? ["status", "models", "intelligence", "access", "workspace"] as const
+    : ["workspace"] as const;
+  const [tab, setTab] = useState<(typeof tabs)[number]>(tabs[0]);
+  const label: Record<string, string> = {
+    status: t("Status"),
+    models: t("Models & cost"),
+    intelligence: t("AI analysis"),
+    access: t("Tools & access"),
+    workspace: t("Workspace")
+  };
+
   return (
-    <div className="settings-grid">
-      <PreferenceSettings onError={onError} />
-      {role === "member" && <PasswordSettings onError={onError} />}
-      {role === "admin" && (
-        <>
-          <AdminUsersSettings onError={onError} />
-          <AiAnalyticsSettings onError={onError} />
-          <ModelSettings onError={onError} />
-          <McpSettings onError={onError} />
-          <section className="surface"><div className="surface-header"><h2>{t("Review policy")}</h2></div><Setting label={t("External sends")} value={t("Approval required")} /><Setting label={t("Destructive writes")} value={t("Approval required")} /><Setting label={t("High-cost actions")} value={t("Approval required")} /></section>
-        </>
+    <div className="settings-shell">
+      {tabs.length > 1 && (
+        <div className="settings-tabs" role="tablist" aria-label={t("Settings sections")}>
+          {tabs.map((item) => (
+            <button
+              key={item}
+              role="tab"
+              id={`settings-tab-${item}`}
+              aria-selected={tab === item}
+              aria-controls={`settings-panel-${item}`}
+              className={tab === item ? "active" : ""}
+              onClick={() => setTab(item)}
+            >
+              {label[item]}
+            </button>
+          ))}
+        </div>
       )}
+
+      <div
+        className="settings-grid"
+        role="tabpanel"
+        id={`settings-panel-${tab}`}
+        aria-labelledby={`settings-tab-${tab}`}
+      >
+        {tab === "status" && <SystemStatusSettings onError={onError} />}
+        {tab === "models" && <ModelSettings onError={onError} />}
+        {tab === "intelligence" && <AiAnalyticsSettings onError={onError} />}
+        {tab === "access" && (
+          <>
+            <McpSettings onError={onError} />
+            <section className="surface settings-wide">
+              <div className="surface-header"><h2>{t("Review policy")}</h2></div>
+              <Setting label={t("External sends")} value={t("Approval required")} />
+              <Setting label={t("Destructive writes")} value={t("Approval required")} />
+              <Setting label={t("High-cost actions")} value={t("Approval required")} />
+            </section>
+            <AdminUsersSettings onError={onError} />
+          </>
+        )}
+        {tab === "workspace" && (
+          <>
+            <PreferenceSettings onError={onError} />
+            {role === "member" && <PasswordSettings onError={onError} />}
+          </>
+        )}
+      </div>
     </div>
+  );
+}
+
+type SystemStatus = {
+  services: Array<{ key: string; name: string; state: string; detail: string }>;
+  providers: Array<{
+    key: string; name: string; categories: string[]; state: string;
+    keys: Array<{ name: string; present: boolean }>; role: string | null;
+  }>;
+  models: Array<{
+    route: string; purpose: string; modelEnv: string | null; model: string | null;
+    pricingClass: string | null; maxCostMicros: number; structuredOutput: boolean;
+  }>;
+  environment: string;
+  testingMode: boolean;
+};
+
+/** Maps a raw state to the shared pill classes, so colour means one thing everywhere. */
+function stateTone(state: string) {
+  if (state === "ok" || state === "configured") return "good";
+  if (state === "not_configured") return "warn";
+  return "bad";
+}
+
+function SystemStatusSettings({ onError }: { onError: (message: string) => void }) {
+  const { t } = useI18n();
+  const [status, setStatus] = useState<SystemStatus | null>(null);
+
+  useEffect(() => {
+    api<{ data: SystemStatus }>("/api/v1/settings/status")
+      .then((payload) => setStatus(payload.data))
+      .catch((error: Error) => onError(error.message));
+  }, [onError]);
+
+  if (!status) {
+    return <section className="surface settings-wide"><div className="empty-inline">{t("Loading status…")}</div></section>;
+  }
+
+  const degraded = status.services.filter((service) => service.state !== "ok" && service.state !== "configured");
+
+  return (
+    <>
+      <section className="surface settings-wide">
+        <div className="surface-header">
+          <h2>{t("Service status")}</h2>
+          <span className={degraded.length === 0 ? "pill good" : "pill warn"}>
+            {degraded.length === 0
+              ? t("All services reachable")
+              : t("{count} need attention", { count: String(degraded.length) })}
+          </span>
+        </div>
+        <div className="status-cards">
+          {status.services.map((service) => (
+            <div className="status-card" key={service.key}>
+              <div className="status-card-head">
+                <strong>{service.name}</strong>
+                <span className={`pill ${stateTone(service.state)}`}>{t(service.state)}</span>
+              </div>
+              <p>{t(service.detail)}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="surface settings-wide">
+        <div className="surface-header">
+          <h2>{t("Search & data providers")}</h2>
+          <span>{t("Keys are checked for presence only, never displayed")}</span>
+        </div>
+        <div className="status-cards">
+          {status.providers.map((provider) => (
+            <div className="status-card" key={provider.key}>
+              <div className="status-card-head">
+                <strong>{provider.name}</strong>
+                <span className={`pill ${stateTone(provider.state)}`}>{t(provider.state)}</span>
+              </div>
+              {provider.role && <p>{provider.role}</p>}
+              <ul className="status-keys">
+                {provider.keys.map((key) => (
+                  <li key={key.name}>
+                    <span className={key.present ? "dot on" : "dot off"} aria-hidden />
+                    <code>{key.name}</code>
+                    <span>{key.present ? t("set") : t("missing")}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      </section>
+    </>
   );
 }
 
@@ -894,14 +1035,29 @@ function ModelSettings({ onError }: { onError: (message: string) => void }) {
     <section className="surface settings-wide">
       <div className="surface-header"><h2>{t("Model routing")}</h2><span>{value ? `${value.gateway} · ${value.environment} · ${value.testingMode ? t("testing mode") : t("production policy")} · ${t(value.health)}` : t("Loading…")}</span></div>
       {!value ? <div className="empty-inline">{t("Loading model routes…")}</div> : (
-        <div className="settings-table" role="table">
+        <div className="model-routes">
           {value.routes.map((route) => (
-            <div className="model-route-row" role="row" key={route.route}>
-              <div><strong>{route.route}</strong><span>{t(route.purpose)} · {t("limit")} ${(route.maxCostMicros / 1_000_000).toFixed(2)}</span></div>
-              <div>
-                {route.candidates.map((candidate) => <span className={candidate.enabled ? "pill good" : "pill warn"} key={`${candidate.order}-${candidate.provider}`}>{candidate.order}. {candidate.provider} · {candidate.model} · {t(candidate.licensingStatus)}</span>)}
+            <div className="model-route" key={route.route}>
+              <div className="model-route-id">
+                <strong>{route.route}</strong>
+                <span>{t(route.purpose)}</span>
+              </div>
+              <div className="model-route-serving">
+                {route.candidates.length === 0
+                  ? <span className="pill warn">{t("No model configured")}</span>
+                  : route.candidates.map((candidate) => (
+                    <span
+                      className={candidate.enabled ? "pill good" : "pill warn"}
+                      key={`${candidate.order}-${candidate.provider}`}
+                      title={`${candidate.provider} · ${t(candidate.licensingStatus)}`}
+                    >
+                      {candidate.model}
+                    </span>
+                  ))}
+              </div>
+              <div className="model-route-controls">
                 <label className="model-route-control">
-                  {t("Cost limit")}
+                  {t("Cost cap")}
                   <input
                     type="number"
                     min="0.001"
@@ -935,23 +1091,44 @@ function ModelSettings({ onError }: { onError: (message: string) => void }) {
               </div>
             </div>
           ))}
-          {value.revisions.map((revision) => (
-            <div className="model-route-row" key={revision.id}>
-              <div><strong>{revision.route} v{revision.version}</strong><span>{t(revision.status)} · {t("test")} {t(revision.testStatus)}</span></div>
-              <div>
-                {revision.testStatus !== "passed" && <button className="secondary" disabled={busy !== null} onClick={() => void transition(revision.id, "test")}>{t("Test")}</button>}
-                {revision.testStatus === "passed" && revision.status === "draft" && <button className="secondary" disabled={busy !== null} onClick={() => void transition(revision.id, "approve")}>{t("Approve")}</button>}
-                {revision.status === "approved" && <button className="primary" disabled={busy !== null} onClick={() => void transition(revision.id, "activate")}>{t("Activate")}</button>}
-                {revision.status === "active" && <button className="secondary" disabled={busy !== null} onClick={() => void transition(revision.id, "rollback")}>{t("Rollback")}</button>}
+        </div>
+      )}
+
+      {/* Pending revisions were previously appended to the route list, so a
+          staged change looked like another route. They are a queue of things
+          awaiting a decision, which is a different kind of thing. */}
+      {value && value.revisions.length > 0 && (
+        <div className="settings-block">
+          <h3>{t("Pending route changes")}</h3>
+          <div className="model-routes">
+            {value.revisions.map((revision) => (
+              <div className="model-route" key={revision.id}>
+                <div className="model-route-id">
+                  <strong>{revision.route} v{revision.version}</strong>
+                  <span>{t(revision.status)} · {t("test")} {t(revision.testStatus)}</span>
+                </div>
+                <div className="model-route-serving" />
+                <div className="model-route-controls">
+                  {revision.testStatus !== "passed" && <button className="secondary" disabled={busy !== null} onClick={() => void transition(revision.id, "test")}>{t("Test")}</button>}
+                  {revision.testStatus === "passed" && revision.status === "draft" && <button className="secondary" disabled={busy !== null} onClick={() => void transition(revision.id, "approve")}>{t("Approve")}</button>}
+                  {revision.status === "approved" && <button className="primary" disabled={busy !== null} onClick={() => void transition(revision.id, "activate")}>{t("Activate")}</button>}
+                  {revision.status === "active" && <button className="secondary" disabled={busy !== null} onClick={() => void transition(revision.id, "rollback")}>{t("Rollback")}</button>}
+                </div>
               </div>
-            </div>
-          ))}
-          {lastSuccessful && (
-            <div className="model-route-row">
-              <div><strong>{t("Last successful model")}</strong><span>{lastSuccessful.route}</span></div>
-              <div><span className="pill good">{lastSuccessful.provider ?? "unknown"} · {lastSuccessful.model ?? "unknown"} · {lastSuccessful.latencyMs} ms · ${(lastSuccessful.costMicros / 1_000_000).toFixed(4)}</span></div>
-            </div>
-          )}
+            ))}
+          </div>
+        </div>
+      )}
+
+      {lastSuccessful && (
+        <div className="settings-block">
+          <h3>{t("Most recent successful call")}</h3>
+          <div className="metric-row">
+            <div><span className="eyebrow">{t("Route")}</span><strong>{lastSuccessful.route}</strong></div>
+            <div><span className="eyebrow">{t("Model")}</span><strong>{lastSuccessful.model ?? t("unknown")}</strong></div>
+            <div><span className="eyebrow">{t("Latency")}</span><strong>{lastSuccessful.latencyMs} ms</strong></div>
+            <div><span className="eyebrow">{t("Cost")}</span><strong>${(lastSuccessful.costMicros / 1_000_000).toFixed(4)}</strong></div>
+          </div>
         </div>
       )}
     </section>
