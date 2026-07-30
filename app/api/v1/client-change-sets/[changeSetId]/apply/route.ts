@@ -3,13 +3,11 @@ import { z } from "zod";
 import { applyClientChangeSet } from "@/lib/client-changes";
 import { parseJson } from "@/lib/http";
 
+import { guard } from "@/lib/api/guard";
 const schema = z.object({ approvalToken: z.string().min(20).max(500) });
 
-export async function POST(
-  request: Request,
-  { params }: { params: Promise<{ changeSetId: string }> }
-) {
-  const { changeSetId } = await params;
+export const POST = guard<{ changeSetId: string }>(async (request, { params }) => {
+  const { changeSetId } = params;
   const parsed = await parseJson(request, schema);
   if (parsed.error) return parsed.error;
   try {
@@ -22,4 +20,4 @@ export async function POST(
       error: error instanceof Error ? error.message : "Change set could not be applied."
     }, { status: 409 });
   }
-}
+});

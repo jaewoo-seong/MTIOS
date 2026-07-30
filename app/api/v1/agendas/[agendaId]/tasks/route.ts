@@ -3,6 +3,7 @@ import { z } from "zod";
 import { notFound, parseJson } from "@/lib/http";
 import { repository } from "@/lib/repository";
 
+import { guard } from "@/lib/api/guard";
 const schema = z.object({
   title: z.string().trim().min(2).max(200),
   description: z.string().trim().max(4000).default(""),
@@ -14,14 +15,14 @@ const schema = z.object({
   reviewRequired: z.boolean().default(false)
 });
 
-export async function GET(_: Request, { params }: { params: Promise<{ agendaId: string }> }) {
-  const { agendaId } = await params;
+export const GET = guard<{ agendaId: string }>(async (_request, { params }) => {
+  const { agendaId } = params;
   if (!await repository.getAgenda(agendaId)) return notFound("agenda");
   return NextResponse.json({ data: await repository.listTasks(agendaId) });
-}
+});
 
-export async function POST(request: Request, { params }: { params: Promise<{ agendaId: string }> }) {
-  const { agendaId } = await params;
+export const POST = guard<{ agendaId: string }>(async (request, { params }) => {
+  const { agendaId } = params;
   if (!await repository.getAgenda(agendaId)) return notFound("agenda");
   const parsed = await parseJson(request, schema);
   if (parsed.error) return parsed.error;
@@ -37,4 +38,4 @@ export async function POST(request: Request, { params }: { params: Promise<{ age
       reviewRequired: parsed.data.reviewRequired ?? false
     })
   }, { status: 201 });
-}
+});

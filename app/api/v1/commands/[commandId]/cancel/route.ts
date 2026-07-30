@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { currentSession } from "@/lib/auth";
+import { guard } from "@/lib/api/guard";
 import { notFound } from "@/lib/http";
 import { repository } from "@/lib/repository";
 import { reconcileWorkflowTerminal } from "@/lib/workflows/state";
@@ -30,9 +30,8 @@ const STOPPABLE = new Set([
  * completed dossiers, its documents, and any staged rows exactly where they
  * are - the campaign can still be continued later.
  */
-export async function POST(_: Request, { params }: { params: Promise<{ commandId: string }> }) {
-  await currentSession();
-  const { commandId } = await params;
+export const POST = guard<{ commandId: string }>(async (_request, { params }) => {
+  const { commandId } = params;
   const command = await repository.getCommand(commandId);
   if (!command) return notFound("command");
   if (!STOPPABLE.has(command.status)) {
@@ -72,4 +71,4 @@ export async function POST(_: Request, { params }: { params: Promise<{ commandId
       note: "Completed work is kept. A collection campaign can be continued later."
     }
   });
-}
+});

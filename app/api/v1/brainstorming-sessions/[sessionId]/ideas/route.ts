@@ -3,6 +3,7 @@ import { z } from "zod";
 import { addBrainstormingIdea } from "@/lib/creative-work";
 import { parseJson } from "@/lib/http";
 
+import { guard } from "@/lib/api/guard";
 const schema = z.object({
   title: z.string().trim().min(1).max(300),
   description: z.string().max(10000).default(""),
@@ -10,14 +11,11 @@ const schema = z.object({
   position: z.number().int().min(0).default(0)
 });
 
-export async function POST(
-  request: Request,
-  { params }: { params: Promise<{ sessionId: string }> }
-) {
-  const { sessionId } = await params;
+export const POST = guard<{ sessionId: string }>(async (request, { params }) => {
+  const { sessionId } = params;
   const parsed = await parseJson(request, schema);
   if (parsed.error) return parsed.error;
   return NextResponse.json({
     data: await addBrainstormingIdea(sessionId, parsed.data)
   }, { status: 201 });
-}
+});

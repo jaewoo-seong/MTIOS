@@ -1,0 +1,92 @@
+name: CI
+
+# The repo's own convention is "typecheck, test, build before marking anything
+# done". Until now that was a rule someone had to remember. This makes it a
+# condition of merging.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# A second push to the same branch makes the first run's answer irrelevant.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Matches the `engines.node` floor in package.json.
+          node-version: "20"
+          cache: npm
+
+      # `npm ci` rather than `npm install`: it installs exactly the lockfile and
+      # fails if package.json and the lock have drifted, which is itself worth
+      # catching.
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      # Runs last because it is the slowest step and the least likely to fail
+      # on its own once the two above pass. Deliberately still run: it is the
+      # only step that exercises the production compile path, and the session
+      # this CI was added in found a class of bug that only a real build catches.
+      - name: Build
+        run: npm run build
+        env:
+          # The build must not depend on real credentials. Anything that reads
+          # configuration at build time should tolerate their absence; if this
+          # step starts needing a secret, that is a design problem to fix rather
+          # than a secret to add here.
+          NODE_ENV: production
+
+  # Kept separate so the answer is legible at a glance rather than buried in a
+  # build log: it either lists offending routes or it says nothing.
+  guard-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # Every route under app/api/v1 must route its authentication through
+      # lib/api/guard.ts. `guard` performs the database-backed session check
+      # that Edge middleware structurally cannot; `publicRoute` marks a route as
+      # deliberately open so that "unprotected" is stated rather than omitted.
+      #
+      # A new route file that imports neither is almost certainly an oversight,
+      # and before this check existed that oversight was invisible - which is
+      # how 100 of 106 routes ended up unenforced.
+      - name: Every v1 route declares its protection
+        run: |
+          missing=$(grep -rLE 'guard|publicRoute' app/api/v1 --include=route.ts || true)
+          if [ -n "$missing" ]; then
+            echo "These routes import neither guard nor publicRoute:"
+            echo "$missing"
+            exit 1
+          fi
+          echo "All v1 routes declare their protection."
+
+      # A handler left as `export async function GET` inside an otherwise
+      # converted file would be silently unguarded, and the import check above
+      # would not notice because the file does import `guard`.
+      - name: No unwrapped route handlers remain
+        run: |
+          leftover=$(grep -rn 'export async function \(GET\|POST\|PATCH\|PUT\|DELETE\)' app/api/v1 || true)
+          if [ -n "$leftover" ]; then
+            echo "These handlers are exported directly instead of through guard:"
+            echo "$leftover"
+            exit 1
+          fi
+          echo "No unwrapped handlers."

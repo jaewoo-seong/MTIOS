@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { guard } from "@/lib/api/guard";
 import { MAX_UPLOAD_BYTES } from "@/lib/documents/convert";
 import { ingestDocument } from "@/lib/documents/intelligence";
 import { repository } from "@/lib/repository";
@@ -7,15 +8,19 @@ export const runtime = "nodejs";
 /** Conversion of a large PDF is CPU-bound; keep it off the static path. */
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export const GET = guard(async () => {
   const [data, folders] = await Promise.all([
     repository.listDocuments(),
     repository.listFolders()
   ]);
   return NextResponse.json({ data, folders });
-}
+});
 
-export async function POST(request: Request) {
+/**
+ * `expensive` because ingestion converts and OCRs the upload, which is both
+ * CPU-bound locally and a paid call when it routes to the conversion service.
+ */
+export const POST = guard(async (request) => {
   const form = await request.formData().catch(() => null);
   const file = form?.get("file");
   if (!form || !(file instanceof File)) {
@@ -50,4 +55,4 @@ export async function POST(request: Request) {
   });
 
   return NextResponse.json({ data: result.document, conversion: result.conversion }, { status: 201 });
-}
+}, { rateLimit: "expensive" });

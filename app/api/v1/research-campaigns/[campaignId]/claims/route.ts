@@ -3,6 +3,7 @@ import { z } from "zod";
 import { claimCandidate, releaseCandidateClaim } from "@/lib/company-research";
 import { parseJson } from "@/lib/http";
 
+import { guard } from "@/lib/api/guard";
 const claimSchema = z.object({
   candidateId: z.string().uuid(),
   workerRunId: z.string().uuid().nullable().optional(),
@@ -13,24 +14,18 @@ const releaseSchema = z.object({
   leaseToken: z.string().uuid()
 });
 
-export async function POST(
-  request: Request,
-  { params }: { params: Promise<{ campaignId: string }> }
-) {
-  const { campaignId } = await params;
+export const POST = guard<{ campaignId: string }>(async (request, { params }) => {
+  const { campaignId } = params;
   const parsed = await parseJson(request, claimSchema);
   if (parsed.error) return parsed.error;
   const claim = await claimCandidate({ campaignId, ...parsed.data });
   return claim
     ? NextResponse.json({ data: claim }, { status: 201 })
     : NextResponse.json({ error: "Candidate already has an active lease." }, { status: 409 });
-}
+});
 
-export async function DELETE(
-  request: Request,
-  { params }: { params: Promise<{ campaignId: string }> }
-) {
-  const { campaignId } = await params;
+export const DELETE = guard<{ campaignId: string }>(async (request, { params }) => {
+  const { campaignId } = params;
   const parsed = await parseJson(request, releaseSchema);
   if (parsed.error) return parsed.error;
   const released = await releaseCandidateClaim(
@@ -41,4 +36,4 @@ export async function DELETE(
   return released
     ? new NextResponse(null, { status: 204 })
     : NextResponse.json({ error: "Active lease not found." }, { status: 404 });
-}
+});

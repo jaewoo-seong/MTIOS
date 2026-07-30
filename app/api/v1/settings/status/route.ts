@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { currentSession } from "@/lib/auth";
+import { guard } from "@/lib/api/guard";
 import { checkLiteLLM, modelRoutes } from "@/lib/ai/litellm";
 import { modelRoutePolicies } from "@/lib/ai/model-policy";
 import { sql } from "@/lib/db/client";
@@ -30,9 +30,7 @@ async function attempt(check: () => Promise<State>): Promise<State> {
   }
 }
 
-export async function GET() {
-  await currentSession({ admin: true });
-
+export const GET = guard(async () => {
   const [database, redis, storage, litellm, conversion] = await Promise.all([
     attempt(async () => {
       if (!sql) return "not_configured";
@@ -120,4 +118,4 @@ export async function GET() {
       testingMode: process.env.ALLOW_TESTING_MODELS === "true"
     }
   });
-}
+}, { admin: true });

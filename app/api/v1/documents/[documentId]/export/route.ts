@@ -3,9 +3,10 @@ import { notFound } from "@/lib/http";
 import { repository } from "@/lib/repository";
 import { exportEditableDocument } from "@/lib/documents/intelligence";
 
+import { guard } from "@/lib/api/guard";
 /** Streams the converted document back as a download so the browser can save it directly. */
-export async function GET(request: Request, { params }: { params: Promise<{ documentId: string }> }) {
-  const { documentId } = await params;
+export const GET = guard<{ documentId: string }>(async (request, { params }) => {
+  const { documentId } = params;
   const document = await repository.getDocument(documentId);
   if (!document) return notFound("document");
 
@@ -67,7 +68,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ docu
   ].join("\n");
 
   return download(`${header}\n${document.markdown}\n`, `${base}.md`, "text/markdown; charset=utf-8");
-}
+});
 
 function plural(count: number, noun: string) {
   return `${count.toLocaleString()} ${noun}${count === 1 ? "" : "s"}`;

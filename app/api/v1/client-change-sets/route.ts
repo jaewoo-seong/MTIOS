@@ -3,6 +3,7 @@ import { z } from "zod";
 import { createClientChangeSet } from "@/lib/client-changes";
 import { parseJson } from "@/lib/http";
 
+import { guard } from "@/lib/api/guard";
 const itemSchema = z.object({
   operation: z.enum(["insert", "update", "delete", "merge"]),
   recordId: z.string().uuid().nullable().optional(),
@@ -25,7 +26,7 @@ const schema = z.object({
   items: z.array(itemSchema).min(1).max(1000)
 });
 
-export async function POST(request: Request) {
+export const POST = guard(async (request) => {
   const parsed = await parseJson(request, schema);
   if (parsed.error) return parsed.error;
   try {
@@ -37,4 +38,4 @@ export async function POST(request: Request) {
       error: error instanceof Error ? error.message : "Change set could not be created."
     }, { status: 400 });
   }
-}
+});

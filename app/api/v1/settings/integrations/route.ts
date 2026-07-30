@@ -4,10 +4,9 @@ import { db } from "@/lib/db/client";
 import { mcpServers } from "@/lib/db/schema";
 import { registerInternalMcpServer } from "@/lib/mcp/platform";
 import { MTI_ORGANIZATION_ID } from "@/lib/repository";
-import { currentSession } from "@/lib/auth";
+import { guard } from "@/lib/api/guard";
 
-export async function GET() {
-  await currentSession({ admin: true });
+export const GET = guard(async () => {
   const registered = await registerInternalMcpServer();
   const servers = db
     ? await db.select({
@@ -49,4 +48,4 @@ export async function GET() {
       sendEnabled: false
     }
   });
-}
+}, { admin: true });

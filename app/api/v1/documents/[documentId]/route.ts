@@ -4,6 +4,7 @@ import { notFound, parseJson } from "@/lib/http";
 import { recordDocumentRevision } from "@/lib/documents/intelligence";
 import { repository } from "@/lib/repository";
 
+import { guard } from "@/lib/api/guard";
 const updateDocumentSchema = z.object({
   folderId: z.string().min(1).optional(),
   title: z.string().trim().min(1).max(200).optional(),
@@ -11,15 +12,15 @@ const updateDocumentSchema = z.object({
   markdown: z.string().max(400_000).optional()
 });
 
-export async function GET(_: Request, { params }: { params: Promise<{ documentId: string }> }) {
-  const { documentId } = await params;
+export const GET = guard<{ documentId: string }>(async (_request, { params }) => {
+  const { documentId } = params;
   const document = await repository.getDocument(documentId);
   if (!document) return notFound("document");
   return NextResponse.json({ data: document });
-}
+});
 
-export async function PATCH(request: Request, { params }: { params: Promise<{ documentId: string }> }) {
-  const { documentId } = await params;
+export const PATCH = guard<{ documentId: string }>(async (request, { params }) => {
+  const { documentId } = params;
   const parsed = await parseJson(request, updateDocumentSchema);
   if (parsed.error) return parsed.error;
 
@@ -44,11 +45,11 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ do
     return NextResponse.json({ data: updated });
   }
   return NextResponse.json({ data: document });
-}
+});
 
-export async function DELETE(_: Request, { params }: { params: Promise<{ documentId: string }> }) {
-  const { documentId } = await params;
+export const DELETE = guard<{ documentId: string }>(async (_request, { params }) => {
+  const { documentId } = params;
   const deleted = await repository.deleteDocument(documentId);
   if (!deleted) return notFound("document");
   return new NextResponse(null, { status: 204 });
-}
+});

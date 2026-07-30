@@ -4,6 +4,7 @@ import { buildContextPack } from "@/lib/context/retrieval";
 import { parseJson } from "@/lib/http";
 import { repository } from "@/lib/repository";
 
+import { guard } from "@/lib/api/guard";
 const schema = z.object({
   query: z.string().trim().min(2).max(12000),
   projectId: z.string().uuid().nullable().default(null),
@@ -14,7 +15,7 @@ const schema = z.object({
   tokenBudget: z.number().int().min(500).max(32000).default(8000)
 });
 
-export async function POST(request: Request) {
+export const POST = guard(async (request) => {
   const parsed = await parseJson(request, schema);
   if (parsed.error) return parsed.error;
   if (parsed.data.projectId && !await repository.getProject(parsed.data.projectId)) {
@@ -31,4 +32,4 @@ export async function POST(request: Request) {
       tokenBudget: parsed.data.tokenBudget ?? 8000
     })
   }, { status: 201 });
-}
+});

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { guard } from "@/lib/api/guard";
 import { parseJson } from "@/lib/http";
 import { repository } from "@/lib/repository";
 
@@ -10,11 +11,11 @@ const schema = z.object({
   source: z.string().trim().max(1000).nullable().default(null)
 });
 
-export async function GET() {
+export const GET = guard(async () => {
   return NextResponse.json({ data: await repository.listKnowledge() });
-}
+});
 
-export async function POST(request: Request) {
+export const POST = guard(async (request) => {
   const parsed = await parseJson(request, schema);
   if (parsed.error) return parsed.error;
   return NextResponse.json({
@@ -25,4 +26,4 @@ export async function POST(request: Request) {
       source: parsed.data.source ?? null
     })
   }, { status: 201 });
-}
+});

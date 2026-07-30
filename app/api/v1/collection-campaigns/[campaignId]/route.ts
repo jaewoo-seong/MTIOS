@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { currentSession } from "@/lib/auth";
+import { guard } from "@/lib/api/guard";
 import { getClientChangeSet } from "@/lib/client-changes";
 import {
   CAMPAIGN_DEFAULT_CEILING_CENTS,
@@ -12,12 +12,8 @@ import {
 } from "@/lib/collection-research";
 import { repository } from "@/lib/repository";
 
-export async function GET(
-  _: Request,
-  { params }: { params: Promise<{ campaignId: string }> }
-) {
-  await currentSession();
-  const { campaignId } = await params;
+export const GET = guard<{ campaignId: string }>(async (_request, { params }) => {
+  const { campaignId } = params;
   const campaign = await getCollectionCampaign(campaignId);
   if (!campaign) {
     return NextResponse.json({ error: "Collection campaign not found." }, { status: 404 });
@@ -77,4 +73,4 @@ export async function GET(
       recordLinks: reconciled
     }
   });
-}
+});

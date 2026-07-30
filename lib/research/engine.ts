@@ -21,6 +21,7 @@ import {
   providerQuotaAvailable,
   recordExternalProviderUsage
 } from "@/lib/ai/usage";
+import { logResearchQuery } from "@/lib/observability/logger";
 
 export type NormalizedEvidence = {
   id: string;
@@ -302,6 +303,17 @@ async function queryProvider(
     await persistAttempt(queryId, providerId, {
       status: "cached", resultCount: evidence.length, durationMs: Date.now() - started, fallbackFrom
     });
+    // A cache hit costs nothing, and recording that explicitly is what makes
+    // the difference between "this campaign was cheap" and "this campaign was
+    // cheap because reuse worked" visible.
+    logResearchQuery({
+      runId: scope.runId,
+      provider: provider.key,
+      costCents: 0,
+      resultCount: evidence.length,
+      cacheState: "hit",
+      status: "cached"
+    });
     return { evidence, issue: null };
   }
 
@@ -391,6 +403,17 @@ async function queryProviderWithKey(
         durationMs: Date.now() - started,
         attempt,
         fallbackFrom
+      });
+      // The paid path. `costCents` here is the provider's per-query price, which
+      // is the figure that scales with entity count on a large campaign and was
+      // invisible to budgets until recently.
+      logResearchQuery({
+        runId: scope.runId,
+        provider: provider.key,
+        costCents: provider.costCents,
+        resultCount: evidence.length,
+        cacheState: "miss",
+        status: "completed"
       });
       return { evidence, issue: null };
     } catch (error) {

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { createGmailDraft } from "@/lib/gmail";
 import { parseJson } from "@/lib/http";
 
+import { guard } from "@/lib/api/guard";
 const email = z.string().email().max(320);
 const schema = z.object({
   connectionId: z.string().uuid(),
@@ -15,7 +16,7 @@ const schema = z.object({
   bodyText: z.string().max(500000)
 });
 
-export async function POST(request: Request) {
+export const POST = guard(async (request) => {
   const parsed = await parseJson(request, schema);
   if (parsed.error) return parsed.error;
   try {
@@ -25,4 +26,4 @@ export async function POST(request: Request) {
       error: error instanceof Error ? error.message : "Gmail draft could not be created."
     }, { status: 502 });
   }
-}
+});

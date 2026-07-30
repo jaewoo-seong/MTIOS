@@ -1,20 +1,19 @@
 import { NextResponse } from "next/server";
-import { currentSession } from "@/lib/auth";
+import { guard } from "@/lib/api/guard";
 import {
   CAMPAIGN_DEFAULT_CEILING_CENTS,
-  getCollectionCoverage,
+  collectionCoverage,
   listCollectionCampaigns
 } from "@/lib/collection-research";
 
-export async function GET(request: Request) {
-  await currentSession();
+export const GET = guard(async (request) => {
   const projectId = new URL(request.url).searchParams.get("projectId");
   const campaigns = await listCollectionCampaigns(projectId ?? undefined);
   return NextResponse.json({
-    data: await Promise.all(campaigns.map(async (campaign) => ({
+    data: campaigns.map((campaign) => ({
       campaign,
-      coverage: await getCollectionCoverage(campaign.id),
+      coverage: collectionCoverage(campaign),
       ceilingCents: campaign.ceilingCents ?? CAMPAIGN_DEFAULT_CEILING_CENTS
-    })))
+    }))
   });
-}
+});

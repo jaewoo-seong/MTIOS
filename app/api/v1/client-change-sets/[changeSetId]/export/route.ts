@@ -1,11 +1,9 @@
 import { NextResponse } from "next/server";
 import { getClientChangeSet } from "@/lib/client-changes";
 
-export async function GET(
-  _: Request,
-  { params }: { params: Promise<{ changeSetId: string }> }
-) {
-  const { changeSetId } = await params;
+import { guard } from "@/lib/api/guard";
+export const GET = guard<{ changeSetId: string }>(async (_request, { params }) => {
+  const { changeSetId } = params;
   const changeSet = await getClientChangeSet(changeSetId);
   if (!changeSet) return NextResponse.json({ error: "Change set not found." }, { status: 404 });
   return new NextResponse(JSON.stringify(changeSet, null, 2), {
@@ -14,4 +12,4 @@ export async function GET(
       "content-disposition": `attachment; filename="client-change-set-${changeSetId}.json"`
     }
   });
-}
+});

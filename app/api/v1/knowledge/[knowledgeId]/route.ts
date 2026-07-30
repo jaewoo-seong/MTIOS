@@ -3,6 +3,7 @@ import { z } from "zod";
 import { notFound, parseJson } from "@/lib/http";
 import { repository } from "@/lib/repository";
 
+import { guard } from "@/lib/api/guard";
 const schema = z.object({
   collection: z.string().trim().min(2).max(100).optional(),
   title: z.string().trim().min(2).max(180).optional(),
@@ -11,18 +12,18 @@ const schema = z.object({
   status: z.enum(["proposed", "approved", "rejected"]).optional()
 });
 
-export async function PATCH(request: Request, { params }: { params: Promise<{ knowledgeId: string }> }) {
-  const { knowledgeId } = await params;
+export const PATCH = guard<{ knowledgeId: string }>(async (request, { params }) => {
+  const { knowledgeId } = params;
   const parsed = await parseJson(request, schema);
   if (parsed.error) return parsed.error;
   const entry = await repository.updateKnowledge(knowledgeId, parsed.data);
   if (!entry) return notFound("knowledge");
   return NextResponse.json({ data: entry });
-}
+});
 
-export async function DELETE(_: Request, { params }: { params: Promise<{ knowledgeId: string }> }) {
-  const { knowledgeId } = await params;
+export const DELETE = guard<{ knowledgeId: string }>(async (_request, { params }) => {
+  const { knowledgeId } = params;
   const deleted = await repository.deleteKnowledge(knowledgeId);
   if (!deleted) return notFound("knowledge");
   return new NextResponse(null, { status: 204 });
-}
+});

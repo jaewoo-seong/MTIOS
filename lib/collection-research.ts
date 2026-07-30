@@ -378,16 +378,14 @@ export async function listCollectionCandidates(campaignId: string): Promise<Coll
   return rows.map(candidateRow);
 }
 
-export async function getCollectionCoverage(campaignId: string): Promise<CollectionCoverage | null> {
-  const campaign = await getCollectionCampaign(campaignId);
-  if (!campaign) return null;
+export function collectionCoverage(campaign: CollectionCampaign): CollectionCoverage {
   // Read the campaign's own running counters rather than recomputing from
   // candidate rows: a candidate's stored `resolution` is its identity ("this
   // entity is new"), which never changes on a re-discovery, so scanning rows
   // by resolution would always read zero duplicates.
   const discovered = campaign.discoveredCount;
   return {
-    campaignId,
+    campaignId: campaign.id,
     targetCount: campaign.targetCount,
     discovered,
     duplicates: campaign.duplicateCount,
@@ -397,6 +395,11 @@ export async function getCollectionCoverage(campaignId: string): Promise<Collect
     saturated: campaign.status === "saturated",
     saturationReason: campaign.saturationReason
   };
+}
+
+export async function getCollectionCoverage(campaignId: string): Promise<CollectionCoverage | null> {
+  const campaign = await getCollectionCampaign(campaignId);
+  return campaign ? collectionCoverage(campaign) : null;
 }
 
 /**

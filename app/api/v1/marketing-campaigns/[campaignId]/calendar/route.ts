@@ -3,6 +3,7 @@ import { z } from "zod";
 import { addContentCalendarItem } from "@/lib/creative-work";
 import { parseJson } from "@/lib/http";
 
+import { guard } from "@/lib/api/guard";
 const schema = z.object({
   variantId: z.string().uuid().nullable().optional(),
   title: z.string().trim().min(1).max(300),
@@ -10,11 +11,8 @@ const schema = z.object({
   scheduledFor: z.string().datetime().nullable().optional()
 });
 
-export async function POST(
-  request: Request,
-  { params }: { params: Promise<{ campaignId: string }> }
-) {
-  const { campaignId } = await params;
+export const POST = guard<{ campaignId: string }>(async (request, { params }) => {
+  const { campaignId } = params;
   const parsed = await parseJson(request, schema);
   if (parsed.error) return parsed.error;
   try {
@@ -28,4 +26,4 @@ export async function POST(
       error: error instanceof Error ? error.message : "Calendar item could not be created."
     }, { status: 404 });
   }
-}
+});

@@ -1,11 +1,9 @@
 import { NextResponse } from "next/server";
 import { submitClientChangeSet } from "@/lib/client-changes";
 
-export async function POST(
-  _: Request,
-  { params }: { params: Promise<{ changeSetId: string }> }
-) {
-  const { changeSetId } = await params;
+import { guard } from "@/lib/api/guard";
+export const POST = guard<{ changeSetId: string }>(async (_request, { params }) => {
+  const { changeSetId } = params;
   try {
     const changeSet = await submitClientChangeSet(changeSetId);
     return changeSet
@@ -16,4 +14,4 @@ export async function POST(
       error: error instanceof Error ? error.message : "Change set could not be submitted."
     }, { status: 409 });
   }
-}
+});

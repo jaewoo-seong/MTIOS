@@ -3,13 +3,14 @@ import { z } from "zod";
 import { searchGmailThreads } from "@/lib/gmail";
 import { parseJson } from "@/lib/http";
 
+import { guard } from "@/lib/api/guard";
 const schema = z.object({
   connectionId: z.string().uuid(),
   query: z.string().trim().min(1).max(2000),
   maxResults: z.number().int().min(1).max(100).default(25)
 });
 
-export async function POST(request: Request) {
+export const POST = guard(async (request) => {
   const parsed = await parseJson(request, schema);
   if (parsed.error) return parsed.error;
   try {
@@ -19,4 +20,4 @@ export async function POST(request: Request) {
       error: error instanceof Error ? error.message : "Gmail search failed."
     }, { status: 502 });
   }
-}
+});

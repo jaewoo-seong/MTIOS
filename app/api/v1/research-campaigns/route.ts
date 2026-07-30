@@ -4,6 +4,7 @@ import { parseJson } from "@/lib/http";
 import { createResearchCampaign } from "@/lib/company-research";
 import { repository } from "@/lib/repository";
 
+import { guard } from "@/lib/api/guard";
 const campaignSchema = z.object({
   projectId: z.string().uuid(),
   agendaId: z.string().uuid().nullable().optional(),
@@ -18,7 +19,7 @@ const campaignSchema = z.object({
   existingCountPolicy: z.enum(["ask", "include", "exclude"]).default("ask")
 });
 
-export async function POST(request: Request) {
+export const POST = guard(async (request) => {
   const parsed = await parseJson(request, campaignSchema);
   if (parsed.error) return parsed.error;
   if (!await repository.getProject(parsed.data.projectId)) {
@@ -26,4 +27,4 @@ export async function POST(request: Request) {
   }
   const campaign = await createResearchCampaign(parsed.data);
   return NextResponse.json({ data: campaign }, { status: 201 });
-}
+});

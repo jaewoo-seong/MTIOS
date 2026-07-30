@@ -4,7 +4,7 @@ import { modelRoutes } from "@/lib/ai/litellm";
 import { modelRoutePolicies } from "@/lib/ai/model-policy";
 import { parseJson } from "@/lib/http";
 import { createModelRouteRevision, listModelRouteRevisions } from "@/lib/settings";
-import { currentSession } from "@/lib/auth";
+import { guard } from "@/lib/api/guard";
 
 const routeSchema = z.enum(modelRoutes);
 const candidateSchema = z.object({
@@ -21,18 +21,16 @@ const schema = z.object({
   candidates: z.array(candidateSchema).min(1).max(5)
 });
 
-export async function GET(request: Request) {
-  await currentSession({ admin: true });
+export const GET = guard(async (request) => {
   const route = new URL(request.url).searchParams.get("route");
   const parsedRoute = route ? routeSchema.safeParse(route) : null;
   if (route && !parsedRoute?.success) {
     return NextResponse.json({ error: "Invalid model route." }, { status: 400 });
   }
   return NextResponse.json({ data: await listModelRouteRevisions(parsedRoute?.data) });
-}
+}, { admin: true });
 
-export async function POST(request: Request) {
-  await currentSession({ admin: true });
+export const POST = guard(async (request) => {
   const parsed = await parseJson(request, schema);
   if (parsed.error) return parsed.error;
   const base = modelRoutePolicies[parsed.data.route];
@@ -56,4 +54,4 @@ export async function POST(request: Request) {
       candidates: parsed.data.candidates
     })
   }, { status: 201 });
-}
+}, { admin: true });

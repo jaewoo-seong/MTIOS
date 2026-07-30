@@ -3,17 +3,20 @@ import { z } from "zod";
 import { parseJson } from "@/lib/http";
 import { requestEmbedding, requestLiteLLM, requestReranking } from "@/lib/ai/litellm";
 import { listModelRouteRevisions, setModelRevisionState } from "@/lib/settings";
-import { currentSession } from "@/lib/auth";
+import { guard } from "@/lib/api/guard";
 
 const schema = z.object({
   action: z.enum(["test", "approve", "activate", "rollback"])
 });
 
-export async function POST(request: Request, { params }: { params: Promise<{ revisionId: string }> }) {
-  await currentSession({ admin: true });
+/**
+ * `expensive`: the `test` action makes a real model call against the route being
+ * revised, so this endpoint spends money per request.
+ */
+export const POST = guard<{ revisionId: string }>(async (request, { params }) => {
   const parsed = await parseJson(request, schema);
   if (parsed.error) return parsed.error;
-  const { revisionId } = await params;
+  const { revisionId } = params;
   try {
     if (parsed.data.action === "test") {
       const revision = (await listModelRouteRevisions()).find((item) => item.id === revisionId);
@@ -56,4 +59,4 @@ export async function POST(request: Request, { params }: { params: Promise<{ rev
       error: error instanceof Error ? error.message : "Model route update failed."
     }, { status: 409 });
   }
-}
+}, { admin: true, rateLimit: "expensive" });

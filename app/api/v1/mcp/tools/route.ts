@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { listAllowedMcpTools } from "@/lib/mcp/platform";
 import { repository } from "@/lib/repository";
 
-export async function GET(request: Request) {
+import { guard } from "@/lib/api/guard";
+export const GET = guard(async (request) => {
   const url = new URL(request.url);
   const projectId = url.searchParams.get("projectId");
   const agentId = url.searchParams.get("agentId");
@@ -18,4 +19,4 @@ export async function GET(request: Request) {
       permissions: agent.toolScopes
     })
   });
-}
+});

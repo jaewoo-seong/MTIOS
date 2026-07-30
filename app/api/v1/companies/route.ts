@@ -3,6 +3,7 @@ import { z } from "zod";
 import { parseJson } from "@/lib/http";
 import { registerCompany } from "@/lib/company-research";
 
+import { guard } from "@/lib/api/guard";
 export const companyInputSchema = z.object({
   legalName: z.string().trim().min(1).max(300),
   tradingNames: z.array(z.string().trim().min(1).max(300)).max(50).default([]),
@@ -25,9 +26,9 @@ export const companyInputSchema = z.object({
   }).optional()
 });
 
-export async function POST(request: Request) {
+export const POST = guard(async (request) => {
   const parsed = await parseJson(request, companyInputSchema);
   if (parsed.error) return parsed.error;
   const result = await registerCompany(parsed.data);
   return NextResponse.json({ data: result }, { status: result.created ? 201 : 200 });
-}
+});

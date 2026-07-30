@@ -3,6 +3,7 @@ import { z } from "zod";
 import { reviseGmailDraft } from "@/lib/gmail";
 import { parseJson } from "@/lib/http";
 
+import { guard } from "@/lib/api/guard";
 const email = z.string().email().max(320);
 const schema = z.object({
   to: z.array(email).min(1).max(100),
@@ -12,11 +13,8 @@ const schema = z.object({
   bodyText: z.string().max(500000)
 });
 
-export async function PATCH(
-  request: Request,
-  { params }: { params: Promise<{ draftId: string }> }
-) {
-  const { draftId } = await params;
+export const PATCH = guard<{ draftId: string }>(async (request, { params }) => {
+  const { draftId } = params;
   const parsed = await parseJson(request, schema);
   if (parsed.error) return parsed.error;
   try {
@@ -26,4 +24,4 @@ export async function PATCH(
       error: error instanceof Error ? error.message : "Gmail draft could not be revised."
     }, { status: 502 });
   }
-}
+});

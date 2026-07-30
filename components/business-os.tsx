@@ -18,7 +18,6 @@ import {
   Send,
   Settings,
   Sparkles,
-  Target,
   X
 } from "lucide-react";
 import type {
@@ -47,7 +46,7 @@ import {
   PasswordSettings
 } from "@/components/account-settings";
 
-type PageId = "agent" | "projects" | "campaigns" | "documents" | "data" | "knowledge" | "settings";
+type PageId = "agent" | "projects" | "documents" | "data" | "knowledge" | "settings";
 type ProjectDetail = Project & {
   agendas: Agenda[];
   milestones: Milestone[];
@@ -61,7 +60,6 @@ type AppSession = {
 const navItems: Array<{ id: PageId; label: string; icon: typeof Bot }> = [
   { id: "agent", label: "Executive Agent", icon: Bot },
   { id: "projects", label: "Projects", icon: FolderKanban },
-  { id: "campaigns", label: "Campaigns", icon: Target },
   { id: "documents", label: "Documents", icon: FileText },
   { id: "data", label: "Client & Data", icon: Database },
   { id: "knowledge", label: "Knowledge Base", icon: BookOpen },
@@ -80,12 +78,6 @@ const pageCopy: Record<PageId, { title: string; subtitle: string; command: strin
     subtitle: "Long-lived context, agendas, execution, and outputs",
     command: "Add a project agenda, change scope, run the next batch, or request an output.",
     actions: ["Add agenda", "Run next batch", "Change scope", "Review plan"]
-  },
-  campaigns: {
-    title: "Collection Campaigns",
-    subtitle: "Multi-entity research, its reports, and mid-flight steering",
-    command: "Steer a running campaign, raise its ceiling, or continue what is still pending.",
-    actions: ["Refocus the search", "Continue campaign", "Review reports"]
   },
   documents: {
     title: "Documents",
@@ -391,16 +383,6 @@ export function BusinessOS() {
                   }}
                 />
               )}
-              {page === "campaigns" && (
-                <CampaignsView
-                  projects={projects}
-                  onError={pushError}
-                  onOpenDocument={(documentId) => {
-                    setFocusDocumentId(documentId);
-                    setPage("documents");
-                  }}
-                />
-              )}
               {page === "documents" && (
                 <DocumentsView
                   onError={pushError}
@@ -652,6 +634,12 @@ function ProjectsView({ projects, project, selectedId, onSelect, onCreate, onErr
               <p>{project.outputRequirements.length > 0 ? project.outputRequirements.join(" · ") : t("Not set")}</p>
             </div>
           </div>
+          <CampaignsView
+            key={project.id}
+            projectId={project.id}
+            onError={onError}
+            onOpenDocument={onOpenDocument}
+          />
           <div className="project-columns">
             <section className="surface agenda-surface">
               <div className="surface-header"><h2>{t("Agenda lifecycle")}</h2><span>{formatNumber(project.agendas.length)}</span></div>

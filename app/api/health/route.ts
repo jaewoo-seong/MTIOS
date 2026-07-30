@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { checkLiteLLM } from "@/lib/ai/litellm";
+import { inspectConfig } from "@/lib/config";
 import { sql } from "@/lib/db/client";
 import { pingRedis } from "@/lib/redis";
 import { checkStorage } from "@/lib/storage";
@@ -73,10 +74,21 @@ export async function GET() {
   if (process.env.NODE_ENV === "production" && checks.authentication !== "ok") {
     status = 503;
   }
+  // The reachability checks above answer "is the dependency up". This answers
+  // "is this instance configured to do its job", which is a different question
+  // and the one that explains a silently degraded feature - lexical-only
+  // retrieval, unbudgeted model calls, campaigns that cannot dispatch.
+  const config = inspectConfig();
+  if (!config.ok) status = 503;
   return NextResponse.json({
     status: status === 200 ? "ok" : "degraded",
     service: "business-os",
     checks,
+    configuration: {
+      ok: config.ok,
+      errors: config.errors,
+      degradations: config.notices
+    },
     time: new Date().toISOString()
   }, { status });
 }

@@ -3,6 +3,7 @@ import { requestLiteLLM, type ModelRoute } from "@/lib/ai/litellm";
 import { modelRequestSchema, resolveModelPolicy } from "@/lib/ai/model-policy";
 import { parseJson } from "@/lib/http";
 import { isValidWorkflowRequest } from "@/lib/internal-auth";
+import { logModelCall, logger } from "@/lib/observability/logger";
 import { repository } from "@/lib/repository";
 import { getActiveModelPolicy } from "@/lib/settings";
 import {
@@ -37,6 +38,14 @@ export async function POST(request: Request) {
           route: parsed.data.model,
           maximumCostMicros: policy.maxCostMicros,
           reason: "All configured free providers reached quota or are unavailable."
+        });
+        // This is the state that silently parks a long campaign waiting for an
+        // administrator, so it is worth a warn rather than only a database row.
+        logger.warn("model.premium_approval_required", {
+          runId: parsed.data.runId,
+          route: parsed.data.model,
+          approvalId: approval.id,
+          reason: "free provider quota exhausted or unavailable"
         });
         return NextResponse.json({
           error: "premium_approval_required",
@@ -107,6 +116,20 @@ export async function POST(request: Request) {
         route: parsed.data.model,
         projectId: recorded.projectId ?? null,
         userId: recorded.userId ?? null
+      });
+      // Logged in addition to being persisted. The table is the ledger of
+      // record; the log line is what makes spend answerable without database
+      // access, and survives when a run is deleted.
+      logModelCall({
+        runId: parsed.data.runId,
+        route: parsed.data.model,
+        model: payload.model ?? null,
+        provider: payload.provider ?? null,
+        costMicros,
+        latencyMs: Date.now() - startedAt,
+        inputTokens: payload.usage?.prompt_tokens ?? 0,
+        outputTokens: payload.usage?.completion_tokens ?? 0,
+        fallbackReason: payload._hidden_params?.fallback_reason ?? null
       });
     }
     return NextResponse.json(response);

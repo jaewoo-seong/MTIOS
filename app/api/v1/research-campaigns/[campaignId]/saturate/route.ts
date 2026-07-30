@@ -3,16 +3,14 @@ import { z } from "zod";
 import { markCampaignSaturated } from "@/lib/company-research";
 import { parseJson } from "@/lib/http";
 
+import { guard } from "@/lib/api/guard";
 const saturationSchema = z.object({
   reason: z.string().trim().min(5).max(2000),
   estimatedRemaining: z.number().int().min(0).default(0)
 });
 
-export async function POST(
-  request: Request,
-  { params }: { params: Promise<{ campaignId: string }> }
-) {
-  const { campaignId } = await params;
+export const POST = guard<{ campaignId: string }>(async (request, { params }) => {
+  const { campaignId } = params;
   const parsed = await parseJson(request, saturationSchema);
   if (parsed.error) return parsed.error;
   const campaign = await markCampaignSaturated(
@@ -23,4 +21,4 @@ export async function POST(
   return campaign
     ? NextResponse.json({ data: campaign })
     : NextResponse.json({ error: "Research campaign not found." }, { status: 404 });
-}
+});

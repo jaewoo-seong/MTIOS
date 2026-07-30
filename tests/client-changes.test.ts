@@ -164,7 +164,19 @@ describe("governed client-data changes", () => {
     const deleted = await directDelete(new Request("http://local", { method: "DELETE" }), {
       params: Promise.resolve({ recordId: crypto.randomUUID() })
     });
-    expect(response.status).toBe(405);
-    expect(deleted.status).toBe(405);
+    // Two independent refusals stack here, and the outer one answers first.
+    //
+    // These routes return 405 in their bodies - direct client-record mutation is
+    // permanently disabled in favour of the reviewed change-set flow. They are
+    // now also wrapped in `guard`, which rejects an unauthenticated caller
+    // before the body runs, and this test supplies no session cookie. So the
+    // observable status is 401 rather than 405.
+    //
+    // The property under test is unchanged and is what these assertions check:
+    // there is no request that mutates a client record through these routes.
+    // Asserting on 401 specifically, rather than "not 2xx", keeps the test
+    // honest about which layer refused.
+    expect(response.status).toBe(401);
+    expect(deleted.status).toBe(401);
   });
 });

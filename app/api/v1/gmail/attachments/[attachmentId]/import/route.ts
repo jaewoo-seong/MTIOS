@@ -3,13 +3,11 @@ import { z } from "zod";
 import { importGmailAttachment } from "@/lib/gmail";
 import { parseJson } from "@/lib/http";
 
+import { guard } from "@/lib/api/guard";
 const schema = z.object({ projectId: z.string().uuid() });
 
-export async function POST(
-  request: Request,
-  { params }: { params: Promise<{ attachmentId: string }> }
-) {
-  const { attachmentId } = await params;
+export const POST = guard<{ attachmentId: string }>(async (request, { params }) => {
+  const { attachmentId } = params;
   const parsed = await parseJson(request, schema);
   if (parsed.error) return parsed.error;
   try {
@@ -21,4 +19,4 @@ export async function POST(
       error: error instanceof Error ? error.message : "Gmail attachment import failed."
     }, { status: 502 });
   }
-}
+});

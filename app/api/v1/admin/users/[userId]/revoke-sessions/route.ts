@@ -1,15 +1,13 @@
 import { NextResponse } from "next/server";
-import { AuthError, currentSession, revokeUserSessions } from "@/lib/auth";
+import { revokeUserSessions } from "@/lib/auth";
+import { guard } from "@/lib/api/guard";
+import { logger } from "@/lib/observability/logger";
 
-export async function POST(_: Request, context: { params: Promise<{ userId: string }> }) {
-  try {
-    await currentSession({ admin: true });
-    const { userId } = await context.params;
-    await revokeUserSessions(userId);
-    return NextResponse.json({ data: { revoked: true } });
-  } catch (error) {
-    return NextResponse.json({
-      error: error instanceof Error ? error.message : "Request failed."
-    }, { status: error instanceof AuthError ? error.status : 400 });
-  }
-}
+export const POST = guard<{ userId: string }>(async (_request, { params, session }) => {
+  await revokeUserSessions(params.userId);
+  logger.info("admin.sessions_revoked", {
+    targetUserId: params.userId,
+    actorId: session.userId
+  });
+  return NextResponse.json({ data: { revoked: true } });
+}, { admin: true });

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { createBrandProfile } from "@/lib/creative-work";
 import { parseJson } from "@/lib/http";
 
+import { guard } from "@/lib/api/guard";
 const schema = z.object({
   projectId: z.string().uuid().nullable().optional(),
   name: z.string().trim().min(2).max(200),
@@ -14,8 +15,8 @@ const schema = z.object({
   competitors: z.array(z.string().trim().min(1).max(300)).max(500).default([])
 });
 
-export async function POST(request: Request) {
+export const POST = guard(async (request) => {
   const parsed = await parseJson(request, schema);
   if (parsed.error) return parsed.error;
   return NextResponse.json({ data: await createBrandProfile(parsed.data) }, { status: 201 });
-}
+});

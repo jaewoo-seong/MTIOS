@@ -2,12 +2,13 @@ import type { RunEvent } from "@/lib/domain";
 import { repository } from "@/lib/repository";
 import { SSE_HEADERS, pollingEventStream } from "@/lib/sse";
 
+import { guard } from "@/lib/api/guard";
 export const dynamic = "force-dynamic";
 
 const TERMINAL = new Set(["run.completed", "run.failed", "run.cancelled"]);
 
-export async function GET(request: Request, { params }: { params: Promise<{ runId: string }> }) {
-  const { runId } = await params;
+export const GET = guard<{ runId: string }>(async (request, { params }) => {
+  const { runId } = params;
   const lastEventId = Number(request.headers.get("last-event-id") ?? "0");
 
   const stream = pollingEventStream<RunEvent>({
@@ -25,4 +26,4 @@ export async function GET(request: Request, { params }: { params: Promise<{ runI
   });
 
   return new Response(stream, { headers: SSE_HEADERS });
-}
+});

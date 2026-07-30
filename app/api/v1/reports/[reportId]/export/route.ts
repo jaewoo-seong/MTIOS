@@ -3,8 +3,9 @@ import { notFound } from "@/lib/http";
 import { repository } from "@/lib/repository";
 import { storeReportExport } from "@/lib/storage";
 
-export async function POST(_: Request, { params }: { params: Promise<{ reportId: string }> }) {
-  const { reportId } = await params;
+import { guard } from "@/lib/api/guard";
+export const POST = guard<{ reportId: string }>(async (_request, { params }) => {
+  const { reportId } = params;
   const report = await repository.getReport(reportId);
   if (!report) return notFound("report");
   const artifact = await storeReportExport(
@@ -15,4 +16,4 @@ export async function POST(_: Request, { params }: { params: Promise<{ reportId:
   return NextResponse.json({
     data: { status: "completed", ...artifact }
   }, { status: 201 });
-}
+});

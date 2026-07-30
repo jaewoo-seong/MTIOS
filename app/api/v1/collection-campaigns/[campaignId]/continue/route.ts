@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { currentSession } from "@/lib/auth";
+import { guard } from "@/lib/api/guard";
 import {
   getCollectionCampaign,
   listPendingDossierCandidates,
   setCollectionCampaignCeiling
 } from "@/lib/collection-research";
 import { parseJson } from "@/lib/http";
+import { logger } from "@/lib/observability/logger";
 import { repository } from "@/lib/repository";
 import { registerWorkflowRun } from "@/lib/workflows/state";
 import { dispatchCollectionContinuation } from "@/lib/workflows/trigger";
@@ -20,12 +21,13 @@ const schema = z.object({
   resumeDiscovery: z.boolean().default(false)
 });
 
-export async function POST(
-  request: Request,
-  { params }: { params: Promise<{ campaignId: string }> }
-) {
-  const actor = await currentSession();
-  const { campaignId } = await params;
+/**
+ * `expensive`: continuing a campaign re-dispatches the dossier fan-out, which is
+ * up to a few hundred paid workers.
+ */
+export const POST = guard<{ campaignId: string }>(async (request, { params, session }) => {
+  const actor = session;
+  const { campaignId } = params;
   const parsed = await parseJson(request, schema);
   if (parsed.error) return parsed.error;
 
@@ -95,4 +97,4 @@ export async function POST(
       workflow: { mode: dispatch.mode }
     }
   }, { status: 202 });
-}
+}, { rateLimit: "expensive" });

@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { AuthError, currentSession } from "@/lib/auth";
 import {
   createQuotaPolicy,
   listQuotaPolicies,
   updateQuotaPolicy
 } from "@/lib/ai/usage";
+import { guard } from "@/lib/api/guard";
 import { parseJson } from "@/lib/http";
 
 const createSchema = z.object({
@@ -22,52 +22,48 @@ const updateSchema = z.object({
   active: z.boolean().optional()
 }).refine((value) => value.allowance !== undefined || value.timezone !== undefined || value.active !== undefined);
 
-export async function GET() {
-  try {
-    await currentSession({ admin: true });
-    return NextResponse.json({ data: await listQuotaPolicies() });
-  } catch (error) {
-    return failure(error);
-  }
-}
+export const GET = guard(async () => {
+  return NextResponse.json({ data: await listQuotaPolicies() });
+}, { admin: true });
 
-export async function POST(request: Request) {
+export const POST = guard(async (request, { session }) => {
   const parsed = await parseJson(request, createSchema);
   if (parsed.error) return parsed.error;
-  try {
-    assertTimezone(parsed.data.timezone);
-    const actor = await currentSession({ admin: true });
-    return NextResponse.json({
-      data: await createQuotaPolicy({
-        ...parsed.data,
-        route: parsed.data.route ?? null,
-        actorId: actor.userId
-      })
-    }, { status: 201 });
-  } catch (error) {
-    return failure(error);
-  }
-}
+  const timezoneError = timezoneProblem(parsed.data.timezone);
+  if (timezoneError) return timezoneError;
+  return NextResponse.json({
+    data: await createQuotaPolicy({
+      ...parsed.data,
+      route: parsed.data.route ?? null,
+      actorId: session.userId
+    })
+  }, { status: 201 });
+}, { admin: true });
 
-export async function PATCH(request: Request) {
+export const PATCH = guard(async (request) => {
   const parsed = await parseJson(request, updateSchema);
   if (parsed.error) return parsed.error;
-  try {
-    await currentSession({ admin: true });
-    if (parsed.data.timezone) assertTimezone(parsed.data.timezone);
-    const { id, ...changes } = parsed.data;
-    return NextResponse.json({ data: await updateQuotaPolicy(id, changes) });
-  } catch (error) {
-    return failure(error);
+  if (parsed.data.timezone) {
+    const timezoneError = timezoneProblem(parsed.data.timezone);
+    if (timezoneError) return timezoneError;
   }
-}
+  const { id, ...changes } = parsed.data;
+  return NextResponse.json({ data: await updateQuotaPolicy(id, changes) });
+}, { admin: true });
 
-function assertTimezone(timezone: string) {
-  new Intl.DateTimeFormat("en-US", { timeZone: timezone }).format();
-}
-
-function failure(error: unknown) {
-  return NextResponse.json({
-    error: error instanceof Error ? error.message : "Request failed."
-  }, { status: error instanceof AuthError ? error.status : 400 });
+/**
+ * Returns a 400 rather than throwing. An unknown IANA zone is a bad input, and
+ * letting the `Intl` constructor's RangeError propagate would surface it as an
+ * unhandled 500 now that the guard reports unexpected throws that way.
+ */
+function timezoneProblem(timezone: string) {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: timezone }).format();
+    return null;
+  } catch {
+    return NextResponse.json(
+      { error: "validation_error", detail: `"${timezone}" is not a known time zone.` },
+      { status: 400 }
+    );
+  }
 }

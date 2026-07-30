@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { guard } from "@/lib/api/guard";
 import { notFound, parseJson } from "@/lib/http";
 import { repository } from "@/lib/repository";
-import { currentSession } from "@/lib/auth";
 
 const schema = z.object({
   title: z.string().trim().min(2).max(160),
@@ -13,11 +13,11 @@ const schema = z.object({
   ]).default("custom")
 });
 
-export async function POST(request: Request, { params }: { params: Promise<{ projectId: string }> }) {
-  const actor = await currentSession();
-  const { projectId } = await params;
-  if (!await repository.getProject(projectId)) return notFound("project");
+export const POST = guard<{ projectId: string }>(async (request, { params, session }) => {
+  if (!await repository.getProject(params.projectId)) return notFound("project");
   const parsed = await parseJson(request, schema);
   if (parsed.error) return parsed.error;
-  return NextResponse.json({ data: await repository.createAgenda(projectId, parsed.data, actor.userId) }, { status: 201 });
-}
+  return NextResponse.json({
+    data: await repository.createAgenda(params.projectId, parsed.data, session.userId)
+  }, { status: 201 });
+});

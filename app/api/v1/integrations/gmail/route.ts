@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { listGmailConnections } from "@/lib/gmail";
 
-export async function GET() {
+import { guard } from "@/lib/api/guard";
+export const GET = guard(async () => {
   return NextResponse.json({ data: await listGmailConnections() });
-}
+});

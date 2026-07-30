@@ -3,6 +3,7 @@ import { notFound } from "@/lib/http";
 import { type ProjectActivityEvent, repository } from "@/lib/repository";
 import { SSE_HEADERS, pollingEventStream } from "@/lib/sse";
 
+import { guard } from "@/lib/api/guard";
 export const dynamic = "force-dynamic";
 
 /**
@@ -10,8 +11,8 @@ export const dynamic = "force-dynamic";
  * Returns a snapshot for a normal request and an SSE stream when the client
  * asks for `text/event-stream`, so the panel can hydrate then follow along.
  */
-export async function GET(request: Request, { params }: { params: Promise<{ projectId: string }> }) {
-  const { projectId } = await params;
+export const GET = guard<{ projectId: string }>(async (request, { params }) => {
+  const { projectId } = params;
   const project = await repository.getProject(projectId);
   if (!project) return notFound("project");
 
@@ -40,4 +41,4 @@ export async function GET(request: Request, { params }: { params: Promise<{ proj
   });
 
   return new Response(stream, { headers: SSE_HEADERS });
-}
+});

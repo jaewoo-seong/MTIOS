@@ -4,6 +4,7 @@ import { parseJson } from "@/lib/http";
 import { runResearchQuery } from "@/lib/research/engine";
 import { repository } from "@/lib/repository";
 
+import { guard } from "@/lib/api/guard";
 const schema = z.object({
   projectId: z.string().uuid(),
   agendaId: z.string().uuid(),
@@ -15,7 +16,7 @@ const schema = z.object({
   maxResults: z.number().int().min(1).max(100).default(20)
 });
 
-export async function POST(request: Request) {
+export const POST = guard(async (request) => {
   const parsed = await parseJson(request, schema);
   if (parsed.error) return parsed.error;
   const project = await repository.getProject(parsed.data.projectId);
@@ -26,4 +27,4 @@ export async function POST(request: Request) {
   }
   const result = await runResearchQuery(parsed.data);
   return NextResponse.json({ data: result }, { status: result.evidence.length > 0 ? 200 : 206 });
-}
+});

@@ -10,7 +10,6 @@ import {
   Target,
   TriangleAlert
 } from "lucide-react";
-import type { Project } from "@/lib/domain";
 import { useI18n } from "@/lib/i18n";
 
 /**
@@ -98,10 +97,21 @@ function cents(value: number) {
   return `$${(value / 100).toFixed(2)}`;
 }
 
+async function campaignRequestError(response: Response, fallback: string) {
+  const payload = await response.json().catch(() => null) as { error?: string } | null;
+  if (response.status === 401) return new Error("Your session expired. Sign in again.");
+  if (response.status === 429) return new Error("Too many requests. Wait a moment and try again.");
+  if (payload?.error && payload.error !== "internal_error") return new Error(payload.error);
+  if (response.status >= 500) {
+    return new Error("Campaign data is unavailable. Check the server logs and database migrations.");
+  }
+  return new Error(fallback);
+}
+
 export function CampaignsView({
-  projects, onError, onOpenDocument
+  projectId, onError, onOpenDocument
 }: {
-  projects: Project[];
+  projectId: string;
   onError: (message: string) => void;
   onOpenDocument?: (documentId: string) => void;
 }) {
@@ -110,31 +120,43 @@ export function CampaignsView({
   const [activeId, setActiveId] = useState<string | null>(null);
   const [detail, setDetail] = useState<CampaignDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [directiveKind, setDirectiveKind] = useState<string>("refocus");
   const [directiveText, setDirectiveText] = useState("");
   const [ceilingDollars, setCeilingDollars] = useState("");
 
   const loadSummaries = useCallback(async () => {
-    const response = await fetch("/api/v1/collection-campaigns");
-    if (!response.ok) throw new Error("Could not load collection campaigns.");
+    const response = await fetch(
+      `/api/v1/collection-campaigns?projectId=${encodeURIComponent(projectId)}`
+    );
+    if (!response.ok) {
+      throw await campaignRequestError(response, "Could not load collection campaigns.");
+    }
     const payload = (await response.json()) as { data: CampaignSummary[] };
     setSummaries(payload.data);
-    setActiveId((current) => current ?? payload.data[0]?.campaign.id ?? null);
-  }, []);
+    setActiveId((current) =>
+      payload.data.some((summary) => summary.campaign.id === current)
+        ? current
+        : payload.data[0]?.campaign.id ?? null
+    );
+  }, [projectId]);
 
   const loadDetail = useCallback(async (campaignId: string) => {
     const response = await fetch(`/api/v1/collection-campaigns/${campaignId}`);
-    if (!response.ok) throw new Error("Could not load the campaign.");
+    if (!response.ok) {
+      throw await campaignRequestError(response, "Could not load the campaign.");
+    }
     const payload = (await response.json()) as { data: CampaignDetail };
     setDetail(payload.data);
   }, []);
 
   useEffect(() => {
+    setLoadError(null);
     loadSummaries()
-      .catch((reason: Error) => onError(reason.message))
+      .catch((reason: Error) => setLoadError(reason.message))
       .finally(() => setLoading(false));
-  }, [loadSummaries, onError]);
+  }, [loadSummaries]);
 
   useEffect(() => {
     if (!activeId) {
@@ -206,59 +228,59 @@ export function CampaignsView({
     }
   }
 
-  if (loading) {
-    return (
-      <div className="loading-state">
-        <Loader2 size={20} className="spin" />
-        <span>{t("Loading campaigns")}</span>
-      </div>
-    );
-  }
-
-  if (summaries.length === 0) {
-    return (
-      <div className="empty-module">
-        <div className="empty-icon"><Compass size={22} aria-hidden /></div>
-        <h2>{t("No collection campaigns")}</h2>
-        <p>{t("Ask the Executive Agent to find multiple entities and write one report on each. A campaign appears here while it runs.")}</p>
-      </div>
-    );
-  }
-
-  const projectName = (projectId: string) =>
-    projects.find((project) => project.id === projectId)?.name ?? t("Unknown project");
-
   return (
-    <div className="documents-layout">
-      <aside className="document-folders">
-        <div className="list-heading"><span>{t("Campaigns")}</span></div>
-        {summaries.map((summary) => (
-          <button
-            key={summary.campaign.id}
-            className={summary.campaign.id === activeId ? "active" : ""}
-            aria-current={summary.campaign.id === activeId ? "true" : undefined}
-            onClick={() => setActiveId(summary.campaign.id)}
-          >
-            <Target size={15} aria-hidden />
-            <span className="folder-name">{summary.campaign.name}</span>
-            {summary.coverage && (
-              <span className="nav-count">
-                {formatNumber(summary.coverage.accepted)}
-                {summary.coverage.targetCount ? `/${formatNumber(summary.coverage.targetCount)}` : ""}
-              </span>
-            )}
-          </button>
-        ))}
-      </aside>
+    <section className="surface campaign-section">
+      <div className="surface-header">
+        <h2>{t("Campaigns")}</h2>
+        <span>{loading ? "…" : formatNumber(summaries.length)}</span>
+      </div>
 
-      {detail && (
-        <section className="surface">
-          <div className="surface-header">
-            <h2>{detail.campaign.name}</h2>
-            <div className="surface-tools">
-              <span>{projectName(detail.campaign.projectId)}</span>
-              <span><CampaignStatusLabel status={detail.campaign.status} /></span>
-            </div>
+      {loading ? (
+        <div className="loading-state campaign-section-state">
+          <Loader2 size={20} className="spin" />
+          <span>{t("Loading campaigns")}</span>
+        </div>
+      ) : loadError ? (
+        <div className="error-banner campaign-load-error" role="alert">
+          <TriangleAlert size={15} aria-hidden />
+          {loadError}
+        </div>
+      ) : summaries.length === 0 ? (
+        <div className="campaign-empty">
+          <Compass size={20} aria-hidden />
+          <div>
+            <strong>{t("No collection campaigns")}</strong>
+            <p>{t("Ask the Executive Agent to find multiple entities and write one report on each. A campaign appears here while it runs.")}</p>
+          </div>
+        </div>
+      ) : (
+        <div className="campaign-tabs" role="tablist" aria-label={t("Campaigns")}>
+          {summaries.map((summary) => (
+            <button
+              key={summary.campaign.id}
+              role="tab"
+              className={summary.campaign.id === activeId ? "active" : ""}
+              aria-selected={summary.campaign.id === activeId}
+              onClick={() => setActiveId(summary.campaign.id)}
+            >
+              <Target size={15} aria-hidden />
+              <span className="folder-name">{summary.campaign.name}</span>
+              {summary.coverage && (
+                <span className="nav-count">
+                  {formatNumber(summary.coverage.accepted)}
+                  {summary.coverage.targetCount ? `/${formatNumber(summary.coverage.targetCount)}` : ""}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {!loading && detail && (
+        <div className="campaign-detail">
+          <div className="surface-header campaign-detail-header">
+            <h3>{detail.campaign.name}</h3>
+            <span><CampaignStatusLabel status={detail.campaign.status} /></span>
           </div>
 
           <CampaignProgress coverage={detail.coverage} pendingCount={detail.pendingCount} />
@@ -366,9 +388,9 @@ export function CampaignsView({
             candidates={detail.candidates}
             onOpenDocument={onOpenDocument}
           />
-        </section>
+        </div>
       )}
-    </div>
+    </section>
   );
 }
 

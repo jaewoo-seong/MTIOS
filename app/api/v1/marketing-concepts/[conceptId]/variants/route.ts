@@ -3,6 +3,7 @@ import { z } from "zod";
 import { addMarketingVariant } from "@/lib/creative-work";
 import { parseJson } from "@/lib/http";
 
+import { guard } from "@/lib/api/guard";
 const schema = z.object({
   name: z.string().trim().min(1).max(300),
   channel: z.string().trim().min(1).max(100),
@@ -10,14 +11,11 @@ const schema = z.object({
   content: z.string().max(100000).default("")
 });
 
-export async function POST(
-  request: Request,
-  { params }: { params: Promise<{ conceptId: string }> }
-) {
-  const { conceptId } = await params;
+export const POST = guard<{ conceptId: string }>(async (request, { params }) => {
+  const { conceptId } = params;
   const parsed = await parseJson(request, schema);
   if (parsed.error) return parsed.error;
   return NextResponse.json({
     data: await addMarketingVariant(conceptId, parsed.data)
   }, { status: 201 });
-}
+});

@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { completeGmailAuthorization } from "@/lib/gmail";
 
-export async function GET(request: Request) {
+import { guard } from "@/lib/api/guard";
+export const GET = guard(async (request) => {
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
@@ -19,4 +20,4 @@ export async function GET(request: Request) {
     const message = error instanceof Error ? error.message : "Gmail connection failed.";
     return NextResponse.redirect(new URL(`/?integration=gmail&status=error&detail=${encodeURIComponent(message)}`, request.url));
   }
-}
+});

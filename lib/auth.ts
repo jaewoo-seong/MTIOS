@@ -233,9 +233,18 @@ export async function refreshSession() {
   return { token, claims: nextClaims };
 }
 
-export async function changePassword(currentPassword: string, newPassword: string) {
+/**
+ * `existing` lets a caller that has already verified the session pass it in,
+ * so a guarded route does not pay for a second database round trip to
+ * re-establish what it just established.
+ */
+export async function changePassword(
+  currentPassword: string,
+  newPassword: string,
+  existing?: SessionClaims
+) {
   validatePassword(newPassword);
-  const session = await currentSession({ allowPasswordChange: true });
+  const session = existing ?? await currentSession({ allowPasswordChange: true });
   if (session.role === "admin" && session.userId === "00000000-0000-4000-8000-000000000002") {
     throw new AuthError("Admin credentials are managed in Railway.", 400);
   }

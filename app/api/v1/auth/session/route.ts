@@ -5,8 +5,18 @@ import {
   SESSION_COOKIE,
   SESSION_IDLE_MS
 } from "@/lib/auth";
+import { publicRoute } from "@/lib/api/guard";
 
-export async function GET() {
+/**
+ * Authenticates internally rather than through `guard`, because `refreshSession`
+ * both verifies the session against the database and rotates its token. Running
+ * `guard`'s check first would verify the same session twice per poll, and the
+ * client polls this on an interval.
+ *
+ * Rate limited on the `auth` tier because this is the endpoint that mints a
+ * fresh token, so it is the one worth bounding if a cookie is being replayed.
+ */
+export const GET = publicRoute(async () => {
   try {
     const session = await refreshSession();
     const response = NextResponse.json({
@@ -33,4 +43,4 @@ export async function GET() {
       error: error instanceof Error ? error.message : "unauthorized"
     }, { status: error instanceof AuthError ? error.status : 401 });
   }
-}
+}, { rateLimit: "auth" });

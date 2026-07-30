@@ -26,6 +26,7 @@ import { createClientChangeSet, submitClientChangeSet } from "@/lib/client-chang
 import { parseJson } from "@/lib/http";
 import { isValidWorkflowRequest } from "@/lib/internal-auth";
 import { invokeMcpTool } from "@/lib/mcp/platform";
+import { logResearchQuery } from "@/lib/observability/logger";
 import { getRunResearchCostCents } from "@/lib/research/engine";
 import { repository } from "@/lib/repository";
 import {
@@ -283,6 +284,14 @@ export async function POST(request: Request) {
           type: "run.research_reused",
           message: `Reused earlier campaign evidence for "${input.query.slice(0, 120)}" ` +
             `(${reuse.matchKind} match on "${reuse.matchedQuery?.slice(0, 120)}").`
+        });
+        logResearchQuery({
+          runId: input.runId,
+          provider: `campaign_pool:${reuse.matchKind}`,
+          costCents: 0,
+          resultCount: 0,
+          cacheState: "reused",
+          status: "completed"
         });
         return NextResponse.json({ result: reuse.evidence, reused: true });
       }

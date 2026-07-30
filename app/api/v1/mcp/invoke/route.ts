@@ -4,6 +4,7 @@ import { parseJson } from "@/lib/http";
 import { clampCostCeiling, invokeMcpTool } from "@/lib/mcp/platform";
 import { repository } from "@/lib/repository";
 
+import { guard } from "@/lib/api/guard";
 const schema = z.object({
   toolName: z.string().trim().min(1).max(200),
   arguments: z.record(z.string(), z.unknown()).default({}),
@@ -15,7 +16,7 @@ const schema = z.object({
   maxCostCents: z.number().int().min(0).nullable().optional()
 });
 
-export async function POST(request: Request) {
+export const POST = guard(async (request) => {
   const parsed = await parseJson(request, schema);
   if (parsed.error) return parsed.error;
   const agents = await repository.listAgentDefinitions();
@@ -48,4 +49,4 @@ export async function POST(request: Request) {
       error: error instanceof Error ? error.message : "MCP invocation failed."
     }, { status: 403 });
   }
-}
+});

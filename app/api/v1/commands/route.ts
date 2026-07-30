@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { guard } from "@/lib/api/guard";
 import { parseJson } from "@/lib/http";
 import { repository } from "@/lib/repository";
-import { currentSession } from "@/lib/auth";
 
 const schema = z.object({
   page: z.string().trim().min(1).max(60),
@@ -18,8 +18,12 @@ const schema = z.object({
   }).optional()
 });
 
-export async function POST(request: Request) {
-  const actor = await currentSession();
+/**
+ * `expensive` because a command is the head of every agent run. Creating one is
+ * cheap; what it authorizes is not, and a client retrying in a loop would queue
+ * paid work rather than merely reading.
+ */
+export const POST = guard(async (request, { session }) => {
   const parsed = await parseJson(request, schema);
   if (parsed.error) return parsed.error;
   const command = await repository.createCommand({
@@ -30,6 +34,6 @@ export async function POST(request: Request) {
       page: parsed.data.page,
       projectId: parsed.data.projectId ?? null
     }
-  }, actor.userId);
+  }, session.userId);
   return NextResponse.json({ data: command }, { status: 201 });
-}
+}, { rateLimit: "expensive" });
