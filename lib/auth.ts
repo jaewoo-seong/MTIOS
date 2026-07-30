@@ -208,12 +208,50 @@ export async function currentSession(options: { admin?: boolean; allowPasswordCh
   return claims;
 }
 
+/**
+ * Rotating on every poll is what made concurrent requests fail. The client
+ * loads several endpoints in parallel and polls this one among them; the
+ * moment a rotation lands, every sibling request still carrying the previous
+ * cookie fails its `tokenHash` match and comes back 401. The reads retry and
+ * succeed, so nothing breaks - but the app reports "unauthorized" on
+ * essentially every page load, which teaches an operator to ignore the one
+ * message that should never be ignored.
+ *
+ * Rotating only in the back half of the idle window keeps the security
+ * properties that matter - a bounded token lifetime and a fresh nonce - while
+ * reducing rotations from "every few seconds" to at most one per six hours.
+ *
+ * It narrows the race rather than closing it: a rotation that does happen
+ * still invalidates in-flight requests holding the old cookie. Closing it
+ * entirely means honouring the previous token for a few seconds after
+ * rotation, which needs a column to remember it in.
+ */
+export const SESSION_ROTATE_AFTER_MS = SESSION_IDLE_MS / 2;
+
+export function shouldRotateSession(claimsExpiresAt: number, now = Date.now()) {
+  return claimsExpiresAt - now <= SESSION_ROTATE_AFTER_MS;
+}
+
 export async function refreshSession() {
+  const cookieStore = await cookies();
+  const currentToken = cookieStore.get(SESSION_COOKIE)?.value;
   const claims = await currentSession({ allowPasswordChange: true });
   const database = requireDatabase();
   const [session] = await database.select().from(userSessions)
     .where(eq(userSessions.id, claims.sessionId)).limit(1);
   if (!session || session.revokedAt) throw new AuthError("unauthorized", 401);
+
+  // Early in the window, prove liveness without invalidating the cookie any
+  // sibling request is currently using. `idleExpiresAt` is deliberately left
+  // alone: it must keep matching the `expiresAt` claim inside the token, or
+  // the two expiry checks in verifySessionToken would disagree.
+  if (currentToken && !shouldRotateSession(claims.expiresAt)) {
+    await database.update(userSessions)
+      .set({ lastSeenAt: new Date() })
+      .where(eq(userSessions.id, claims.sessionId));
+    return { token: currentToken, claims, rotated: false };
+  }
+
   const expiresAt = Math.min(
     Date.now() + SESSION_IDLE_MS,
     session.absoluteExpiresAt.getTime()
@@ -230,7 +268,7 @@ export async function refreshSession() {
     lastSeenAt: new Date(),
     idleExpiresAt: new Date(expiresAt)
   }).where(eq(userSessions.id, claims.sessionId));
-  return { token, claims: nextClaims };
+  return { token, claims: nextClaims, rotated: true };
 }
 
 /**
