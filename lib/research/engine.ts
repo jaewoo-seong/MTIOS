@@ -186,12 +186,13 @@ export async function runResearchQuery(input: {
   let fallbackFrom: string | null = null;
   for (const definition of candidates) {
     if (used >= queryBudget || evidence.length >= (input.maxResults ?? 20)) break;
-    if (definition.requiresCredential && definition.credentialEnv &&
-        !process.env[definition.credentialEnv]) {
+    const credentials = configuredCredentials(definition);
+    if (definition.requiresCredential && credentials.length === 0) {
       issues.push({
         provider: definition.key,
         state: "unavailable",
-        message: `${definition.credentialEnv} is not configured.`
+        message: `${[definition.credentialEnv, ...(definition.fallbackCredentialEnvs ?? [])]
+          .filter(Boolean).join(" / ")} is not configured.`
       });
       fallbackFrom = definition.key;
       continue;
@@ -227,7 +228,8 @@ export async function runResearchQuery(input: {
       input.language ?? "en",
       fallbackFrom,
       { projectId: input.projectId, runId: input.runId ?? null },
-      options
+      options,
+      credentials
     );
     if (result.issue) {
       issues.push(result.issue);
@@ -270,6 +272,13 @@ export async function runResearchQuery(input: {
   return { queryId, evidence, issues, coverage, costCents };
 }
 
+/** Env var names for this provider that actually hold a value, in priority order. */
+export function configuredCredentials(provider: ResearchProviderDefinition) {
+  return [provider.credentialEnv, ...(provider.fallbackCredentialEnvs ?? [])]
+    .filter((name): name is string => Boolean(name))
+    .filter((name) => Boolean(process.env[name]));
+}
+
 async function queryProvider(
   queryId: string,
   providerId: string,
@@ -282,7 +291,8 @@ async function queryProvider(
     fetcher?: Fetcher;
     sleep?: (milliseconds: number) => Promise<void>;
     now?: () => Date;
-  }
+  },
+  credentials: string[] = configuredCredentials(provider)
 ) {
   const started = Date.now();
   const cacheKey = hash(`${provider.key}|${language}|${query.trim().toLowerCase()}`);
@@ -294,6 +304,42 @@ async function queryProvider(
     });
     return { evidence, issue: null };
   }
+
+  // One pass per key. A key that is rate-limited or out of quota is a fact
+  // about that key, not about the provider, so the spare key gets a full
+  // attempt before the query gives up and moves to a different service.
+  const keys = credentials.length > 0 ? credentials : [null];
+  let issue: { provider: string; state: string; message: string } | null = null;
+  for (const [index, credentialEnv] of keys.entries()) {
+    const attempt = await queryProviderWithKey(
+      queryId, providerId, provider, query, language, fallbackFrom, scope, options,
+      credentialEnv, started, cacheKey
+    );
+    if (!attempt.issue) return attempt;
+    issue = attempt.issue;
+    const retryable = attempt.issue.state === "rate_limited" || attempt.issue.state === "unavailable";
+    if (!retryable || index === keys.length - 1) break;
+  }
+  return { evidence: [], issue };
+}
+
+async function queryProviderWithKey(
+  queryId: string,
+  providerId: string,
+  provider: ResearchProviderDefinition,
+  query: string,
+  language: string,
+  fallbackFrom: string | null,
+  scope: { projectId: string; runId: string | null },
+  options: {
+    fetcher?: Fetcher;
+    sleep?: (milliseconds: number) => Promise<void>;
+    now?: () => Date;
+  },
+  credentialEnv: string | null,
+  started: number,
+  cacheKey: string
+) {
   const fetcher = options.fetcher ?? fetch;
   await respectRate(provider, options.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms))));
   let lastErrorMessage = "Provider request failed.";
@@ -305,7 +351,7 @@ async function queryProvider(
         projectId: scope.projectId,
         runId: scope.runId
       });
-      const response = await executeAdapter(provider, query, language, fetcher);
+      const response = await executeAdapter(provider, query, language, fetcher, credentialEnv);
       if (response.status === 429 || response.status === 503) {
         const retryAfterMs = parseRetryAfter(response.headers.get("retry-after"), attempt);
         await persistAttempt(queryId, providerId, {
@@ -372,8 +418,15 @@ async function executeAdapter(
   provider: ResearchProviderDefinition,
   query: string,
   language: string,
-  fetcher: Fetcher
+  fetcher: Fetcher,
+  /**
+   * Which env var supplies this attempt's credential. Passed in rather than
+   * read inline so a provider with more than one key (Tavily) can be retried
+   * on its spare without this function knowing anything about failover.
+   */
+  credentialEnv: string | null = provider.credentialEnv
 ) {
+  const credential = credentialEnv ? process.env[credentialEnv] : undefined;
   const headers: Record<string, string> = {
     accept: "application/json",
     "user-agent": process.env.RESEARCH_USER_AGENT ?? "MTI-Business-OS/1.0 (contact: operator@mti.local)"
@@ -383,11 +436,8 @@ async function executeAdapter(
   let body: string | undefined;
   if (provider.key === "tavily") {
     method = "POST";
-    body = JSON.stringify({ api_key: process.env.TAVILY_API_KEY, query, max_results: 10 });
+    body = JSON.stringify({ api_key: credential, query, max_results: 10 });
     headers["content-type"] = "application/json";
-  } else if (provider.key === "brave") {
-    url += `?q=${encodeURIComponent(query)}&count=10`;
-    headers["x-subscription-token"] = process.env.BRAVE_SEARCH_API_KEY ?? "";
   } else if (provider.key === "sec_edgar") {
     url += `?q=${encodeURIComponent(query)}&dateRange=all`;
   } else if (provider.key === "us_census") {

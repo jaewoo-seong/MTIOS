@@ -13,6 +13,13 @@ export type ResearchProviderDefinition = {
   category: ResearchCategory[];
   baseUrl: string;
   credentialEnv: string | null;
+  /**
+   * Additional keys for the SAME provider, tried in order after
+   * `credentialEnv` is exhausted or rate-limited. Distinct from provider
+   * fallback: a spare key keeps the chosen provider serving instead of
+   * handing the query to a different service with different coverage.
+   */
+  fallbackCredentialEnvs?: string[];
   requiresCredential: boolean;
   priority: number;
   requestsPerSecond: number;
@@ -32,6 +39,7 @@ export const researchProviderCatalog: ResearchProviderDefinition[] = [
     category: ["web", "company"],
     baseUrl: "https://api.tavily.com/search",
     credentialEnv: "TAVILY_API_KEY",
+    fallbackCredentialEnvs: ["TAVILY_API_KEY_BACKUP"],
     requiresCredential: true,
     priority: 10,
     requestsPerSecond: 2,
@@ -43,23 +51,11 @@ export const researchProviderCatalog: ResearchProviderDefinition[] = [
     qualityScore: 70,
     costCents: 1
   },
-  {
-    key: "brave",
-    name: "Brave Search",
-    category: ["web", "company"],
-    baseUrl: "https://api.search.brave.com/res/v1/web/search",
-    credentialEnv: "BRAVE_SEARCH_API_KEY",
-    requiresCredential: true,
-    priority: 20,
-    requestsPerSecond: 1,
-    concurrency: 1,
-    dailyQueryLimit: null,
-    cacheTtlSeconds: 86400,
-    policyUrl: "https://api-dashboard.search.brave.com/documentation/guides/rate-limiting",
-    policy: { role: "broad web fallback", respectRetryAfter: true },
-    qualityScore: 70,
-    costCents: 1
-  },
+  // Brave was removed deliberately. Tavily is the only general web-search
+  // provider: two Tavily keys (see fallbackCredentialEnvs above) give
+  // redundancy within one service whose result shape and coverage the
+  // normalizer already handles, rather than silently switching to a provider
+  // with different ranking and different licensing.
   {
     key: "sec_edgar",
     name: "SEC EDGAR",
@@ -223,8 +219,11 @@ export const researchProviderCatalog: ResearchProviderDefinition[] = [
   },
   {
     key: "wikimedia",
+    // Reference only. It used to also claim "web", which made it the silent
+    // fallback for general web search — returning encyclopedia articles when
+    // Tavily failed, which reads as thin results rather than as an outage.
     name: "Wikimedia",
-    category: ["reference", "web"],
+    category: ["reference"],
     baseUrl: "https://en.wikipedia.org/w/api.php",
     credentialEnv: null,
     requiresCredential: false,

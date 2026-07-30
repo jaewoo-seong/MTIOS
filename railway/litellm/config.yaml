@@ -1,12 +1,26 @@
 model_list:
+  # `model` comes from EXECUTIVE_MODEL, not a literal. It used to be pinned to
+  # openrouter/anthropic/claude-3.5-haiku while lib/ai/model-policy.ts read
+  # EXECUTIVE_MODEL for the Settings display — so changing that variable moved
+  # the label and nothing else, and a premium reasoning model could not
+  # actually be selected. Same class of bug as the OPENROUTER_FREE_MODEL one
+  # below; fixed the same way.
   - model_name: executive_reasoning
     litellm_params: &executive
-      model: openrouter/anthropic/claude-3.5-haiku
+      model: os.environ/EXECUTIVE_MODEL
       api_key: os.environ/OPENROUTER_API_KEY
   - model_name: executive_review
     litellm_params: *executive
+
+  # premium_fallback is what an admin approves when free routes are exhausted,
+  # so it reads its own variable — sharing the executive alias made "approve a
+  # premium fallback" silently mean "use the executive model", which is not
+  # necessarily the same choice. lib/ai/usage.ts already reads
+  # PREMIUM_FALLBACK_MODEL; this makes that read meaningful.
   - model_name: premium_fallback
-    litellm_params: *executive
+    litellm_params:
+      model: os.environ/PREMIUM_FALLBACK_MODEL
+      api_key: os.environ/OPENROUTER_API_KEY
 
   # `model` is sourced from OPENROUTER_FREE_MODEL rather than a literal, so the
   # value the Settings page displays (lib/ai/model-policy.ts reads the same env

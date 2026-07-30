@@ -50,16 +50,55 @@ Noto CJK fonts for Korean OCR and exports.
 
 Configure full LiteLLM model identifiers, not short provider aliases:
 
-- `EXECUTIVE_MODEL`
+- `EXECUTIVE_MODEL` — planning and review
+- `PREMIUM_FALLBACK_MODEL` — the admin-approved escalation when free routes
+  are exhausted; deliberately its own variable rather than an alias of
+  `EXECUTIVE_MODEL`, so approving a premium fallback is a real choice
 - `NVIDIA_WORKER_MODEL`
 - `NVIDIA_EMBEDDING_MODEL`
 - `NVIDIA_RERANKING_MODEL`
 - `OPENROUTER_FREE_MODEL`
 
+All six live on the **litellm** service, which reads them via
+`os.environ/...`. `EXECUTIVE_MODEL`, `NVIDIA_WORKER_MODEL`, and
+`OPENROUTER_FREE_MODEL` are additionally read by the **app**
+(`lib/ai/model-policy.ts`, `lib/ai/usage.ts`) for the Settings display and
+quota math, so set those on both — if the two disagree, Settings shows a model
+that is not the one being invoked.
+
+> **The litellm service does not deploy from GitHub.** Its build context is a
+> local upload (`Dockerfile` + `config.yaml`, ~631 bytes) — deployments carry
+> no commit metadata, unlike `app`. Editing
+> `railway/litellm/config.yaml` in the repo changes nothing in production
+> until you run `railway up` from `railway/litellm/`. Verified 2026-07-30: the
+> running proxy had `openrouter/anthropic/claude-3.5-haiku` registered, the
+> literal that the repo had already replaced with `os.environ/EXECUTIVE_MODEL`.
+> Set the variables *before* uploading a config that references them.
+
 Keep `NVIDIA_PRODUCTION_APPROVED=false` until commercial use, retention,
 privacy, regional availability, quota, and reliability have been reviewed.
-OpenRouter free remains testing-only. Rotate any credential ever pasted into a
-chat or log before deployment.
+Note that `candidates` in `lib/ai/model-policy.ts` currently drives only quota
+math and the Settings display — it never changes which `model_name` LiteLLM is
+asked for, so NVIDIA receives no automatic traffic regardless of this flag.
+`worker_nvidia` is the one route that reaches it directly.
+
+## Web search
+
+Tavily is the only general web-search provider. Set both keys on **app**
+(`lib/research/engine.ts` runs in-process there, not in `mcp-tools`):
+
+- `TAVILY_API_KEY` — primary
+- `TAVILY_API_KEY_BACKUP` — spare, tried automatically when the primary is
+  rate-limited or out of quota
+
+Brave was removed deliberately, and Wikimedia no longer claims the `web`
+category. Redundancy comes from a second key on the same service rather than a
+different search engine, so a Tavily outage surfaces as an outage instead of
+silently returning encyclopedia results that read as thin coverage. Providers
+self-seed from `researchProviderCatalog` and gate purely on the env var being
+present — there is no database row to create.
+
+Rotate any credential ever pasted into a chat or log before deployment.
 
 ## Production gate
 

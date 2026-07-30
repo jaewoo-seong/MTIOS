@@ -10,14 +10,14 @@ import { researchProviderCatalog } from "@/lib/research/providers";
 
 const originalEnvironment = {
   TAVILY_API_KEY: process.env.TAVILY_API_KEY,
-  BRAVE_SEARCH_API_KEY: process.env.BRAVE_SEARCH_API_KEY
+  TAVILY_API_KEY_BACKUP: process.env.TAVILY_API_KEY_BACKUP
 };
 
 afterEach(() => {
   if (originalEnvironment.TAVILY_API_KEY === undefined) delete process.env.TAVILY_API_KEY;
   else process.env.TAVILY_API_KEY = originalEnvironment.TAVILY_API_KEY;
-  if (originalEnvironment.BRAVE_SEARCH_API_KEY === undefined) delete process.env.BRAVE_SEARCH_API_KEY;
-  else process.env.BRAVE_SEARCH_API_KEY = originalEnvironment.BRAVE_SEARCH_API_KEY;
+  if (originalEnvironment.TAVILY_API_KEY_BACKUP === undefined) delete process.env.TAVILY_API_KEY_BACKUP;
+  else process.env.TAVILY_API_KEY_BACKUP = originalEnvironment.TAVILY_API_KEY_BACKUP;
 });
 
 const ids = () => ({
@@ -32,11 +32,15 @@ const json = (value: unknown, status = 200, headers?: HeadersInit) =>
 
 describe("research provider governance", () => {
   it("registers every planned provider with policy, limits, and credentials", () => {
+    // Brave is deliberately absent: Tavily is the only general web-search
+    // provider, with a second Tavily key for redundancy instead.
     expect(researchProviderCatalog.map((item) => item.key)).toEqual([
-      "tavily", "brave", "sec_edgar", "us_census", "world_bank", "fred",
+      "tavily", "sec_edgar", "us_census", "world_bank", "fred",
       "korean_public_data", "kosis", "openalex", "crossref",
       "semantic_scholar", "wikimedia", "wikidata"
     ]);
+    expect(researchProviderCatalog.filter((item) => item.category.includes("web")).map((item) => item.key))
+      .toEqual(["tavily"]);
     for (const provider of researchProviderCatalog) {
       expect(provider.policyUrl).toMatch(/^https:/);
       expect(provider.requestsPerSecond).toBeGreaterThan(0);
@@ -51,76 +55,92 @@ describe("research provider governance", () => {
 });
 
 describe("research execution", () => {
-  it("uses bounded provider fallback and preserves original cited evidence", async () => {
-    process.env.TAVILY_API_KEY = "test";
-    process.env.BRAVE_SEARCH_API_KEY = "test";
-    let tavilyCalls = 0;
+  it("falls over to the backup Tavily key and preserves original cited evidence", async () => {
+    process.env.TAVILY_API_KEY = "primary-key";
+    process.env.TAVILY_API_KEY_BACKUP = "backup-key";
+    const keysUsed: string[] = [];
     const result = await runResearchQuery({
       ...ids(),
-      query: `fallback-${crypto.randomUUID()}`,
+      query: `failover-${crypto.randomUUID()}`,
       category: "web",
       queryBudget: 2
     }, {
       sleep: async () => undefined,
-      fetcher: async (url) => {
-        if (String(url).includes("tavily")) {
-          tavilyCalls += 1;
-          throw new Error("Primary provider unavailable.");
-        }
+      fetcher: async (_url, init) => {
+        const key = JSON.parse(String(init?.body ?? "{}")).api_key as string;
+        keysUsed.push(key);
+        // The primary key is out of quota; the spare must get a real attempt.
+        if (key === "primary-key") return json({ detail: "usage limit" }, 429);
         return json({
-          web: {
-            results: [{
-              title: "Fallback result",
-              url: "https://example.com/fallback",
-              description: "Evidence returned by bounded fallback."
-            }]
-          }
+          results: [{
+            title: "Backup key result",
+            url: "https://example.com/backup",
+            content: "Evidence returned after key failover."
+          }]
         });
       }
     });
-    expect(tavilyCalls).toBe(3);
-    expect(result.coverage.providersAttempted).toBe(2);
+
+    expect(keysUsed.filter((key) => key === "primary-key").length).toBe(3); // retried, then abandoned
+    expect(keysUsed).toContain("backup-key");
+    // Still Tavily — failover must not hand the query to a different service.
     expect(result.evidence[0]).toMatchObject({
-      provider: "brave",
-      publisher: "Brave Search",
-      url: "https://example.com/fallback",
+      provider: "tavily",
+      url: "https://example.com/backup",
       cacheState: "miss"
     });
     expect(result.evidence[0].citation).toContain("retrieved");
-    expect(result.evidence[0].originalEvidence).toMatchObject({ title: "Fallback result" });
+    expect(result.evidence[0].originalEvidence).toMatchObject({ title: "Backup key result" });
+  });
+
+  it("does not fall back to another provider when Tavily has no key at all", async () => {
+    delete process.env.TAVILY_API_KEY;
+    delete process.env.TAVILY_API_KEY_BACKUP;
+    let calls = 0;
+
+    const result = await runResearchQuery({
+      ...ids(),
+      query: `no-key-${crypto.randomUUID()}`,
+      category: "web",
+      queryBudget: 2
+    }, { sleep: async () => undefined, fetcher: async () => { calls += 1; return json({}); } });
+
+    // An unconfigured web search must surface as an outage, not quietly return
+    // encyclopedia results that look like thin search coverage.
+    expect(calls).toBe(0);
+    expect(result.evidence).toEqual([]);
     expect(result.issues).toContainEqual(expect.objectContaining({
       provider: "tavily",
-      state: "unavailable"
+      state: "unavailable",
+      message: expect.stringContaining("TAVILY_API_KEY / TAVILY_API_KEY_BACKUP")
     }));
   });
 
+  // Uses the "reference" category: wikimedia is a reference provider, not a
+  // web-search fallback, so caching is exercised where it actually applies.
   it("caches normalized source responses and exposes source coverage", async () => {
     delete process.env.TAVILY_API_KEY;
-    delete process.env.BRAVE_SEARCH_API_KEY;
+    delete process.env.TAVILY_API_KEY_BACKUP;
     const query = `cache-${crypto.randomUUID()}`;
     let calls = 0;
+    // Wikidata shape: it has the lowest priority number among reference
+    // providers, so with queryBudget 1 it is the one that gets called.
     const fetcher = async () => {
       calls += 1;
       return json({
-        query: {
-          search: [{
-            pageid: 42,
-            title: "Cache evidence",
-            snippet: "Reusable source evidence."
-          }]
-        }
+        search: [{ id: "Q42", label: "Cache evidence", description: "Reusable source evidence." }]
       });
     };
     const first = await runResearchQuery({
-      ...ids(), query, category: "web", queryBudget: 1
+      ...ids(), query, category: "reference", queryBudget: 1
     }, { fetcher, sleep: async () => undefined });
     const second = await runResearchQuery({
-      ...ids(), query, category: "web", queryBudget: 1
+      ...ids(), query, category: "reference", queryBudget: 1
     }, { fetcher, sleep: async () => undefined });
     expect(calls).toBe(1);
     expect(first.evidence[0].cacheState).toBe("miss");
     expect(second.evidence[0].cacheState).toBe("hit");
-    expect(second.coverage.providersAvailable).toEqual(["wikimedia"]);
+    expect(second.coverage.providersAvailable).toEqual(["wikidata"]);
   });
 
   it("retries rate limits with Retry-After and marks stale academic evidence", async () => {
