@@ -23,13 +23,6 @@ const haiku: ModelCandidate = {
   productionApproved: true,
   licensingStatus: "approved"
 };
-const nvidia: ModelCandidate = {
-  provider: "nvidia",
-  modelEnv: "NVIDIA_WORKER_MODEL",
-  pricingClass: "free",
-  productionApproved: false,
-  licensingStatus: "testing_only"
-};
 const openRouterFree: ModelCandidate = {
   provider: "openrouter",
   modelEnv: "OPENROUTER_FREE_MODEL",
@@ -38,7 +31,15 @@ const openRouterFree: ModelCandidate = {
   licensingStatus: "testing_only"
 };
 
-const workerCandidates = [nvidia, openRouterFree] as const;
+/**
+ * OpenRouter only. The NVIDIA candidate was removed with its LiteLLM entries:
+ * leaving it listed would have made evaluateFreeRoute check quota for a
+ * provider that has no credentials and no reachable route, and shown a
+ * provider in Settings that cannot serve a request.
+ *
+ * `provider` still admits "nvidia" so re-adding it is a one-line change.
+ */
+const workerCandidates = [openRouterFree] as const;
 
 export const modelRoutePolicies: Record<ModelRoute, ModelRoutePolicy> = {
   executive_reasoning: { purpose: "Planning and clarification", maxCostMicros: 300_000, structuredOutput: true, candidates: [haiku] },
@@ -50,8 +51,13 @@ export const modelRoutePolicies: Record<ModelRoute, ModelRoutePolicy> = {
   worker_structured: { purpose: "Structured extraction", maxCostMicros: 80_000, structuredOutput: true, candidates: workerCandidates },
   worker_translation: { purpose: "English and Korean translation", maxCostMicros: 80_000, structuredOutput: false, candidates: workerCandidates },
   worker_fast: { purpose: "Fast classification", maxCostMicros: 30_000, structuredOutput: true, candidates: workerCandidates },
-  multilingual_embedding: { purpose: "Multilingual embeddings", maxCostMicros: 10_000, structuredOutput: false, candidates: workerCandidates },
-  multilingual_reranking: { purpose: "Multilingual reranking", maxCostMicros: 20_000, structuredOutput: false, candidates: workerCandidates },
+  // These two have no LiteLLM entry while OpenRouter is the only provider —
+  // it serves no embedding models. Calls fail and retrieval falls back to
+  // lexical scoring by design. The candidate list is kept non-empty because
+  // the error path in app/api/internal/model/route.ts reads candidates[0];
+  // it describes what WOULD serve the route, not something that works today.
+  multilingual_embedding: { purpose: "Multilingual embeddings (unserved: no embedding provider configured)", maxCostMicros: 10_000, structuredOutput: false, candidates: workerCandidates },
+  multilingual_reranking: { purpose: "Multilingual reranking (unserved: no reranking provider configured)", maxCostMicros: 20_000, structuredOutput: false, candidates: workerCandidates },
   premium_fallback: { purpose: "Admin-approved premium fallback", maxCostMicros: 300_000, structuredOutput: true, candidates: [haiku] }
 };
 

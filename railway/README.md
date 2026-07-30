@@ -50,21 +50,47 @@ Noto CJK fonts for Korean OCR and exports.
 
 Configure full LiteLLM model identifiers, not short provider aliases:
 
+**OpenRouter is the only configured provider.** One key,
+`OPENROUTER_API_KEY`, serves every route — free and paid alike. Three model
+variables:
+
 - `EXECUTIVE_MODEL` — planning and review
 - `PREMIUM_FALLBACK_MODEL` — the admin-approved escalation when free routes
   are exhausted; deliberately its own variable rather than an alias of
   `EXECUTIVE_MODEL`, so approving a premium fallback is a real choice
-- `NVIDIA_WORKER_MODEL`
-- `NVIDIA_EMBEDDING_MODEL`
-- `NVIDIA_RERANKING_MODEL`
-- `OPENROUTER_FREE_MODEL`
+- `OPENROUTER_FREE_MODEL` — the seven worker routes
 
-All six live on the **litellm** service, which reads them via
-`os.environ/...`. `EXECUTIVE_MODEL`, `NVIDIA_WORKER_MODEL`, and
-`OPENROUTER_FREE_MODEL` are additionally read by the **app**
-(`lib/ai/model-policy.ts`, `lib/ai/usage.ts`) for the Settings display and
-quota math, so set those on both — if the two disagree, Settings shows a model
-that is not the one being invoked.
+All three live on the **litellm** service, which reads them via
+`os.environ/...`. `EXECUTIVE_MODEL` and `OPENROUTER_FREE_MODEL` are
+additionally read by the **app** (`lib/ai/model-policy.ts`,
+`lib/ai/usage.ts`) for the Settings display and quota math, so set those on
+both — if the two disagree, Settings shows a model that is not the one being
+invoked.
+
+When choosing a free model, check `supported_parameters` on
+`https://openrouter.ai/api/v1/models` first: several free models support
+`tools` but **not** `response_format`, which breaks the structured worker
+routes (`worker_structured`, `worker_research`) and the Phase 13 Scouting
+Loop. `openrouter/free` is an auto-router that supports tools, JSON, and
+reasoning, and fails over across free models as quotas exhaust.
+
+### No embeddings, by choice
+
+`multilingual_embedding` and `multilingual_reranking` have **no LiteLLM
+entry**: OpenRouter serves no embedding models at all (its catalog outputs
+only text, image, and audio). Semantic retrieval is therefore unavailable and
+`lib/context/retrieval.ts` degrades to lexical scoring, tagging results
+`lexical_fallback` — a path it handles deliberately rather than failing.
+
+To restore semantic search, add an embedding provider to
+`railway/litellm/config.yaml` (NVIDIA NIM, OpenAI, Voyage, Cohere) with its
+model variable. No app code needs to change.
+
+NVIDIA support was removed rather than left half-wired: entries pointing at
+unset `NVIDIA_*` variables would fail the config at startup, and a candidate
+listed in `lib/ai/model-policy.ts` with no reachable route would have made
+Settings advertise a provider that cannot serve a request.
+`ModelCandidate.provider` still admits `"nvidia"`, so re-adding it is small.
 
 > **The litellm service does not deploy from GitHub.** Its build context is a
 > local upload (`Dockerfile` + `config.yaml`, ~631 bytes) — deployments carry
@@ -75,12 +101,11 @@ that is not the one being invoked.
 > literal that the repo had already replaced with `os.environ/EXECUTIVE_MODEL`.
 > Set the variables *before* uploading a config that references them.
 
-Keep `NVIDIA_PRODUCTION_APPROVED=false` until commercial use, retention,
-privacy, regional availability, quota, and reliability have been reviewed.
-Note that `candidates` in `lib/ai/model-policy.ts` currently drives only quota
-math and the Settings display — it never changes which `model_name` LiteLLM is
-asked for, so NVIDIA receives no automatic traffic regardless of this flag.
-`worker_nvidia` is the one route that reaches it directly.
+`NVIDIA_PRODUCTION_APPROVED` is moot while no NVIDIA candidate exists — the
+flag gates a candidate, it cannot conjure one. Leave it unset. Note also that
+`candidates` in `lib/ai/model-policy.ts` drives only quota math and the
+Settings display; it never changes which `model_name` LiteLLM is asked for, so
+adding a second candidate does not by itself route traffic to it.
 
 ## Web search
 

@@ -12,8 +12,10 @@ describe("model routing policy", () => {
     expect(modelRoutePolicies.worker_research.purpose).toMatch(/research/i);
     expect(modelRoutePolicies.worker_translation.purpose).toMatch(/translation/i);
     expect(modelRoutePolicies.multilingual_embedding.maxCostMicros).toBeGreaterThan(0);
+    // OpenRouter only: the NVIDIA candidate was removed along with its LiteLLM
+    // entries, so nothing lists a provider that cannot serve a request.
     expect(modelRoutePolicies.worker_research.candidates.map((item) => item.provider))
-      .toEqual(["nvidia", "openrouter"]);
+      .toEqual(["openrouter"]);
   });
 
   it("keeps testing-only free providers out of production resolution", () => {
@@ -22,10 +24,14 @@ describe("model routing policy", () => {
     expect(resolveModelPolicy("executive_reasoning").candidates).toHaveLength(1);
   });
 
-  it("allows NVIDIA production promotion only through an explicit approval gate", () => {
+  it("cannot promote NVIDIA into production while no NVIDIA candidate is configured", () => {
     vi.stubEnv("NODE_ENV", "production");
     vi.stubEnv("NVIDIA_PRODUCTION_APPROVED", "true");
-    expect(resolveModelPolicy("worker_research").candidates[0].provider).toBe("nvidia");
+    // The approval flag gates a candidate; it must not conjure one. With
+    // OpenRouter as the only provider, worker routes stay unresolvable in
+    // production rather than quietly routing somewhere unconfigured. The gate
+    // itself still lives in resolveModelPolicy for when NVIDIA is re-added.
+    expect(() => resolveModelPolicy("worker_research")).toThrow(/production-approved/i);
   });
 
   it("allows testing-only candidates through an explicit production test gate", () => {
@@ -34,7 +40,7 @@ describe("model routing policy", () => {
     const policy = resolveModelPolicy("worker_research");
     expect(policy.testingMode).toBe(true);
     expect(policy.candidates.map((candidate) => candidate.provider))
-      .toEqual(["nvidia", "openrouter"]);
+      .toEqual(["openrouter"]);
     expect(policy.candidates.every((candidate) =>
       candidate.licensingStatus === "testing_only"
     )).toBe(true);

@@ -42,42 +42,20 @@ model_list:
   - model_name: worker_fast
     litellm_params: *openrouter_free
 
-  # multilingual_embedding / multilingual_reranking previously had no entry at
-  # all here, so every call failed and lib/context/retrieval.ts silently fell
-  # back to lexical-only search — semantic retrieval was never actually
-  # running. NVIDIA is the only credentialed provider for these two
-  # capabilities (railway/README.md documents NVIDIA_EMBEDDING_MODEL and
-  # NVIDIA_RERANKING_MODEL for exactly this); wiring them here doesn't change
-  # that decision, it completes it.
-  - model_name: multilingual_embedding
-    litellm_params:
-      model: os.environ/NVIDIA_EMBEDDING_MODEL
-      api_base: https://integrate.api.nvidia.com/v1
-      api_key: os.environ/NVIDIA_API_KEY
-  - model_name: multilingual_reranking
-    litellm_params:
-      model: os.environ/NVIDIA_RERANKING_MODEL
-      api_base: https://integrate.api.nvidia.com/v1
-      api_key: os.environ/NVIDIA_API_KEY
-
-  # A reachable NVIDIA chat target for worker-style routes, kept under its own
-  # model_name rather than merged into worker_research etc. On purpose: with
-  # routing_strategy simple-shuffle, adding a second litellm_params entry
-  # under an EXISTING model_name puts it straight into live rotation for that
-  # route. The app has no per-request candidate-selection logic yet (see
-  # lib/ai/model-policy.ts — `candidates` currently only gates quota math and
-  # the Settings display, it never changes which model_name gets called), so
-  # merging would start sending production traffic to NVIDIA the moment
-  # NVIDIA_WORKER_MODEL is set, without the NVIDIA_PRODUCTION_APPROVED gate
-  # actually being consulted at request time. This name lets NVIDIA_WORKER_MODEL
-  # be tested directly (call requestLiteLLM("worker_nvidia", ...)) without
-  # touching existing traffic. Wiring it into automatic selection is
-  # follow-up app work, not a config change.
-  - model_name: worker_nvidia
-    litellm_params:
-      model: os.environ/NVIDIA_WORKER_MODEL
-      api_base: https://integrate.api.nvidia.com/v1
-      api_key: os.environ/NVIDIA_API_KEY
+  # OpenRouter is deliberately the only provider right now. NVIDIA entries
+  # (worker_nvidia, and NVIDIA-backed embedding/reranking) were removed rather
+  # than left pointing at unset NVIDIA_* variables, which would fail this
+  # config at startup for no benefit.
+  #
+  # Consequence, stated plainly because it is a real capability loss:
+  # multilingual_embedding and multilingual_reranking have NO entry here, and
+  # OpenRouter serves no embedding models at all (its catalog outputs only
+  # text, image, and audio). So semantic retrieval is unavailable and
+  # lib/context/retrieval.ts falls back to lexical scoring — which it handles
+  # deliberately, tagging results `lexical_fallback` rather than failing. To
+  # restore semantic search, add an embedding provider here (NVIDIA NIM,
+  # OpenAI, Voyage, Cohere) and set the matching model variable; nothing in
+  # the app needs to change.
 
 router_settings:
   allowed_fails: 2
