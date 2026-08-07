@@ -103,7 +103,10 @@ describe("session refresh rotation", () => {
     else process.env.AUTH_SESSION_SECRET = previousSecret;
   });
 
-  const now = Date.UTC(2026, 6, 30, 12, 0, 0);
+  // Keep the signed test cookie live regardless of the calendar date when
+  // the suite runs. A fixed July 2026 timestamp made this regression test
+  // start failing once that 12-hour session window was in the past.
+  const now = Date.now();
 
   it("does not rotate while the session is in the front half of its window", () => {
     // A freshly issued session has a full idle window ahead of it.
