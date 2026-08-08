@@ -80,6 +80,15 @@ describe("model routing policy", () => {
     expect(writingRanked[0].candidate.longContext).toBe(true);
   });
 
+  it("keeps the premium strategist eligible for structured planning", () => {
+    const planning = inferTaskProfile("executive_reasoning", [{ content: "Create a structured Korean market strategy." }], {
+      languages: ["ko", "en"], structuredOutput: true, expectedOutput: "long"
+    });
+    const ranked = rankModelCandidates(modelRoutePolicies.executive_reasoning, planning);
+    expect(ranked).toHaveLength(1);
+    expect(ranked[0].candidate.gatewayModel).toBe("executive_reasoning");
+  });
+
   it("validates supported chat routes and structured-output controls", () => {
     expect(modelRequestSchema.parse({
       model: "worker_creative",

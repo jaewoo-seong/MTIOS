@@ -43,7 +43,12 @@ const premiumExecutive: ModelCandidate = {
   gatewayModel: "executive_reasoning",
   pricingClass: "paid",
   productionApproved: true,
-  licensingStatus: "approved"
+  licensingStatus: "approved",
+  strengths: ["planning", "review", "research", "writing", "editing", "extraction", "translation", "classification", "creative"],
+  languages: ["en", "ko"],
+  supportsStructuredOutput: true,
+  supportsTools: true,
+  longContext: true
 };
 const premiumFallback: ModelCandidate = { ...premiumExecutive, modelEnv: "PREMIUM_FALLBACK_MODEL", gatewayModel: "premium_fallback" };
 const freeCandidate = (
