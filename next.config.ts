@@ -44,14 +44,13 @@ const securityHeaders = [
    * production - which means it does not need to be environment-dependent.
    */
   { key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" },
-  /** Nothing here uses a camera, microphone, or location. Deny by default. */
+  /** Dictation may use this origin's microphone; camera/location/payment remain denied. */
   { key: "Permissions-Policy", value: "camera=(), microphone=(self), geolocation=(), payment=()" },
   /** Keeps this origin out of another document's browsing-context group. */
   { key: "Cross-Origin-Opener-Policy", value: "same-origin" }
 ];
 
 const nextConfig: NextConfig = {
-  output: "standalone",
   experimental: { serverActions: { bodySizeLimit: "10mb" } },
   /**
    * Server-rendered HTML should never be cached by a shared proxy: every page
