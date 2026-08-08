@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { guard } from "@/lib/api/guard";
 import { checkLiteLLM, modelRoutes } from "@/lib/ai/litellm";
-import { modelRoutePolicies } from "@/lib/ai/model-policy";
+import { gatewayModelCatalog, modelRoutePolicies } from "@/lib/ai/model-policy";
 import { sql } from "@/lib/db/client";
 import { pingRedis } from "@/lib/redis";
 import { configuredCredentials } from "@/lib/research/engine";
@@ -94,7 +94,8 @@ export const GET = guard(async () => {
     const policy = modelRoutePolicies[route];
     const candidate = policy.candidates[0];
     const modelEnv = candidate?.modelEnv ?? null;
-    const resolved = modelEnv ? process.env[modelEnv] ?? null : null;
+    const resolved = gatewayModelCatalog.find((item) => item.gatewayModel === candidate?.gatewayModel)?.model
+      ?? (modelEnv ? process.env[modelEnv] ?? null : null);
     return {
       route,
       purpose: policy.purpose,

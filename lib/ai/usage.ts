@@ -183,6 +183,27 @@ export async function listQuotaPolicies() {
   })));
 }
 
+/** Installs the product defaults idempotently; administrators can edit them afterwards. */
+export async function ensureDefaultQuotaPolicies() {
+  const database = requireDatabase();
+  await database.insert(providerQuotaPolicies).values([
+    { organizationId: MTI_ORGANIZATION_ID, provider: "openrouter", route: "*", period: "daily", allowance: 1000, timezone: "America/Indiana/Indianapolis" },
+    { organizationId: MTI_ORGANIZATION_ID, provider: "tavily", route: "*", period: "monthly", allowance: 1000, timezone: "America/Indiana/Indianapolis" }
+  ]).onConflictDoNothing();
+}
+
+export async function tavilyReportedUsage() {
+  const key = process.env.TAVILY_API_KEY;
+  if (!key) return { configured: false, available: false as const };
+  try {
+    const response = await fetch("https://api.tavily.com/usage", {
+      headers: { Authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(4000), cache: "no-store"
+    });
+    if (!response.ok) return { configured: true, available: false as const };
+    return { configured: true, available: true as const, data: await response.json() };
+  } catch { return { configured: true, available: false as const }; }
+}
+
 export async function createQuotaPolicy(input: {
   provider: string;
   route: string | null;
@@ -243,6 +264,7 @@ export async function analytics(input: {
   route?: string | null;
 }) {
   const database = requireDatabase();
+  await ensureDefaultQuotaPolicies();
   const conditions = [
     gte(modelCalls.createdAt, input.from),
     lte(modelCalls.createdAt, input.to),
@@ -305,6 +327,7 @@ export async function analytics(input: {
     rows,
     quotas: await listQuotaPolicies(),
     providerUsage,
+    providerReported: { tavily: await tavilyReportedUsage() },
     approvals,
     totals: rows.reduce((total, row) => ({
       requests: total.requests + row.requests,

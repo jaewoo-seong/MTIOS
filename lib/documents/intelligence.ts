@@ -125,6 +125,7 @@ export async function ingestDocument(input: {
 
   const kind = detectKind(input.filename, input.mimeType);
   const document = await repository.createDocument({
+    aiGenerated: false,
     folderId: input.folderId,
     projectId: input.projectId,
     title: titleFromFilename(input.filename),

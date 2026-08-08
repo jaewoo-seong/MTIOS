@@ -298,6 +298,7 @@ export interface WorkspaceDocument {
   filename: string;
   mimeType: string;
   sourceKind: DocumentSourceKind;
+  aiGenerated: boolean;
   sizeBytes: number;
   pageCount: number | null;
   wordCount: number;

@@ -10,6 +10,7 @@ const routeSchema = z.enum(modelRoutes);
 const candidateSchema = z.object({
   provider: z.enum(["openrouter", "nvidia"]),
   modelEnv: z.string().min(1),
+  gatewayModel: z.string().min(1).max(100),
   pricingClass: z.enum(["paid", "free"]),
   productionApproved: z.boolean(),
   licensingStatus: z.enum(["approved", "testing_only", "unverified"])
@@ -36,7 +37,7 @@ export const POST = guard(async (request) => {
   const base = modelRoutePolicies[parsed.data.route];
   const unsafePromotion = parsed.data.candidates.some((candidate) => {
     const current = base.candidates.find((item) =>
-      item.provider === candidate.provider && item.modelEnv === candidate.modelEnv
+      item.provider === candidate.provider && item.gatewayModel === candidate.gatewayModel
     );
     return candidate.productionApproved && !current?.productionApproved &&
       !(candidate.provider === "nvidia" && process.env.NVIDIA_PRODUCTION_APPROVED === "true");

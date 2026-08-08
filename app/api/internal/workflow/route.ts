@@ -507,6 +507,7 @@ export async function POST(request: Request) {
         filename: `${document.title}.md`,
         mimeType: "text/markdown",
         sourceKind: "text",
+        aiGenerated: true,
         sizeBytes: Buffer.byteLength(document.markdown, "utf8"),
         pageCount: null,
         wordCount: (document.markdown.trim().match(/\S+/g) ?? []).length,

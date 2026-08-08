@@ -57,17 +57,17 @@ variables:
 - `EXECUTIVE_MODEL` — planning and review
 - `PREMIUM_FALLBACK_MODEL` — the admin-approved escalation; deliberately its own variable rather than an alias of
   `EXECUTIVE_MODEL`, so approving a premium fallback is a real choice
-- `WORKER_MODEL` — the production-approved research, extraction, writing, and editing model used by sub-agents
+- Worker aliases are pinned explicitly in `config.yaml` to current OpenRouter
+  `:free` models, specialized for research, long-form writing, multilingual
+  editing/translation, structured extraction, and fast classification.
 
-All three live on the **litellm** service, which reads them via
-`os.environ/...`. `EXECUTIVE_MODEL` and `WORKER_MODEL` are
-additionally read by the **app** (`lib/ai/model-policy.ts`,
-`lib/ai/usage.ts`) for the Settings display and quota math, so set those on
-both — if the two disagree, Settings shows a model that is not the one being
-invoked.
+The two premium variables live on the **litellm** service. Worker model
+changes use the curated LiteLLM aliases and the test/approve/activate flow in
+Settings, so an activated revision changes the model actually invoked without
+a gateway redeploy.
 
-Choose a worker model that supports structured output/JSON because discovery,
-qualification, and dossier query planning depend on it.
+Keep structured-output routes on a catalog model that supports JSON because
+discovery, qualification, and dossier query planning depend on it.
 
 ### No embeddings, by choice
 

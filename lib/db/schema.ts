@@ -400,6 +400,7 @@ export const modelRouteRevisions = pgTable("model_route_revisions", {
     candidates: Array<{
       provider: "openrouter" | "nvidia";
       modelEnv: string;
+      gatewayModel: string;
       pricingClass: "paid" | "free";
       productionApproved: boolean;
       licensingStatus: "approved" | "testing_only" | "unverified";
@@ -488,6 +489,7 @@ export const documents = pgTable("documents", {
   filename: text("filename").notNull(),
   mimeType: text("mime_type").default("application/octet-stream").notNull(),
   sourceKind: text("source_kind").default("unknown").notNull(),
+  aiGenerated: boolean("ai_generated").default(false).notNull(),
   sizeBytes: bigint("size_bytes", { mode: "number" }).default(0).notNull(),
   pageCount: integer("page_count"),
   wordCount: integer("word_count").default(0).notNull(),

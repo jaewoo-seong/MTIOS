@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { modelRoutePolicies } from "@/lib/ai/model-policy";
+import { gatewayModelCatalog, modelRoutePolicies } from "@/lib/ai/model-policy";
 import { checkLiteLLM } from "@/lib/ai/litellm";
 import { db } from "@/lib/db/client";
 import { modelCalls } from "@/lib/db/schema";
@@ -22,6 +22,7 @@ export const GET = guard(async () => {
     health,
     recentCalls,
     revisions,
+    catalog: gatewayModelCatalog,
     routes: Object.entries(modelRoutePolicies).map(([route, policy]) => ({
       route,
       purpose: policy.purpose,
@@ -31,7 +32,8 @@ export const GET = guard(async () => {
         order: index + 1,
         provider: candidate.provider,
         modelEnv: candidate.modelEnv,
-        model: process.env[candidate.modelEnv] ?? "not_configured",
+        gatewayModel: candidate.gatewayModel,
+        model: gatewayModelCatalog.find((item) => item.gatewayModel === candidate.gatewayModel)?.model ?? process.env[candidate.modelEnv] ?? "not_configured",
         pricingClass: candidate.pricingClass,
         productionApproved: candidate.productionApproved,
         licensingStatus: candidate.licensingStatus,

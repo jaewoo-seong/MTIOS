@@ -7,6 +7,7 @@ import {
   FolderPlus,
   Loader2,
   Minimize2,
+  MessageSquareText,
   Pencil,
   Trash2,
   Upload,
@@ -478,6 +479,11 @@ function DocumentModal({
   const [renderedMarkdown, setRenderedMarkdown] = useState(document.markdown);
   const [originalUrl, setOriginalUrl] = useState<string | null>(null);
   const [intelligence, setIntelligence] = useState<DocumentIntelligenceSummary | null>(null);
+  const [reworkOpen, setReworkOpen] = useState(false);
+  const [reworkInstruction, setReworkInstruction] = useState("");
+  const [reworkQuestions, setReworkQuestions] = useState("");
+  const [reworkBusy, setReworkBusy] = useState(false);
+  const [reworkStatus, setReworkStatus] = useState<string | null>(null);
   const getMarkdownRef = useRef<(() => string) | null>(null);
   const registerGetter = useCallback((getter: () => string) => {
     getMarkdownRef.current = getter;
@@ -582,6 +588,32 @@ function DocumentModal({
     }
   }
 
+  async function sendForRework() {
+    if (!document.aiGenerated || !document.projectId || reworkInstruction.trim().length < 2) return;
+    setReworkBusy(true);
+    setReworkStatus(null);
+    try {
+      const response = await fetch(`/api/v1/projects/${document.projectId}/dossiers/${document.id}/revision-requests`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          instruction: reworkInstruction.trim(),
+          questions: reworkQuestions.split("\n").map((item) => item.trim()).filter(Boolean),
+          attachmentDocumentIds: []
+        })
+      });
+      const payload = await response.json().catch(() => null) as { error?: string } | null;
+      if (!response.ok) throw new Error(payload?.error ?? "Could not send this document back to AI.");
+      setReworkInstruction("");
+      setReworkQuestions("");
+      setReworkStatus("Rework queued as a separate version. It does not use a research worker slot.");
+    } catch (reason) {
+      onError(reason instanceof Error ? reason.message : "Could not send this document back to AI.");
+    } finally {
+      setReworkBusy(false);
+    }
+  }
+
   // Cmd/Ctrl+S saves without leaving the editor, as in any desktop word processor.
   useEffect(() => {
     if (!editing) return;
@@ -676,6 +708,12 @@ function DocumentModal({
             </a>
           ))}
 
+          {!editing && document.aiGenerated && document.projectId && (
+            <button className="secondary" onClick={() => setReworkOpen((current) => !current)}>
+              <MessageSquareText size={13} aria-hidden /> {t("Send back to AI")}
+            </button>
+          )}
+
           {editing ? (
             <>
               <button className="secondary" onClick={() => { setEditing(false); setDirty(false); }} disabled={saving}>
@@ -697,6 +735,16 @@ function DocumentModal({
           </button>
         </div>
       </header>
+
+      {!editing && reworkOpen && document.aiGenerated && (
+        <section className="doc-rework-panel" aria-label={t("AI rework request")}>
+          <div><strong>{t("Create a new proposed version")}</strong><span>{t("The current version stays unchanged until you approve the result.")}</span></div>
+          <textarea rows={3} placeholder={t("Describe what the AI should revise, verify, expand, or correct…")} value={reworkInstruction} onChange={(event) => setReworkInstruction(event.target.value)} />
+          <textarea rows={3} placeholder={t("Optional questions — one per line")} value={reworkQuestions} onChange={(event) => setReworkQuestions(event.target.value)} />
+          <button className="primary" disabled={reworkBusy || reworkInstruction.trim().length < 2} onClick={() => void sendForRework()}>{reworkBusy && <Loader2 size={13} className="spin" />} {t("Queue rework")}</button>
+          {reworkStatus && <span className="pill good">{t(reworkStatus)}</span>}
+        </section>
+      )}
 
       {editing ? (
         <DocumentEditor

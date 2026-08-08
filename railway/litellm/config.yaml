@@ -22,24 +22,58 @@ model_list:
       model: os.environ/PREMIUM_FALLBACK_MODEL
       api_key: os.environ/OPENROUTER_API_KEY
 
-  # Research workers use a production-approved paid model. Free/testing-only
-  # models are deliberately excluded from the production dossier pipeline.
+  # Explicit aliases let an approved Settings revision change the real model
+  # at runtime without a gateway redeploy. All worker models are free-tier
+  # OpenRouter models; the logical route selects the specialized default.
+  - model_name: free_research_nemotron
+    litellm_params:
+      model: openrouter/nvidia/nemotron-3-super-120b-a12b:free
+      api_key: os.environ/OPENROUTER_API_KEY
+  - model_name: free_longform_nemotron
+    litellm_params:
+      model: openrouter/nvidia/nemotron-3-ultra-550b-a55b:free
+      api_key: os.environ/OPENROUTER_API_KEY
+  - model_name: free_gemma_multilingual
+    litellm_params:
+      model: openrouter/google/gemma-4-31b-it:free
+      api_key: os.environ/OPENROUTER_API_KEY
+  - model_name: free_gemma_structured
+    litellm_params:
+      model: openrouter/google/gemma-4-26b-a4b-it:free
+      api_key: os.environ/OPENROUTER_API_KEY
+  - model_name: free_fast_nemotron
+    litellm_params:
+      model: openrouter/nvidia/nemotron-nano-9b-v2:free
+      api_key: os.environ/OPENROUTER_API_KEY
+
   - model_name: worker_research
-    litellm_params: &worker
-      model: os.environ/WORKER_MODEL
+    litellm_params:
+      model: openrouter/nvidia/nemotron-3-super-120b-a12b:free
       api_key: os.environ/OPENROUTER_API_KEY
   - model_name: worker_creative
-    litellm_params: *worker
+    litellm_params:
+      model: openrouter/google/gemma-4-31b-it:free
+      api_key: os.environ/OPENROUTER_API_KEY
   - model_name: worker_writing
-    litellm_params: *worker
+    litellm_params:
+      model: openrouter/nvidia/nemotron-3-ultra-550b-a55b:free
+      api_key: os.environ/OPENROUTER_API_KEY
   - model_name: worker_editing
-    litellm_params: *worker
+    litellm_params:
+      model: openrouter/google/gemma-4-31b-it:free
+      api_key: os.environ/OPENROUTER_API_KEY
   - model_name: worker_structured
-    litellm_params: *worker
+    litellm_params:
+      model: openrouter/google/gemma-4-26b-a4b-it:free
+      api_key: os.environ/OPENROUTER_API_KEY
   - model_name: worker_translation
-    litellm_params: *worker
+    litellm_params:
+      model: openrouter/google/gemma-4-31b-it:free
+      api_key: os.environ/OPENROUTER_API_KEY
   - model_name: worker_fast
-    litellm_params: *worker
+    litellm_params:
+      model: openrouter/nvidia/nemotron-nano-9b-v2:free
+      api_key: os.environ/OPENROUTER_API_KEY
 
   # OpenRouter is deliberately the only provider right now. NVIDIA entries
   # (worker_nvidia, and NVIDIA-backed embedding/reranking) were removed rather

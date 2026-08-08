@@ -28,7 +28,7 @@ export const POST = guard<{ revisionId: string }>(async (request, { params }) =>
         } else if (revision.route === "multilingual_reranking") {
           await requestReranking("MTI", ["MTI Korea", "Unrelated"]);
         } else {
-          const response = await requestLiteLLM(revision.route as Parameters<typeof requestLiteLLM>[0], [
+          const response = await requestLiteLLM(revision.configuration.candidates[0]?.gatewayModel ?? revision.route, [
             { role: "user", content: "Return JSON with {\"status\":\"ok\"}." }
           ], {
             maxCostMicros: revision.configuration.maxCostMicros,

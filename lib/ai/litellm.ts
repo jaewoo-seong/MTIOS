@@ -53,7 +53,7 @@ export type ModelRequestOptions = {
 };
 
 export async function requestLiteLLM(
-  model: ModelRoute,
+  model: ModelRoute | string,
   messages: ChatMessage[],
   options: ModelRequestOptions = {}
 ) {
@@ -96,6 +96,13 @@ export function extractToolCalls(response: unknown): ToolCall[] {
     choices?: Array<{ message?: { tool_calls?: ToolCall[] } }>;
   } | null | undefined)?.choices?.[0]?.message;
   return message?.tool_calls ?? [];
+}
+
+/** Reads final text from an OpenAI-compatible chat response. */
+export function extractModelContent(response: unknown): string {
+  const content = (response as { choices?: Array<{ message?: { content?: unknown } }> } | null)?.choices?.[0]?.message?.content;
+  if (typeof content !== "string" || !content.trim()) throw new Error("The model returned no text.");
+  return content;
 }
 
 export async function requestEmbedding(input: string): Promise<number[]> {

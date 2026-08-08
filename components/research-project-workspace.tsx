@@ -184,7 +184,7 @@ function StrategyView({ projectId, workspace, load, busy, setBusy, onError }: {
   return (
     <div className="strategy-layout">
       <section className="surface strategy-conversation">
-        <div className="surface-header"><h2>Research strategist</h2><span>Premium model</span></div>
+        <div className="surface-header"><h2>Research strategist</h2><span>Premium model · stays available while workers run</span></div>
         <div className="strategy-messages">
           {workspace.messages.length === 0 ? (
             <div className="strategy-empty">
@@ -216,6 +216,7 @@ function StrategyView({ projectId, workspace, load, busy, setBusy, onError }: {
       </section>
 
       <aside className="strategy-panel">
+        <div className="strategy-rollout-note">Approved changes apply to queued companies and the next batch. Workers already researching a company finish with the strategy version they claimed.</div>
         {proposed && (
           <StrategyCard strategy={proposed} title="Proposed strategy" action={
             <button className="primary" disabled={busy === "activate"} onClick={() => void activate(proposed.id)}>

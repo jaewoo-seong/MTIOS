@@ -18,12 +18,13 @@ describe("model routing policy", () => {
       .toEqual(["openrouter"]);
   });
 
-  it("resolves production workers only through an approved paid model", () => {
+  it("resolves production workers through an approved free OpenRouter model", () => {
     vi.stubEnv("NODE_ENV", "production");
     const worker = resolveModelPolicy("worker_research");
     expect(worker.candidates).toHaveLength(1);
     expect(worker.candidates[0]).toMatchObject({
-      modelEnv: "WORKER_MODEL", pricingClass: "paid", productionApproved: true
+      modelEnv: "OPENROUTER_FREE_RESEARCH_MODEL", gatewayModel: "free_research_nemotron",
+      pricingClass: "free", productionApproved: true
     });
     expect(resolveModelPolicy("executive_reasoning").candidates).toHaveLength(1);
   });

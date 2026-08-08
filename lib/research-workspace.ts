@@ -334,7 +334,8 @@ export async function createDossierRevisionRequest(input: {
 }) {
   const database = requireDatabase();
   const [document] = await database.select().from(documents).where(and(
-    eq(documents.id, input.documentId), eq(documents.projectId, input.projectId)
+    eq(documents.id, input.documentId), eq(documents.projectId, input.projectId),
+    eq(documents.aiGenerated, true)
   )).limit(1);
   if (!document) return null;
   const [{ revision }] = await database.select({ revision: max(documentRevisions.revision) })

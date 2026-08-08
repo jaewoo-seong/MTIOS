@@ -1033,17 +1033,17 @@ export const repository = {
   },
 
   async createDocument(
-    input: Omit<WorkspaceDocumentDetail, "id" | "createdAt" | "updatedAt">
+    input: Omit<WorkspaceDocumentDetail, "id" | "createdAt" | "updatedAt" | "aiGenerated"> & { aiGenerated?: boolean }
   ): Promise<WorkspaceDocumentDetail> {
     if (!db) {
       const document: StoredDocument = {
-        id: crypto.randomUUID(), createdAt: now(), updatedAt: now(), ...input
+        id: crypto.randomUUID(), createdAt: now(), updatedAt: now(), aiGenerated: false, ...input
       };
       store.documents.unshift(document);
       return document;
     }
     const [row] = await db.insert(documents)
-      .values({ organizationId: MTI_ORGANIZATION_ID, ...input })
+      .values({ organizationId: MTI_ORGANIZATION_ID, aiGenerated: false, ...input })
       .returning();
     return { ...documentRow(row), markdown: row.markdown };
   },
@@ -1246,6 +1246,7 @@ const DOCUMENT_COLUMNS = {
   filename: documents.filename,
   mimeType: documents.mimeType,
   sourceKind: documents.sourceKind,
+  aiGenerated: documents.aiGenerated,
   sizeBytes: documents.sizeBytes,
   pageCount: documents.pageCount,
   wordCount: documents.wordCount,
@@ -1261,6 +1262,7 @@ type DocumentSummaryRow = {
 const documentSummaryRow = (row: DocumentSummaryRow): WorkspaceDocument => ({
   ...row,
   sourceKind: row.sourceKind as WorkspaceDocument["sourceKind"],
+  aiGenerated: row.aiGenerated,
   createdAt: iso(row.createdAt),
   updatedAt: iso(row.updatedAt)
 });
@@ -1273,6 +1275,7 @@ const documentRow = (row: typeof documents.$inferSelect): WorkspaceDocument => (
   filename: row.filename,
   mimeType: row.mimeType,
   sourceKind: row.sourceKind as WorkspaceDocument["sourceKind"],
+  aiGenerated: row.aiGenerated,
   sizeBytes: row.sizeBytes,
   pageCount: row.pageCount,
   wordCount: row.wordCount,

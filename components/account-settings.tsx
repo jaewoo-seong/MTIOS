@@ -175,6 +175,7 @@ type AnalyticsPayload = {
     maximumCostMicros: number; reason: string;
   }>;
   providerUsage: Array<{ provider: string; route: string; source: string; requests: number }>;
+  providerReported: { tavily: { configured: boolean; available: boolean; data?: Record<string, unknown> } };
 };
 
 export function AiAnalyticsSettings({ onError }: { onError: (message: string) => void }) {
@@ -210,6 +211,12 @@ export function AiAnalyticsSettings({ onError }: { onError: (message: string) =>
       onError(error instanceof Error ? error.message : "Quota could not be saved.");
     }
   }
+  const breakdowns = useMemo(() => {
+    const group = (key: "projectName" | "model" | "agentType" | "provider") => Object.entries((data?.rows ?? []).reduce<Record<string, number>>((totals, row) => {
+      const label = row[key] ?? "Unassigned"; totals[label] = (totals[label] ?? 0) + row.requests; return totals;
+    }, {})).sort((a, b) => b[1] - a[1]);
+    return { projects: group("projectName"), models: group("model"), agents: group("agentType"), providers: group("provider") };
+  }, [data]);
   return (
     <section className="surface settings-wide analytics-surface">
       <div className="surface-header">
@@ -223,10 +230,17 @@ export function AiAnalyticsSettings({ onError }: { onError: (message: string) =>
         <>
           <div className="analytics-kpis">
             <Metric label="Requests" value={data.totals.requests.toLocaleString()} />
+            <Metric label="Success rate" value={`${data.totals.requests ? Math.round((data.totals.successes / data.totals.requests) * 100) : 0}%`} />
             <Metric label="Tokens" value={(data.totals.inputTokens + data.totals.outputTokens).toLocaleString()} />
             <Metric label="Fallbacks" value={data.totals.fallbacks.toLocaleString()} />
             <Metric label="Failures" value={data.totals.failures.toLocaleString()} />
             <Metric label="Estimated cost" value={`$${(data.totals.costMicros / 1_000_000).toFixed(4)}`} />
+          </div>
+          <div className="analytics-breakdowns">
+            <Breakdown title="Projects" rows={breakdowns.projects} />
+            <Breakdown title="Models" rows={breakdowns.models} />
+            <Breakdown title="Agents" rows={breakdowns.agents} />
+            <Breakdown title="Providers / API keys" rows={breakdowns.providers} />
           </div>
           <div className="analytics-table">
             <div className="analytics-row analytics-head"><span>Project / user</span><span>Route / model</span><span>Requests</span><span>Tokens</span><span>Latency</span><span>Cost</span></div>
@@ -254,6 +268,7 @@ export function AiAnalyticsSettings({ onError }: { onError: (message: string) =>
               const percent = Math.min(100, (quota.state.used / quota.allowance) * 100);
               return <div className="quota-row" key={quota.id}><div><strong>{quota.provider}</strong><span>{quota.route === "*" ? "All routes" : quota.route} · {quota.period}</span></div><div className="quota-meter"><span style={{ width: `${percent}%` }} /></div><strong>{quota.state.used.toLocaleString()} / {quota.allowance.toLocaleString()}</strong><span>Resets {new Date(quota.state.resetAt).toLocaleString()}</span></div>;
             })}
+            <div className="quota-row"><div><strong>Tavily provider report</strong><span>Live account endpoint · credentials never displayed</span></div><div /><strong>{data.providerReported.tavily.available ? "Connected" : data.providerReported.tavily.configured ? "Unavailable" : "Key missing"}</strong><span>{data.providerReported.tavily.available ? JSON.stringify(data.providerReported.tavily.data) : "Local observed counter remains active"}</span></div>
             {data.providerUsage.map((usage) => <div className="quota-row" key={`${usage.provider}-${usage.route}-${usage.source}`}><div><strong>{usage.provider}</strong><span>{usage.route} · {usage.source}</span></div><div /><strong>{usage.requests.toLocaleString()} requests</strong><span>Selected period</span></div>)}
           </div>
           {data.approvals.length > 0 && <div className="quota-section"><div className="surface-header"><h3><ShieldCheck size={15} /> Premium approvals</h3></div>{data.approvals.map((approval) => <div className="approval-row" key={approval.id}><div><strong>{approval.route}</strong><span>{approval.proposedModel} · up to ${(approval.maximumCostMicros / 1_000_000).toFixed(2)}</span><small>{approval.reason}</small></div><span className={`pill ${approval.status === "pending" ? "warn" : "good"}`}>{approval.status}</span>{approval.status === "pending" && <><button className="primary" onClick={() => void decide(approval.id, "approved", load, onError)}>Approve</button><button className="secondary" onClick={() => void decide(approval.id, "rejected", load, onError)}>Reject</button></>}</div>)}</div>}
@@ -261,6 +276,10 @@ export function AiAnalyticsSettings({ onError }: { onError: (message: string) =>
       )}
     </section>
   );
+}
+
+function Breakdown({ title, rows }: { title: string; rows: Array<[string, number]> }) {
+  return <section className="analytics-breakdown"><h3>{title}</h3>{rows.slice(0, 6).map(([label, count]) => <div key={label}><span title={label}>{label}</span><strong>{count.toLocaleString()}</strong></div>)}{rows.length === 0 && <span className="empty-inline">No activity yet</span>}</section>;
 }
 
 function Metric({ label, value }: { label: string; value: string }) {

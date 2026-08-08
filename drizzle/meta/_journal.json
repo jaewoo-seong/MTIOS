@@ -169,6 +169,13 @@
       "when": 1786146938911,
       "tag": "0023_vengeful_synch",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1786149209409,
+      "tag": "0024_purple_molly_hayes",
+      "breakpoints": true
     }
   ]
 }

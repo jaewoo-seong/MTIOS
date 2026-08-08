@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Archive,
   ArchiveRestore,
@@ -12,6 +12,8 @@ import {
   Loader2,
   LogOut,
   Mail,
+  Mic,
+  MicOff,
   Plus,
   Search,
   Send,
@@ -364,12 +366,12 @@ export function BusinessOS() {
           )}
         </section>
 
-        {page !== "projects" && <ExecutiveCommand
+        {page === "projects" && <ExecutiveCommand
           page={page}
           value={command}
           pending={pendingCommand}
           busy={commandBusy}
-          disabled={false}
+          disabled={!selectedProjectId}
           onChange={setCommand}
           onSubmit={submitCommand}
           onConfirm={confirmCommand}
@@ -714,9 +716,10 @@ type ModelSettingsPayload = {
   health: string;
   recentCalls: Array<{ route: string; provider: string | null; model: string | null; costMicros: number; latencyMs: number; error: string | null }>;
   revisions: Array<{ id: string; route: string; version: number; status: string; testStatus: string }>;
+  catalog: Array<{ gatewayModel: string; model: string; label: string }>;
   routes: Array<{
     route: string; purpose: string; maxCostMicros: number; structuredOutput: boolean;
-    candidates: Array<{ order: number; provider: "openrouter" | "nvidia"; model: string; modelEnv: string; pricingClass: "paid" | "free"; productionApproved: boolean; licensingStatus: "approved" | "testing_only" | "unverified"; enabled: boolean }>;
+    candidates: Array<{ order: number; provider: "openrouter" | "nvidia"; model: string; modelEnv: string; gatewayModel: string; pricingClass: "paid" | "free"; productionApproved: boolean; licensingStatus: "approved" | "testing_only" | "unverified"; enabled: boolean }>;
   }>;
 };
 
@@ -724,7 +727,7 @@ function ModelSettings({ onError }: { onError: (message: string) => void }) {
   const { t } = useI18n();
   const [value, setValue] = useState<ModelSettingsPayload | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const [drafts, setDrafts] = useState<Record<string, { maxCostMicros: number; structuredOutput: boolean }>>({});
+  const [drafts, setDrafts] = useState<Record<string, { maxCostMicros: number; structuredOutput: boolean; gatewayModel: string }>>({});
   const lastSuccessful = value?.recentCalls.find((call) => !call.error);
   const load = useCallback(() => api<ModelSettingsPayload>("/api/v1/settings/models").then((payload) => {
     setValue(payload);
@@ -732,7 +735,8 @@ function ModelSettings({ onError }: { onError: (message: string) => void }) {
       route.route,
       current[route.route] ?? {
         maxCostMicros: route.maxCostMicros,
-        structuredOutput: route.structuredOutput
+        structuredOutput: route.structuredOutput,
+        gatewayModel: route.candidates[0]?.gatewayModel ?? route.route
       }
     ])));
   }), []);
@@ -746,8 +750,8 @@ function ModelSettings({ onError }: { onError: (message: string) => void }) {
           route: route.route,
           maxCostMicros: drafts[route.route]?.maxCostMicros ?? route.maxCostMicros,
           structuredOutput: drafts[route.route]?.structuredOutput ?? route.structuredOutput,
-          candidates: route.candidates.map(({ provider, modelEnv, pricingClass, productionApproved, licensingStatus }) => ({
-            provider, modelEnv, pricingClass, productionApproved, licensingStatus
+          candidates: route.candidates.map(({ provider, modelEnv, gatewayModel, pricingClass, productionApproved, licensingStatus }) => ({
+            provider, modelEnv, gatewayModel: drafts[route.route]?.gatewayModel ?? gatewayModel, pricingClass, productionApproved, licensingStatus
           }))
         })
       });
@@ -796,6 +800,21 @@ function ModelSettings({ onError }: { onError: (message: string) => void }) {
                   ))}
               </div>
               <div className="model-route-controls">
+                {!route.route.startsWith("executive") && route.route !== "premium_fallback" && (
+                  <label className="model-route-control">
+                    {t("Serving model")}
+                    <select value={drafts[route.route]?.gatewayModel ?? route.candidates[0]?.gatewayModel} onChange={(event) => setDrafts((current) => ({
+                      ...current,
+                      [route.route]: {
+                        maxCostMicros: current[route.route]?.maxCostMicros ?? route.maxCostMicros,
+                        structuredOutput: current[route.route]?.structuredOutput ?? route.structuredOutput,
+                        gatewayModel: event.target.value
+                      }
+                    }))}>
+                      {value.catalog.map((item) => <option key={item.gatewayModel} value={item.gatewayModel}>{item.label}</option>)}
+                    </select>
+                  </label>
+                )}
                 <label className="model-route-control">
                   {t("Cost cap")}
                   <input
@@ -808,7 +827,8 @@ function ModelSettings({ onError }: { onError: (message: string) => void }) {
                       ...current,
                       [route.route]: {
                         maxCostMicros: Math.round(Number(event.target.value) * 1_000_000),
-                        structuredOutput: current[route.route]?.structuredOutput ?? route.structuredOutput
+                        structuredOutput: current[route.route]?.structuredOutput ?? route.structuredOutput,
+                        gatewayModel: current[route.route]?.gatewayModel ?? route.candidates[0]?.gatewayModel ?? route.route
                       }
                     }))}
                   />
@@ -821,7 +841,8 @@ function ModelSettings({ onError }: { onError: (message: string) => void }) {
                       ...current,
                       [route.route]: {
                         maxCostMicros: current[route.route]?.maxCostMicros ?? route.maxCostMicros,
-                        structuredOutput: event.target.checked
+                        structuredOutput: event.target.checked,
+                        gatewayModel: current[route.route]?.gatewayModel ?? route.candidates[0]?.gatewayModel ?? route.route
                       }
                     }))}
                   />
@@ -1098,6 +1119,33 @@ function CreateProjectDialog({ onClose, onCreated }: { onClose: () => void; onCr
   });
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [brief, setBrief] = useState("");
+  const [organizing, setOrganizing] = useState(false);
+  const [listening, setListening] = useState(false);
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+
+  async function organizeBrief() {
+    setOrganizing(true); setFormError(null);
+    try {
+      const payload = await api<{ data: { name: string; objective: string; context: string; scope: string; constraints: string[]; budget: string; reviewGates: string[]; outputRequirements: string[]; outputLanguage: "en" | "ko" | "bilingual" | "" } }>("/api/v1/projects/organize-brief", { method: "POST", body: JSON.stringify({ brief }) });
+      const data = payload.data;
+      setForm({ name: data.name, objective: data.objective, context: data.context, scope: data.scope, constraints: data.constraints.join("\n"), budget: data.budget, reviewGates: data.reviewGates.join("\n"), outputRequirements: data.outputRequirements.join("\n"), outputLanguage: data.outputLanguage || "en" });
+    } catch (reason) { setFormError(reason instanceof Error ? reason.message : "Could not organize the brief."); }
+    finally { setOrganizing(false); }
+  }
+
+  function toggleDictation() {
+    if (listening) { recognitionRef.current?.stop(); setListening(false); return; }
+    const SpeechRecognition = (window as typeof window & { SpeechRecognition?: new () => SpeechRecognitionLike; webkitSpeechRecognition?: new () => SpeechRecognitionLike }).SpeechRecognition
+      ?? (window as typeof window & { webkitSpeechRecognition?: new () => SpeechRecognitionLike }).webkitSpeechRecognition;
+    if (!SpeechRecognition) { setFormError("Audio dictation is not supported by this browser."); return; }
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true; recognition.interimResults = false; recognition.lang = "en-US";
+    recognition.onresult = (event) => setBrief((current) => `${current}${current ? " " : ""}${Array.from(event.results).map((result) => result[0]?.transcript ?? "").join(" ")}`);
+    recognition.onerror = () => setListening(false);
+    recognition.onend = () => setListening(false);
+    recognitionRef.current = recognition; recognition.start(); setListening(true);
+  }
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -1135,8 +1183,8 @@ function CreateProjectDialog({ onClose, onCreated }: { onClose: () => void; onCr
   }
 
   return (
-    <Modal labelledBy="create-project-title" onClose={onClose} className="dialog" dismissOnBackdrop={false}>
-      <form onSubmit={submit}>
+    <Modal labelledBy="create-project-title" onClose={onClose} className="dialog project-create-dialog" dismissOnBackdrop={false}>
+      <form onSubmit={submit} className="project-create-form">
         <div className="dialog-head">
           <div>
             <span className="eyebrow">{t("New project")}</span>
@@ -1147,7 +1195,18 @@ function CreateProjectDialog({ onClose, onCreated }: { onClose: () => void; onCr
           </button>
         </div>
         {formError && <div className="field-error" role="alert">{formError}</div>}
-        <div className="form-grid">
+        <div className="project-create-layout">
+          <section className="project-brief-panel">
+            <span className="eyebrow">{t("AI intake")}</span>
+            <h3>{t("Describe the whole research assignment")}</h3>
+            <p>{t("Paste or dictate the client brief. The premium strategist will organize only the information you supplied; missing fields stay blank.")}</p>
+            <textarea rows={16} value={brief} onChange={(event) => setBrief(event.target.value)} placeholder={t("Market, geography, ideal companies, qualification rules, services, constraints, required dossier sections…")} />
+            <div className="project-brief-actions">
+              <button type="button" className={listening ? "secondary active" : "secondary"} onClick={toggleDictation}>{listening ? <MicOff size={14} /> : <Mic size={14} />} {t(listening ? "Stop dictation" : "Dictate")}</button>
+              <button type="button" className="primary" disabled={organizing || brief.trim().length < 10} onClick={() => void organizeBrief()}>{organizing ? <Loader2 size={14} className="spin" /> : <Sparkles size={14} />} {t("Organize with AI")}</button>
+            </div>
+          </section>
+          <div className="form-grid project-fields">
           <label>{t("Project name")} <em aria-hidden>{t("required")}</em>
             <input required minLength={2} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
           </label>
@@ -1179,6 +1238,7 @@ function CreateProjectDialog({ onClose, onCreated }: { onClose: () => void; onCr
           <label>{t("Output requirements")} <span>{t("One per line")}</span>
             <textarea rows={4} value={form.outputRequirements} onChange={(event) => setForm({ ...form, outputRequirements: event.target.value })} />
           </label>
+          </div>
         </div>
         <div className="dialog-actions">
           <button type="button" className="secondary" onClick={onClose}>{t("Cancel")}</button>
@@ -1188,6 +1248,13 @@ function CreateProjectDialog({ onClose, onCreated }: { onClose: () => void; onCr
     </Modal>
   );
 }
+
+type SpeechRecognitionLike = {
+  continuous: boolean; interimResults: boolean; lang: string;
+  onresult: ((event: { results: ArrayLike<{ 0?: { transcript?: string } }> }) => void) | null;
+  onerror: (() => void) | null; onend: (() => void) | null;
+  start: () => void; stop: () => void;
+};
 
 const AGENDA_TYPES: AgendaWorkType[] = [
   "custom", "research", "marketing", "brainstorming", "content",
