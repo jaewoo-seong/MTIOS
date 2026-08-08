@@ -32,6 +32,18 @@ describe("model routing policy", () => {
     expect(resolveModelPolicy("executive_reasoning").candidates).toHaveLength(1);
   });
 
+  it("keeps every lightweight worker route on free models", () => {
+    const workerRoutes = [
+      "worker_research", "worker_creative", "worker_writing", "worker_editing",
+      "worker_structured", "worker_translation", "worker_fast"
+    ] as const;
+    for (const route of workerRoutes) {
+      expect(modelRoutePolicies[route].candidates.length).toBeGreaterThan(0);
+      expect(modelRoutePolicies[route].candidates.every((candidate) => candidate.pricingClass === "free"))
+        .toBe(true);
+    }
+  });
+
   it("cannot promote NVIDIA into production while no NVIDIA candidate is configured", () => {
     vi.stubEnv("NODE_ENV", "production");
     vi.stubEnv("NVIDIA_PRODUCTION_APPROVED", "true");

@@ -17,6 +17,7 @@ Executive Command is intentionally available only on Projects. It is not part of
 
 - Premium routes own strategy and final review.
 - Worker routes default to free OpenRouter candidates.
+- Lightweight cleanup, classification, extraction, formatting, translation, and project-brief organization always use the free worker pool. They must not call the premium strategist merely because they appear inside a premium-led workflow.
 - Auto mode ranks eligible candidates for each individual request using its task type, language, context length, tool/structured-output needs, availability, and quota—not a single provider-wide auto model.
 - A policy change is activated only after every route has at least one tested eligible candidate.
 

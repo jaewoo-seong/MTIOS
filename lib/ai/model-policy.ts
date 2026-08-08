@@ -37,7 +37,7 @@ export type ModelRoutePolicy = {
   candidates: readonly ModelCandidate[];
 };
 
-const haiku: ModelCandidate = {
+const premiumExecutive: ModelCandidate = {
   provider: "openrouter",
   modelEnv: "EXECUTIVE_MODEL",
   gatewayModel: "executive_reasoning",
@@ -45,7 +45,7 @@ const haiku: ModelCandidate = {
   productionApproved: true,
   licensingStatus: "approved"
 };
-const premiumFallback: ModelCandidate = { ...haiku, modelEnv: "PREMIUM_FALLBACK_MODEL", gatewayModel: "premium_fallback" };
+const premiumFallback: ModelCandidate = { ...premiumExecutive, modelEnv: "PREMIUM_FALLBACK_MODEL", gatewayModel: "premium_fallback" };
 const freeCandidate = (
   gatewayModel: string,
   modelEnv: string,
@@ -94,8 +94,8 @@ export function resolveGatewayModel(gatewayModel: string) {
 }
 
 export const modelRoutePolicies: Record<ModelRoute, ModelRoutePolicy> = {
-  executive_reasoning: { purpose: "Planning and clarification", maxCostMicros: 300_000, structuredOutput: true, candidates: [haiku] },
-  executive_review: { purpose: "Quality and decision review", maxCostMicros: 250_000, structuredOutput: true, candidates: [haiku] },
+  executive_reasoning: { purpose: "Planning and clarification", maxCostMicros: 300_000, structuredOutput: true, candidates: [premiumExecutive] },
+  executive_review: { purpose: "Quality and decision review", maxCostMicros: 250_000, structuredOutput: true, candidates: [premiumExecutive] },
   worker_research: { purpose: "Sourced research", maxCostMicros: 100_000, structuredOutput: true, candidates: [research, longform, structured, multilingual, fast] },
   worker_creative: { purpose: "Creative ideation", maxCostMicros: 80_000, structuredOutput: false, candidates: [multilingual, longform, research] },
   worker_writing: { purpose: "Long-form writing", maxCostMicros: 100_000, structuredOutput: false, candidates: [longform, multilingual, research] },

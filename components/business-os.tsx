@@ -1235,7 +1235,7 @@ function CreateProjectDialog({ onClose, onCreated }: { onClose: () => void; onCr
           <section className="project-brief-panel">
             <span className="eyebrow">{t("AI intake")}</span>
             <h3>{t("Describe the whole research assignment")}</h3>
-            <p>{t("Paste or dictate the client brief. The premium strategist will organize only the information you supplied; missing fields stay blank.")}</p>
+            <p>{t("Paste or dictate the client brief. A free structuring model will organize only the information you supplied; missing fields stay blank.")}</p>
             <textarea rows={16} value={brief} onChange={(event) => setBrief(event.target.value)} placeholder={t("Market, geography, ideal companies, qualification rules, services, constraints, required dossier sections…")} />
             <div className="project-brief-actions">
               <button type="button" className={listening ? "secondary active" : "secondary"} onClick={toggleDictation}>{listening ? <MicOff size={14} /> : <Mic size={14} />} {t(listening ? "Stop dictation" : "Dictate")}</button>

@@ -116,7 +116,7 @@ const ko: Record<string, string> = {
   "Creates a staged revision, tests it, approves it, and activates it. The previous version remains available for rollback.": "단계별 개정안을 만들고 테스트, 승인, 활성화합니다. 이전 버전은 롤백용으로 유지됩니다.",
   "AI intake": "AI 입력",
   "Describe the whole research assignment": "전체 리서치 과제를 설명하세요",
-  "Paste or dictate the client brief. The premium strategist will organize only the information you supplied; missing fields stay blank.": "고객 브리프를 붙여넣거나 받아쓰세요. 프리미엄 전략가는 제공한 정보만 정리하며 누락된 필드는 비워 둡니다.",
+  "Paste or dictate the client brief. A free structuring model will organize only the information you supplied; missing fields stay blank.": "고객 브리프를 붙여넣거나 받아쓰세요. 무료 구조화 모델은 제공한 정보만 정리하며 누락된 필드는 비워 둡니다.",
   "Market, geography, ideal companies, qualification rules, services, constraints, required dossier sections…": "시장, 지역, 이상적인 기업, 자격 기준, 서비스, 제약 조건, 필요한 도시에 섹션…",
   "Organize with AI": "AI로 정리",
   "Send back to AI": "AI에 재작업 요청",

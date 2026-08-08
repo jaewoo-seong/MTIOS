@@ -17,10 +17,22 @@ const organizedSchema = z.object({
 export const POST = guard(async (request) => {
   const parsed = await parseJson(request, inputSchema);
   if (parsed.error) return parsed.error;
-  const response = await requestModel("executive_reasoning", [
+  // This is deterministic cleanup/extraction, not strategic reasoning. Keep
+  // it on the free structured-worker pool and reserve the premium strategist
+  // for the conversation that decides what the project should actually do.
+  const response = await requestModel("worker_structured", [
     { role: "system", content: "Organize a client-research project brief into the supplied JSON fields. Preserve facts and wording. Do not invent missing information: use an empty string or empty array. budget is the numeric amount only. outputLanguage is en, ko, bilingual, or empty. Return JSON only." },
     { role: "user", content: parsed.data.brief }
-  ], { structuredOutput: true, maxCostMicros: 120_000 });
+  ], {
+    structuredOutput: true,
+    maxCostMicros: 20_000,
+    taskProfile: {
+      kind: "extraction",
+      structuredOutput: true,
+      expectedOutput: "medium",
+      factuality: "high"
+    }
+  });
   const content = extractModelContent(response).trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
   const organized = organizedSchema.parse(JSON.parse(content));
   return NextResponse.json({ data: organized });
