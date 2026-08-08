@@ -16,9 +16,15 @@ import type { NextConfig } from "next";
  * browser never needs to reach them. If that changes, the policy should be
  * widened to the specific origin rather than to a wildcard.
  */
+const scriptPolicy = process.env.NODE_ENV === "production"
+  ? "script-src 'self' 'unsafe-inline'"
+  // Next's development runtime uses eval for source maps and React refresh.
+  // Keep this exception out of production instead of disabling CSP locally.
+  : "script-src 'self' 'unsafe-inline' 'unsafe-eval'";
+
 const contentSecurityPolicy = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline'",
+  scriptPolicy,
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "font-src 'self' data:",

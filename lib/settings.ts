@@ -1,4 +1,4 @@
-import { and, desc, eq, max } from "drizzle-orm";
+import { and, desc, eq, max, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { modelRouteRevisions, userPreferences } from "@/lib/db/schema";
 import { modelRoutePolicies, type ModelRoutePolicy } from "@/lib/ai/model-policy";
@@ -115,6 +115,56 @@ export async function createModelRouteRevision(route: ModelRoute, configuration:
       createdBy: MTI_OPERATOR_ID
     }).returning();
     return row;
+  });
+}
+
+/** Activates a complete set of already-tested automatic policies atomically. */
+export async function activateModelPoliciesAtomically(
+  entries: Array<{ route: ModelRoute; configuration: ModelRoutePolicy }>
+) {
+  if (!db) {
+    const created = [];
+    for (const entry of entries) {
+      for (const item of state.__mtiModelRevisions!) {
+        if (item.route === entry.route && item.status === "active") item.status = "superseded";
+      }
+      const version = Math.max(0, ...state.__mtiModelRevisions!
+        .filter((item) => item.route === entry.route).map((item) => item.version)) + 1;
+      const row: RouteRevision = {
+        id: crypto.randomUUID(), route: entry.route, version,
+        configuration: entry.configuration, status: "active", testStatus: "passed",
+        testError: null, createdAt: new Date().toISOString()
+      };
+      state.__mtiModelRevisions!.push(row);
+      created.push(row);
+    }
+    return created;
+  }
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext('model-auto-all'))`);
+    const created = [];
+    for (const entry of entries) {
+      const [latest] = await tx.select({ version: max(modelRouteRevisions.version) })
+        .from(modelRouteRevisions).where(and(
+          eq(modelRouteRevisions.organizationId, MTI_ORGANIZATION_ID),
+          eq(modelRouteRevisions.route, entry.route)
+        ));
+      await tx.update(modelRouteRevisions).set({ status: "superseded", updatedAt: new Date() })
+        .where(and(
+          eq(modelRouteRevisions.organizationId, MTI_ORGANIZATION_ID),
+          eq(modelRouteRevisions.route, entry.route),
+          eq(modelRouteRevisions.status, "active")
+        ));
+      const [row] = await tx.insert(modelRouteRevisions).values({
+        organizationId: MTI_ORGANIZATION_ID, route: entry.route,
+        version: (latest.version ?? 0) + 1,
+        configuration: { ...entry.configuration, candidates: [...entry.configuration.candidates] },
+        status: "active", testStatus: "passed", approvedBy: MTI_OPERATOR_ID,
+        approvedAt: new Date(), activatedAt: new Date(), createdBy: MTI_OPERATOR_ID
+      }).returning();
+      created.push(row);
+    }
+    return created;
   });
 }
 

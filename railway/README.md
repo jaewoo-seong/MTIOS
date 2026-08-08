@@ -7,8 +7,9 @@ Create services for:
 - `redis`: cache, rate limiting, and transient coordination only.
 - `litellm`: deploy `railway/litellm/Dockerfile` and expose it only over Railway private networking.
 - `mcp-tools`: internal scoped tool adapters. Do not expose this service publicly.
-- `document-conversion`: private layout extraction, Korean/English OCR, page
-  previews, and PDF/DOCX export service.
+- `document-conversion`: optional advanced PDF/DOCX export service. Document
+  importing itself accepts UTF-8 text, Markdown, and preflighted simple DOCX
+  locally; PDF/OCR import is intentionally disabled.
 - `bucket`: generated reports, exports, and attachments.
 
 Managed Trigger.dev remains external. Set `TRIGGER_DISPATCH_URL` to the deployed command workflow endpoint and use the command ID as its idempotency key.

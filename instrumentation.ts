@@ -15,6 +15,9 @@ export async function register() {
   // process to fail and none of these variables are readable the same way.
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
 
+  const { assertUiAuditModeIsSafe } = await import("@/lib/ui-audit-mode");
+  assertUiAuditModeIsSafe();
+
   const { assertConfig, inspectConfig } = await import("@/lib/config");
   const { logger } = await import("@/lib/observability/logger");
 

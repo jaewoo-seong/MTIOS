@@ -44,6 +44,14 @@ export function LoginForm() {
         {busy ? <Loader2 className="spin" size={16} /> : <ArrowRight size={16} />}
         Sign in
       </button>
+      {process.env.NEXT_PUBLIC_UI_AUDIT_MODE === "true" && (
+        <button type="button" className="secondary auth-submit" onClick={() => window.location.assign("/")}>
+          Enter development workspace
+        </button>
+      )}
+      {process.env.NEXT_PUBLIC_UI_AUDIT_MODE === "true" && (
+        <p className="auth-dev-note">Local fixture data only. Provider calls and production data are disabled.</p>
+      )}
     </form>
   );
 }

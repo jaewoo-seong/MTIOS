@@ -1,4 +1,4 @@
-"use client";
+"use client"; // Archived: replaced by the research-specific approval workflow.
 
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { Check, Download, Loader2, Pencil, RotateCcw, Search, X } from "lucide-react";

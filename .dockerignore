@@ -1,0 +1,16 @@
+.git
+.github
+.next
+.trigger
+.claude
+.codex
+node_modules
+tests
+coverage
+prototype
+archive
+docs/import-template
+*.log
+*.tsbuildinfo
+.env*
+!.env.example

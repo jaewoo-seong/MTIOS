@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { analytics } from "@/lib/ai/usage";
 import { guard } from "@/lib/api/guard";
+import { isUiAuditMode } from "@/lib/ui-audit-mode";
 
 const querySchema = z.object({
   from: z.string().datetime().optional(),
@@ -24,7 +25,7 @@ export const GET = guard(async (request) => {
     ? new Date(parsed.data.from)
     : new Date(to.getTime() - 30 * 24 * 60 * 60 * 1000);
   if (from >= to) return NextResponse.json({ error: "invalid_date_range" }, { status: 400 });
-  const data = await analytics({
+  const data = isUiAuditMode() ? auditAnalytics(from, to) : await analytics({
     from,
     to,
     projectId: parsed.data.projectId,
@@ -68,4 +69,91 @@ export const GET = guard(async (request) => {
 function csvCell(value: unknown) {
   const text = String(value ?? "");
   return `"${text.replaceAll("\"", "\"\"")}"`;
+}
+
+function auditAnalytics(from: Date, to: Date) {
+  const rows = [
+    {
+      projectId: "10000000-0000-4000-8000-000000000001",
+      projectName: "Korea Advanced Manufacturing Client Research",
+      userId: "00000000-0000-4000-8000-0000000000a1",
+      userName: "UI Audit Operator",
+      agentType: "company_researcher",
+      route: "research/free",
+      provider: "openrouter",
+      model: "qwen/qwen3-235b-a22b:free",
+      requests: 18,
+      successes: 17,
+      failures: 1,
+      fallbacks: 2,
+      retries: 3,
+      inputTokens: 124800,
+      outputTokens: 36100,
+      costMicros: 0,
+      averageLatencyMs: 2840
+    },
+    {
+      projectId: "10000000-0000-4000-8000-000000000001",
+      projectName: "Korea Advanced Manufacturing Client Research",
+      userId: "00000000-0000-4000-8000-0000000000a1",
+      userName: "UI Audit Operator",
+      agentType: "dossier_writer",
+      route: "writing/free",
+      provider: "openrouter",
+      model: "deepseek/deepseek-r1-0528:free",
+      requests: 6,
+      successes: 6,
+      failures: 0,
+      fallbacks: 0,
+      retries: 0,
+      inputTokens: 68400,
+      outputTokens: 22700,
+      costMicros: 0,
+      averageLatencyMs: 4980
+    }
+  ];
+  return {
+    from: from.toISOString(),
+    to: to.toISOString(),
+    rows,
+    totals: rows.reduce((total, row) => ({
+      requests: total.requests + row.requests,
+      successes: total.successes + row.successes,
+      failures: total.failures + row.failures,
+      fallbacks: total.fallbacks + row.fallbacks,
+      retries: total.retries + row.retries,
+      inputTokens: total.inputTokens + row.inputTokens,
+      outputTokens: total.outputTokens + row.outputTokens,
+      costMicros: total.costMicros + row.costMicros
+    }), { requests: 0, successes: 0, failures: 0, fallbacks: 0, retries: 0, inputTokens: 0, outputTokens: 0, costMicros: 0 }),
+    quotas: [
+      {
+        id: "audit-openrouter-quota",
+        provider: "openrouter",
+        route: "*",
+        period: "daily",
+        allowance: 1000,
+        timezone: "America/Indiana/Indianapolis",
+        active: true,
+        state: { used: 24, remaining: 976, resetAt: new Date(to.getTime() + 86_400_000).toISOString() }
+      },
+      {
+        id: "audit-tavily-quota",
+        provider: "tavily",
+        route: "*",
+        period: "monthly",
+        allowance: 1000,
+        timezone: "America/Indiana/Indianapolis",
+        active: true,
+        state: { used: 41, remaining: 959, resetAt: new Date(to.getTime() + 30 * 86_400_000).toISOString() }
+      }
+    ],
+    approvals: [],
+    providerUsage: [
+      { provider: "openrouter", route: "research/free", source: "observed", requests: 18 },
+      { provider: "openrouter", route: "writing/free", source: "observed", requests: 6 },
+      { provider: "tavily", route: "web_search", source: "observed", requests: 41 }
+    ],
+    providerReported: { tavily: { configured: false, available: false as const } }
+  };
 }

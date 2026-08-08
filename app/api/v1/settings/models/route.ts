@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { gatewayModelCatalog, modelRoutePolicies, resolveGatewayModel } from "@/lib/ai/model-policy";
+import { gatewayModelCatalog, modelRoutePolicies, resolveGatewayModel, type ModelCandidate } from "@/lib/ai/model-policy";
 import { checkLiteLLM } from "@/lib/ai/litellm";
 import { db } from "@/lib/db/client";
 import { modelCalls } from "@/lib/db/schema";
@@ -33,7 +33,9 @@ export const GET = guard(async () => {
       maxCostMicros: policy.maxCostMicros,
       structuredOutput: policy.structuredOutput,
       recommendedGatewayModel: resolveGatewayModel(modelRoutePolicies[route as keyof typeof modelRoutePolicies].candidates[0]?.gatewayModel ?? route),
-      candidates: policy.candidates.map((candidate, index) => ({
+      candidates: policy.candidates.map((rawCandidate, index) => {
+        const candidate = rawCandidate as ModelCandidate;
+        return ({
         order: index + 1,
         provider: candidate.provider,
         modelEnv: candidate.modelEnv,
@@ -43,10 +45,16 @@ export const GET = guard(async () => {
         pricingClass: candidate.pricingClass,
         productionApproved: candidate.productionApproved,
         licensingStatus: candidate.licensingStatus,
+        strengths: candidate.strengths ?? [],
+        languages: candidate.languages ?? [],
+        supportsStructuredOutput: candidate.supportsStructuredOutput ?? false,
+        supportsTools: candidate.supportsTools ?? false,
+        longContext: candidate.longContext ?? false,
         enabled: environment !== "production" || candidate.productionApproved ||
           (testingMode && candidate.licensingStatus === "testing_only") ||
           (candidate.provider === "nvidia" && process.env.NVIDIA_PRODUCTION_APPROVED === "true")
-      }))
+        });
+      })
       });
     })
   });

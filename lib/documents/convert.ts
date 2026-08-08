@@ -1,4 +1,5 @@
 import mammoth from "mammoth";
+import JSZip from "jszip";
 import TurndownService from "turndown";
 
 export type SourceKind = "pdf" | "docx" | "html" | "csv" | "markdown" | "text" | "json" | "unknown";
@@ -15,6 +16,17 @@ export interface ConversionResult {
 /** Guard against a single upload exhausting memory or the model context downstream. */
 export const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 const MAX_MARKDOWN_CHARS = 400_000;
+const MAX_DOCX_UNCOMPRESSED_BYTES = 40 * 1024 * 1024;
+const MAX_DOCX_PARAGRAPHS = 5_000;
+const MAX_DOCX_TABLES = 30;
+const MAX_DOCX_IMAGES = 8;
+
+export const DOCUMENT_ACCEPT = ".txt,.md,.markdown,.docx";
+
+export type DocumentPreflight = {
+  kind: "text" | "markdown" | "docx";
+  warnings: string[];
+};
 
 const turndown = new TurndownService({
   headingStyle: "atx",
@@ -35,6 +47,89 @@ export function detectKind(filename: string, mimeType: string): SourceKind {
   return "unknown";
 }
 
+/**
+ * The import boundary deliberately accepts only formats that can be converted
+ * deterministically without OCR, browser engines, macros, or embedded objects.
+ */
+export async function preflightDocument(
+  filename: string,
+  mimeType: string,
+  buffer: Buffer
+): Promise<DocumentPreflight> {
+  if (!buffer.length) throw new Error("File is empty.");
+  if (buffer.byteLength > MAX_UPLOAD_BYTES) {
+    throw new Error(`File exceeds the ${Math.floor(MAX_UPLOAD_BYTES / 1024 / 1024)}MB upload limit.`);
+  }
+  const extension = filename.toLowerCase().split(".").pop() ?? "";
+  if (extension === "pdf" || mimeType === "application/pdf") {
+    throw new Error("PDF importing is not available yet. Upload text, Markdown, or a simple DOCX file.");
+  }
+  if (extension === "doc" || extension === "docm") {
+    throw new Error("Legacy or macro-enabled Word files are not supported. Save a simple .docx file first.");
+  }
+  if (["txt", "md", "markdown"].includes(extension)) {
+    const text = decodePlainText(buffer);
+    if (text.includes("\u0000")) throw new Error("This file appears to contain binary data, not plain text.");
+    return { kind: extension === "txt" ? "text" : "markdown", warnings: [] };
+  }
+  if (extension !== "docx" && !mimeType.includes("wordprocessingml")) {
+    throw new Error("Unsupported file type. Upload text, Markdown, or a simple DOCX file.");
+  }
+  if (buffer[0] !== 0x50 || buffer[1] !== 0x4b) {
+    throw new Error("The Word file is not a valid DOCX package.");
+  }
+  let zip: JSZip;
+  try {
+    zip = await JSZip.loadAsync(buffer, { checkCRC32: true });
+  } catch {
+    throw new Error("The Word file is corrupt, encrypted, or not a valid DOCX package.");
+  }
+  const names = Object.keys(zip.files);
+  if (!zip.file("word/document.xml")) throw new Error("The DOCX file has no readable document body.");
+  if (names.some((name) => /vbaProject|activeX|embeddings|oleObject/i.test(name))) {
+    throw new Error("This Word file contains macros, embedded objects, or active content and cannot be imported safely.");
+  }
+  const imageCount = names.filter((name) => /^word\/media\//i.test(name) && !zip.files[name].dir).length;
+  if (imageCount > MAX_DOCX_IMAGES) {
+    throw new Error(`This Word file is too media-heavy (${imageCount} images). The current limit is ${MAX_DOCX_IMAGES}.`);
+  }
+  let uncompressedBytes = 0;
+  for (const name of names) {
+    const entry = zip.files[name];
+    if (entry.dir) continue;
+    const content = await entry.async("uint8array");
+    uncompressedBytes += content.byteLength;
+    if (uncompressedBytes > MAX_DOCX_UNCOMPRESSED_BYTES) {
+      throw new Error("The expanded Word file is too large to convert safely.");
+    }
+  }
+  const xml = await zip.file("word/document.xml")!.async("string");
+  const paragraphs = (xml.match(/<w:p(?:\s|>)/g) ?? []).length;
+  const tables = (xml.match(/<w:tbl(?:\s|>)/g) ?? []).length;
+  if (paragraphs > MAX_DOCX_PARAGRAPHS || tables > MAX_DOCX_TABLES) {
+    throw new Error("This Word file is too structurally complex for the simple DOCX importer.");
+  }
+  if (/<w:(?:ins|del)(?:\s|>)/.test(xml)) {
+    throw new Error("Accept or reject tracked changes in Word before importing this document.");
+  }
+  const extracted = await mammoth.extractRawText({ buffer });
+  if (extracted.value.trim().length < 20) {
+    throw new Error("The Word file does not contain enough directly extractable text.");
+  }
+  return {
+    kind: "docx",
+    warnings: imageCount > 0 ? ["Embedded images are omitted; only directly readable text and tables are imported."] : []
+  };
+}
+
+function decodePlainText(buffer: Buffer) {
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(buffer);
+  } catch {
+    throw new Error("Text and Markdown files must use UTF-8 encoding.");
+  }
+}
+
 export function titleFromFilename(filename: string) {
   const base = filename.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ").trim();
   if (!base) return "Untitled document";
@@ -50,42 +145,15 @@ export async function convertToMarkdown(
     throw new Error(`File exceeds the ${Math.floor(MAX_UPLOAD_BYTES / 1024 / 1024)}MB upload limit.`);
   }
 
-  const kind = detectKind(filename, mimeType);
+  const preflight = await preflightDocument(filename, mimeType, buffer);
+  const kind = preflight.kind;
   let markdown = "";
   let pageCount: number | null = null;
 
   switch (kind) {
-    case "pdf": {
-      const { extractText, getDocumentProxy } = await import("unpdf");
-      const pdf = await getDocumentProxy(new Uint8Array(buffer));
-      const { totalPages, text } = await extractText(pdf, { mergePages: false });
-      pageCount = totalPages;
-      markdown = text
-        .map((page, index) => {
-          const body = normalizeExtractedText(page);
-          return body ? `## Page ${index + 1}\n\n${body}` : "";
-        })
-        .filter(Boolean)
-        .join("\n\n");
-      break;
-    }
     case "docx": {
       const { value } = await mammoth.convertToHtml({ buffer });
       markdown = turndown.turndown(value);
-      break;
-    }
-    case "html": {
-      markdown = turndown.turndown(buffer.toString("utf8"));
-      break;
-    }
-    case "csv": {
-      markdown = delimitedToMarkdownTable(buffer.toString("utf8"), filename.endsWith(".tsv") ? "\t" : ",");
-      break;
-    }
-    case "json": {
-      const raw = buffer.toString("utf8");
-      const pretty = safePrettyJson(raw);
-      markdown = "```json\n" + pretty + "\n```";
       break;
     }
     case "markdown": {
@@ -97,9 +165,7 @@ export async function convertToMarkdown(
       break;
     }
     default:
-      throw new Error(
-        "Unsupported file type. Upload a PDF, DOCX, HTML, CSV, TSV, JSON, Markdown, or text file."
-      );
+      throw new Error("Unsupported file type. Upload text, Markdown, or a simple DOCX file.");
   }
 
   markdown = markdown.replace(/\n{3,}/g, "\n\n").trim();

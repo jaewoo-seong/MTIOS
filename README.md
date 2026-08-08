@@ -1,6 +1,6 @@
 # MTI Korea AI Business OS
 
-Production Next.js application for long-lived AI-managed projects, agendas, execution runs, reports, knowledge, and client data.
+Production-oriented Next.js workspace for continuous client discovery, company qualification, bounded dossier research, and linked client records.
 
 ## Local development
 
@@ -10,15 +10,20 @@ cp .env.example .env.local
 npm run dev
 ```
 
-The app starts with one empty MTI Korea workspace. No login is required in this release.
-Without infrastructure credentials, API data uses the process-local development repository and command confirmations remain locally queued.
+Normal operation requires a signed-in company account. For visual and interaction QA, the explicit local-only UI audit mode provides deterministic fixture data and disables provider access:
+
+```bash
+UI_AUDIT_MODE=true NEXT_PUBLIC_UI_AUDIT_MODE=true npm run dev
+```
+
+Without infrastructure credentials, normal development API data uses the process-local repository and empties when the server restarts.
 
 ## Architecture
 
 - Next.js App Router and REST APIs under `/api/v1`
 - Drizzle schema for organization-scoped PostgreSQL state
-- Persisted run-event contract with SSE delivery
-- LiteLLM as the only model gateway
+- Continuous discovery queue and bounded dossier-worker contract
+- LiteLLM as the only model gateway, with task-aware free OpenRouter worker routing
 - Managed Trigger.dev dispatch boundary for background workflows
 - Railway PostgreSQL, Redis, private services, and Storage Buckets
 
@@ -29,4 +34,4 @@ npm run db:generate
 npm run db:migrate
 ```
 
-See `railway/README.md` for the production service topology and `prototype/` for the sanitized archived design reference.
+See [docs/product-boundary.md](docs/product-boundary.md) for the active product boundary, [docs/document-importing.md](docs/document-importing.md) for supported imports, and `railway/README.md` for the production service topology.

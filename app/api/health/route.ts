@@ -65,9 +65,9 @@ export async function GET() {
       checks.documentConversion = "unavailable";
     }
   }
-  if (process.env.NODE_ENV === "production" && checks.documentConversion !== "ok") {
-    status = 503;
-  }
+  // Optional while imports are limited to text, Markdown, and simple DOCX.
+  // The private converter remains useful for advanced export work, but an
+  // outage must not take the supported import workflow offline.
   checks.authentication = (process.env.AUTH_SESSION_SECRET?.length ?? 0) >= 32
     ? "ok"
     : "not_configured";

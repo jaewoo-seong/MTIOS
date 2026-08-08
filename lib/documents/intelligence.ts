@@ -192,25 +192,8 @@ export async function convertDocumentIntelligence(input: {
   buffer: Buffer;
   preferredLanguages: string[];
 }): Promise<IntelligenceResult> {
-  const endpoint = process.env.DOCUMENT_CONVERSION_SERVICE_URL;
-  if (endpoint) {
-    const form = new FormData();
-    form.append("file", new Blob([new Uint8Array(input.buffer)], { type: input.mimeType }), input.filename);
-    form.append("languages", input.preferredLanguages.join(","));
-    const response = await fetch(`${endpoint.replace(/\/$/, "")}/v1/convert`, {
-      method: "POST",
-      headers: process.env.DOCUMENT_CONVERSION_SERVICE_SECRET
-        ? { authorization: `Bearer ${process.env.DOCUMENT_CONVERSION_SERVICE_SECRET}` }
-        : undefined,
-      body: form
-    });
-    const payload = await response.json().catch(() => ({})) as IntelligenceResult & {
-      detail?: string;
-    };
-    if (!response.ok) throw new Error(payload.detail || "Private conversion service failed.");
-    return payload;
-  }
-
+  // Imports are intentionally local and deterministic: text, Markdown, and
+  // preflighted simple DOCX never need the former OCR/PDF service.
   const basic = await convertToMarkdown(input.filename, input.mimeType, input.buffer);
   const pageBodies = splitPages(basic.markdown, basic.pageCount);
   const pages = pageBodies.map((text, index) => ({
@@ -224,10 +207,6 @@ export async function convertDocumentIntelligence(input: {
     tables: markdownTables(text),
     images: []
   }));
-  const scannedPdf = basic.kind === "pdf" && pages.every((page) => page.confidence === 0);
-  if (scannedPdf) {
-    throw new Error("This PDF requires OCR. Configure the private document conversion service.");
-  }
   return {
     ...basic,
     engine: "mti-local",

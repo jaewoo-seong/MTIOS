@@ -1,4 +1,4 @@
-"use client";
+"use client"; // Archived: unused legacy activity component.
 
 import { useEffect, useRef, useState } from "react";
 import { Radio } from "lucide-react";

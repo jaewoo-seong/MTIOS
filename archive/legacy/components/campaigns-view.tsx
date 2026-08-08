@@ -1,4 +1,4 @@
-"use client";
+"use client"; // Archived: legacy campaign surface, excluded from production builds.
 
 import { useCallback, useEffect, useState } from "react";
 import {

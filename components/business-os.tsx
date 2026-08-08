@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import {
   Archive,
   ArchiveRestore,
@@ -21,9 +22,7 @@ import {
   Sparkles,
   X
 } from "lucide-react";
-import type { Agenda, AgendaWorkType, Deliverable, ExecutiveCommand, Milestone, Project, ProjectRecord, Report } from "@/lib/domain";
-import { ClientDataView } from "@/components/client-data-view";
-import { DocumentsView } from "@/components/documents-view";
+import type { Agenda, AgendaWorkType, Deliverable, ExecutiveCommand, Milestone, Project, ProjectRecord, WorkspaceDocument } from "@/lib/domain";
 import { ResearchProjectWorkspace } from "@/components/research-project-workspace";
 import { SearchPalette } from "@/components/search-palette";
 import { Modal } from "@/components/ui/modal";
@@ -33,6 +32,13 @@ import {
   AiAnalyticsSettings,
   PasswordSettings
 } from "@/components/account-settings";
+
+const DocumentsView = dynamic(() => import("@/components/documents-view").then((module) => module.DocumentsView), {
+  loading: () => <LoadingState />
+});
+const ClientDataView = dynamic(() => import("@/components/client-data-view").then((module) => module.ClientDataView), {
+  loading: () => <LoadingState />
+});
 
 type PageId = "projects" | "documents" | "data" | "settings";
 type ProjectDetail = Project & {
@@ -95,7 +101,7 @@ export function BusinessOS() {
   const { t } = useI18n();
   const [page, setPage] = useState<PageId>("projects");
   const [projects, setProjects] = useState<Project[]>([]);
-  const [reports, setReports] = useState<Report[]>([]);
+  const [documentCount, setDocumentCount] = useState(0);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [selectedProject, setSelectedProject] = useState<ProjectDetail | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
@@ -108,6 +114,43 @@ export function BusinessOS() {
   const [commandBusy, setCommandBusy] = useState(false);
   const [agendaWorkType, setAgendaWorkType] = useState<AgendaWorkType>("custom");
   const [session, setSession] = useState<AppSession | null>(null);
+
+  const readLocation = useCallback(() => {
+    const params = new URLSearchParams(window.location.search);
+    const view = params.get("view") as PageId | null;
+    if (view && navItems.some((item) => item.id === view)) setPage(view);
+    const projectId = params.get("project");
+    if (projectId) setSelectedProjectId(projectId);
+    const documentId = params.get("document");
+    if (documentId) {
+      setFocusDocumentId(documentId);
+      setPage("documents");
+    }
+  }, []);
+
+  const navigatePage = useCallback((next: PageId, options: { documentId?: string | null } = {}) => {
+    setPage(next);
+    if (options.documentId) setFocusDocumentId(options.documentId);
+    const url = new URL(window.location.href);
+    url.searchParams.set("view", next);
+    if (options.documentId) url.searchParams.set("document", options.documentId);
+    else url.searchParams.delete("document");
+    window.history.pushState({}, "", url);
+  }, []);
+
+  useEffect(() => {
+    readLocation();
+    window.addEventListener("popstate", readLocation);
+    return () => window.removeEventListener("popstate", readLocation);
+  }, [readLocation]);
+
+  useEffect(() => {
+    if (!selectedProjectId) return;
+    const url = new URL(window.location.href);
+    if (url.searchParams.get("project") === selectedProjectId) return;
+    url.searchParams.set("project", selectedProjectId);
+    window.history.replaceState({}, "", url);
+  }, [selectedProjectId]);
 
   /** Errors accumulate so a failed batch reports every failure, not just the last. */
   const pushError = useCallback((message: string) => {
@@ -128,16 +171,16 @@ export function BusinessOS() {
     if (!selectedProjectId && payload.data[0]) setSelectedProjectId(payload.data[0].id);
   }, [selectedProjectId]);
 
-  const loadReports = useCallback(async () => {
-    const payload = await api<{ data: Report[] }>("/api/v1/reports");
-    setReports(payload.data);
+  const loadDocumentCount = useCallback(async () => {
+    const payload = await api<{ data: WorkspaceDocument[] }>("/api/v1/documents");
+    setDocumentCount(payload.data.length);
   }, []);
 
   useEffect(() => {
-    Promise.all([loadProjects(), loadReports()])
+    Promise.all([loadProjects(), loadDocumentCount()])
       .catch((reason: Error) => pushError(reason.message))
       .finally(() => setLoading(false));
-  }, [loadProjects, loadReports, pushError]);
+  }, [loadProjects, loadDocumentCount, pushError]);
 
   useEffect(() => {
     // A session check failing here means the cookie expired or was revoked
@@ -186,7 +229,7 @@ export function BusinessOS() {
 
   const navCounts: Partial<Record<PageId, number>> = {
     projects: projects.filter((project) => project.status === "active").length,
-    documents: reports.filter((report) => report.status !== "saved").length
+    documents: documentCount
   };
 
   // ⌘K / Ctrl+K opens search from anywhere, as the top bar advertises.
@@ -259,6 +302,9 @@ export function BusinessOS() {
 
   return (
     <div className="app-shell">
+      {process.env.NEXT_PUBLIC_UI_AUDIT_MODE === "true" && (
+        <div className="ui-audit-banner" role="status">Development UI audit mode · fixture data · no production access</div>
+      )}
       <aside className="sidebar">
         <div className="brand">
           <div className="brand-mark">MTI</div>
@@ -276,7 +322,7 @@ export function BusinessOS() {
                 className={page === item.id ? "nav-item active" : "nav-item"}
                 key={item.id}
                 aria-current={page === item.id ? "page" : undefined}
-                onClick={() => setPage(item.id)}
+                onClick={() => navigatePage(item.id)}
               >
                 <Icon size={16} aria-hidden />
                 <span>{t(item.label)}</span>
@@ -338,8 +384,7 @@ export function BusinessOS() {
                   onError={pushError}
                   onProjectsChanged={loadProjects}
                   onOpenDocument={(documentId) => {
-                    setFocusDocumentId(documentId);
-                    setPage("documents");
+                    navigatePage("documents", { documentId });
                   }}
                 />
               )}
@@ -356,8 +401,7 @@ export function BusinessOS() {
                   onError={pushError}
                   projects={projects}
                   onOpenDocument={(documentId) => {
-                    setFocusDocumentId(documentId);
-                    setPage("documents");
+                    navigatePage("documents", { documentId });
                   }}
                 />
               )}
@@ -719,7 +763,7 @@ type ModelSettingsPayload = {
   catalog: Array<{ gatewayModel: string; model: string; label: string }>;
   routes: Array<{
     route: string; purpose: string; maxCostMicros: number; structuredOutput: boolean; recommendedGatewayModel: string;
-    candidates: Array<{ order: number; provider: "openrouter" | "nvidia"; model: string; modelEnv: string; gatewayModel: string; selectionMode: "auto" | "manual"; pricingClass: "paid" | "free"; productionApproved: boolean; licensingStatus: "approved" | "testing_only" | "unverified"; enabled: boolean }>;
+    candidates: Array<{ order: number; provider: "openrouter" | "nvidia"; model: string; modelEnv: string; gatewayModel: string; selectionMode: "auto" | "manual"; pricingClass: "paid" | "free"; productionApproved: boolean; licensingStatus: "approved" | "testing_only" | "unverified"; strengths: string[]; languages: string[]; supportsStructuredOutput: boolean; supportsTools: boolean; longContext: boolean; enabled: boolean }>;
   }>;
 };
 
@@ -745,16 +789,21 @@ function ModelSettings({ onError }: { onError: (message: string) => void }) {
   useEffect(() => { load().catch((error: Error) => onError(error.message)); }, [load, onError]);
   async function createAndActivate(route: ModelSettingsPayload["routes"][number], mode = drafts[route.route]?.mode ?? "manual") {
       const draft = drafts[route.route];
+      const selected = route.candidates.find((candidate) =>
+        candidate.gatewayModel.replace(/^auto:/, "") === draft?.gatewayModel
+      ) ?? route.candidates[0];
+      const candidates = mode === "auto" ? route.candidates : selected ? [selected] : [];
       const revision = await api<{ data: { id: string } }>("/api/v1/settings/models/revisions", {
         method: "POST",
         body: JSON.stringify({
           route: route.route,
           maxCostMicros: draft?.maxCostMicros ?? route.maxCostMicros,
           structuredOutput: draft?.structuredOutput ?? route.structuredOutput,
-          candidates: route.candidates.map(({ provider, modelEnv, gatewayModel, pricingClass, productionApproved, licensingStatus }) => ({
+          candidates: candidates.map(({ provider, modelEnv, gatewayModel, pricingClass, productionApproved, licensingStatus, strengths, languages, supportsStructuredOutput, supportsTools, longContext }) => ({
             provider, modelEnv,
-            gatewayModel: mode === "auto" ? `auto:${draft?.gatewayModel ?? gatewayModel.replace(/^auto:/, "")}` : (draft?.gatewayModel ?? gatewayModel.replace(/^auto:/, "")),
-            pricingClass, productionApproved, licensingStatus
+            gatewayModel: mode === "auto" ? `auto:${gatewayModel.replace(/^auto:/, "")}` : (draft?.gatewayModel ?? gatewayModel.replace(/^auto:/, "")),
+            pricingClass, productionApproved, licensingStatus, strengths, languages,
+            supportsStructuredOutput, supportsTools, longContext
           }))
         })
       });
@@ -823,7 +872,7 @@ function ModelSettings({ onError }: { onError: (message: string) => void }) {
                     }))}>
                       {value.catalog.map((item) => <option key={item.gatewayModel} value={item.gatewayModel}>{item.label}</option>)}
                     </select>
-                ) : <div className="model-auto-result"><Sparkles size={14} /><span>{route.candidates[0]?.model}</span></div>}
+                ) : <div className="model-auto-result"><Sparkles size={14} /><span>{t("Selects per task from {count} eligible models", { count: route.candidates.length })}</span></div>}
               </div>
               <div className="model-route-actions">
                 <details className="model-advanced"><summary>{t("Advanced")}</summary><div>
@@ -836,7 +885,7 @@ function ModelSettings({ onError }: { onError: (message: string) => void }) {
         </div>
       )}
 
-      <div className="model-help-strip"><div><strong>{t("Auto")}</strong><span>{t("Chooses the recommended free model for that type of work.")}</span></div><div><strong>{t("Structured output")}</strong><span>{t("Makes the answer machine-readable JSON instead of free-form prose.")}</span></div><div><strong>{t("Cost cap")}</strong><span>{t("Stops a single call from exceeding its maximum estimated spend.")}</span></div><div><strong>{t("Safe apply")}</strong><span>{t("Creates a staged revision, tests it, approves it, and activates it. The previous version remains available for rollback.")}</span></div></div>
+      <div className="model-help-strip"><div><strong>{t("Auto")}</strong><span>{t("Scores eligible models for each individual task using language, tools, structure, context, quality, quota, and availability.")}</span></div><div><strong>{t("Structured output")}</strong><span>{t("Makes the answer machine-readable JSON instead of free-form prose.")}</span></div><div><strong>{t("Cost cap")}</strong><span>{t("Maximum allowed budget for one call; final provider cost is reconciled after completion.")}</span></div><div><strong>{t("Safe apply")}</strong><span>{t("Tests every candidate before atomically activating all automatic worker policies.")}</span></div></div>
 
       {/* Pending revisions were previously appended to the route list, so a
           staged change looked like another route. They are a queue of things

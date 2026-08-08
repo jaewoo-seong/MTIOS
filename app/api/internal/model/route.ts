@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { requestLiteLLM, type ModelRoute } from "@/lib/ai/litellm";
-import { modelRequestSchema, resolveGatewayModel, resolveModelPolicy } from "@/lib/ai/model-policy";
+import {
+  inferTaskProfile, modelRequestSchema, rankModelCandidates,
+  resolveGatewayModel, resolveModelPolicy
+} from "@/lib/ai/model-policy";
 import { parseJson } from "@/lib/http";
 import { isValidWorkflowRequest } from "@/lib/internal-auth";
 import { logModelCall, logger } from "@/lib/observability/logger";
@@ -58,12 +61,46 @@ export async function POST(request: Request) {
   }
   try {
     const structuredOutput = parsed.data.structuredOutput ?? policy.structuredOutput;
-    const response = await requestLiteLLM(resolveGatewayModel(selectedCandidate.gatewayModel || selectedRoute), parsed.data.messages, {
-      maxCostMicros: policy.maxCostMicros,
-      responseFormat: structuredOutput ? { type: "json_object" } : undefined,
-      tools: parsed.data.tools
+    const taskProfile = inferTaskProfile(selectedRoute, parsed.data.messages, {
+      ...parsed.data.taskProfile,
+      structuredOutput,
+      toolCalling: Boolean(parsed.data.tools?.length)
     });
-    if (parsed.data.runId) {
+    const ranked = selectedRoute === "premium_fallback"
+      ? [{ candidate: selectedCandidate, score: 100, reason: "administrator-approved premium fallback" }]
+      : rankModelCandidates(policy, taskProfile);
+    if (ranked.length === 0) throw new Error(`No model satisfies the task requirements for ${parsed.data.model}.`);
+    let response: unknown = null;
+    const attemptErrors: string[] = [];
+    let selectionReason = ranked[0].reason;
+    for (const rankedCandidate of ranked) {
+      selectedCandidate = rankedCandidate.candidate;
+      selectionReason = rankedCandidate.reason;
+      try {
+        response = await requestLiteLLM(resolveGatewayModel(selectedCandidate.gatewayModel || selectedRoute), parsed.data.messages, {
+          maxCostMicros: policy.maxCostMicros,
+          responseFormat: structuredOutput ? { type: "json_object" } : undefined,
+          tools: parsed.data.tools
+        });
+        break;
+      } catch (error) {
+        attemptErrors.push(`${resolveGatewayModel(selectedCandidate.gatewayModel)}: ${error instanceof Error ? error.message : "failed"}`);
+      }
+    }
+    if (!response) throw new Error(`All eligible free model candidates failed. ${attemptErrors.join("; ")}`);
+    if (response && typeof response === "object") {
+      Object.assign(response, {
+        _mti_routing: {
+          mode: "task_auto",
+          route: parsed.data.model,
+          gatewayModel: resolveGatewayModel(selectedCandidate.gatewayModel),
+          reason: selectionReason,
+          taskProfile,
+          attempts: attemptErrors.length + 1
+        }
+      });
+    }
+    {
       const payload = response as {
         model?: string;
         provider?: string;
@@ -91,9 +128,6 @@ export async function POST(request: Request) {
           structuredOutputValid = false;
         }
       }
-      const selected = policy.candidates.find((candidate) =>
-        candidate.provider === payload.provider
-      ) ?? selectedCandidate;
       const recorded = await repository.recordModelCall({
         runId: parsed.data.runId,
         route: parsed.data.model,
@@ -104,16 +138,19 @@ export async function POST(request: Request) {
         costMicros,
         latencyMs: Date.now() - startedAt,
         fallbackReason: payload._hidden_params?.fallback_reason ?? null,
-        licensingStatus: selected.licensingStatus,
+        licensingStatus: selectedCandidate.licensingStatus,
         environment: policy.environment,
         attemptCount: payload._hidden_params?.fallback_reason ? 2 : 1,
         structuredOutputValid,
-        requestBudgetMicros: policy.maxCostMicros
+        requestBudgetMicros: policy.maxCostMicros,
+        operationId: request.headers.get("x-mti-operation-id") ?? crypto.randomUUID(),
+        taskProfile,
+        selectionReason
       });
       await recordProviderUsage({
-        runId: parsed.data.runId,
+        runId: parsed.data.runId ?? null,
         modelCallId: recorded.id,
-        provider: payload.provider ?? selected?.provider ?? "unknown",
+        provider: payload.provider ?? selectedCandidate.provider,
         model: payload.model ?? null,
         route: parsed.data.model,
         projectId: recorded.projectId ?? null,
@@ -123,7 +160,7 @@ export async function POST(request: Request) {
       // record; the log line is what makes spend answerable without database
       // access, and survives when a run is deleted.
       logModelCall({
-        runId: parsed.data.runId,
+        runId: parsed.data.runId ?? null,
         route: parsed.data.model,
         model: payload.model ?? null,
         provider: payload.provider ?? null,
@@ -136,16 +173,18 @@ export async function POST(request: Request) {
     }
     return NextResponse.json(response);
   } catch (reason) {
+    await repository.recordModelCall({
+      runId: parsed.data.runId ?? null,
+      route: parsed.data.model,
+      latencyMs: Date.now() - startedAt,
+      licensingStatus: policy.candidates[0].licensingStatus,
+      environment: policy.environment,
+      requestBudgetMicros: policy.maxCostMicros,
+      operationId: request.headers.get("x-mti-operation-id") ?? crypto.randomUUID(),
+      taskProfile: parsed.data.taskProfile ?? {},
+      error: reason instanceof Error ? reason.message : "Model request failed."
+    });
     if (parsed.data.runId) {
-      await repository.recordModelCall({
-        runId: parsed.data.runId,
-        route: parsed.data.model,
-        latencyMs: Date.now() - startedAt,
-        licensingStatus: policy.candidates[0].licensingStatus,
-        environment: policy.environment,
-        requestBudgetMicros: policy.maxCostMicros,
-        error: reason instanceof Error ? reason.message : "Model request failed."
-      });
       if (selectedRoute !== "premium_fallback" &&
           policy.candidates.some((candidate) => candidate.pricingClass === "free")) {
         const approval = await createPremiumApproval({

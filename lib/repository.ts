@@ -22,6 +22,7 @@ import type {
   WorkTask
 } from "@/lib/domain";
 import { db } from "@/lib/db/client";
+import { isUiAuditMode } from "@/lib/ui-audit-mode";
 import {
   agentDefinitions,
   agendas,
@@ -73,12 +74,13 @@ type Store = {
   documents: StoredDocument[];
   records: ClientRecord[];
   modelUsage: Array<{
-    id: string; runId: string; route: string; model: string | null;
+    id: string; runId: string | null; route: string; model: string | null;
     provider: string | null; inputTokens: number; outputTokens: number;
     costMicros: number; latencyMs: number; error: string | null;
     fallbackReason: string | null; licensingStatus: string; environment: string;
     attemptCount: number; structuredOutputValid: boolean | null;
     requestBudgetMicros: number | null;
+    operationId: string | null; taskProfile: Record<string, unknown>; selectionReason: string | null;
   }>;
 };
 
@@ -170,6 +172,50 @@ for (const [key, value] of Object.entries(emptyStore()) as [keyof Store, unknown
   }
 }
 globalStore.__businessOsStore = store;
+
+// A deterministic, local-only workspace makes every important visual state
+// reachable without production credentials or paid provider calls.
+if (isUiAuditMode() && store.projects.length === 0) {
+  const createdAt = "2026-08-01T14:00:00.000Z";
+  const projectId = "10000000-0000-4000-8000-000000000001";
+  const databaseId = "20000000-0000-4000-8000-000000000001";
+  const dossierId = "30000000-0000-4000-8000-000000000001";
+  store.projects.push({
+    id: projectId, organizationId: MTI_ORGANIZATION_ID,
+    name: "Korea Advanced Manufacturing Client Research",
+    objective: "Identify qualified Korean manufacturers with expansion, workforce, or market-entry needs and create decision-ready client dossiers.",
+    context: "Prioritize organizations with verifiable operating activity, recent investment, hiring signals, and a plausible need for MTI services.",
+    scope: "South Korea · Seoul, Gyeonggi, Chungcheong, Busan and Ulsan",
+    constraints: ["Use public evidence only", "Separate fact from inference", "Cite material claims"],
+    budgetCents: 5000, budgetCurrency: "USD",
+    permissions: { externalSend: "review_required", clientDataWrite: "review_required", destructiveAction: "review_required" },
+    reviewGates: ["Approve strategy", "Approve client database changes"],
+    outputRequirements: ["Company profile", "Leadership and HR", "Recent news", "MTI opportunity analysis", "Source links"],
+    outputLanguage: "bilingual", status: "active", createdAt, updatedAt: "2026-08-07T18:30:00.000Z"
+  });
+  store.agendas.push({
+    id: "40000000-0000-4000-8000-000000000001", projectId,
+    title: "Find advanced manufacturing prospects", instruction: "Continuously discover and qualify Korean advanced manufacturing companies.",
+    workType: "research", status: "working", revision: 2, createdAt, updatedAt: "2026-08-07T18:20:00.000Z"
+  });
+  store.clientDatabases.push({
+    id: databaseId, projectId, name: "Korea manufacturing companies",
+    description: "Qualified companies linked one-to-one with their master dossier.", recordCount: 2, createdAt
+  });
+  const markdown = `# Hanseong Precision Systems\n\n## Executive summary\n\nHanseong Precision Systems is a fixture company used to evaluate long-form dossier layout, citation density, editing, and revision controls.\n\n## Company profile\n\n- **Location:** Gyeonggi-do, Republic of Korea\n- **Industry:** Precision manufacturing and industrial automation\n- **Qualification:** Expansion and workforce signals require verification\n\n## Leadership and HR intelligence\n\nLeadership details remain unverified. Current hiring indicators should be checked against official career pages before outreach.\n\n## Recent developments\n\nThis fixture deliberately contains a longer section to test readable line length and information hierarchy in a full-screen document. Facts, inferences, and sales hypotheses must remain visually distinct.\n\n## Potential MTI services\n\n1. Market-entry and partner research\n2. Workforce and operating-location analysis\n3. Bilingual commercial intelligence\n\n## Sources\n\n- [Official company source placeholder](https://example.com/company) — fixture only\n- [Recent news placeholder](https://example.com/news) — fixture only`;
+  store.documents.push({
+    id: dossierId, folderId: store.folders[1].id, projectId,
+    title: "Hanseong Precision Systems — Master Dossier", filename: "hanseong-precision-systems.md",
+    mimeType: "text/markdown", sourceKind: "markdown", aiGenerated: true,
+    sizeBytes: Buffer.byteLength(markdown), pageCount: null,
+    wordCount: (markdown.match(/\S+/g) ?? []).length, markdown, storageKey: null,
+    createdAt, updatedAt: "2026-08-07T18:10:00.000Z"
+  });
+  store.records.push(
+    { id: "50000000-0000-4000-8000-000000000001", databaseId, createdAt, data: { Company: "Hanseong Precision Systems", Location: "Gyeonggi-do", Status: "Ready for review", Qualification: "88", "Dossier Document": dossierId } },
+    { id: "50000000-0000-4000-8000-000000000002", databaseId, createdAt, data: { Company: "Busan Robotics & Logistics Innovation Consortium With A Deliberately Long Name", Location: "Busan", Status: "Researching", Qualification: "74", "Dossier Document": "" } }
+  );
+}
 
 const now = () => new Date().toISOString();
 const iso = (date: Date) => date.toISOString();
@@ -586,7 +632,12 @@ export const repository = {
     });
   },
   async recordModelCall(input: {
-    runId: string;
+    runId?: string | null;
+    projectId?: string | null;
+    userId?: string | null;
+    operationId?: string | null;
+    taskProfile?: Record<string, unknown>;
+    selectionReason?: string | null;
     route: string;
     model?: string | null;
     provider?: string | null;
@@ -605,7 +656,7 @@ export const repository = {
     if (!db) {
       const row = {
         id: crypto.randomUUID(),
-        runId: input.runId,
+        runId: input.runId ?? null,
         route: input.route,
         model: input.model ?? null,
         provider: input.provider ?? null,
@@ -619,6 +670,9 @@ export const repository = {
         attemptCount: input.attemptCount ?? 1,
         structuredOutputValid: input.structuredOutputValid ?? null,
         requestBudgetMicros: input.requestBudgetMicros ?? null,
+        operationId: input.operationId ?? null,
+        taskProfile: input.taskProfile ?? {},
+        selectionReason: input.selectionReason ?? null,
         error: input.error ?? null,
         projectId: null,
         userId: null,
@@ -629,15 +683,15 @@ export const repository = {
     }
     return db.transaction(async (tx) => {
       const costMicros = input.costMicros ?? 0;
-      const [scope] = await tx.select({
+      const [scope] = input.runId ? await tx.select({
         projectId: commands.projectId,
         userId: commands.createdBy
       }).from(runs).innerJoin(commands, eq(commands.id, runs.commandId))
-        .where(eq(runs.id, input.runId)).limit(1);
+        .where(eq(runs.id, input.runId)).limit(1) : [];
       const [row] = await tx.insert(modelCalls).values({
-        runId: input.runId,
-        projectId: scope?.projectId ?? null,
-        userId: scope?.userId ?? null,
+        runId: input.runId ?? null,
+        projectId: input.projectId ?? scope?.projectId ?? null,
+        userId: input.userId ?? scope?.userId ?? null,
         agentType: input.route.startsWith("executive") ? "executive" : "worker",
         route: input.route,
         model: input.model ?? null,
@@ -652,9 +706,12 @@ export const repository = {
         attemptCount: input.attemptCount ?? 1,
         structuredOutputValid: input.structuredOutputValid ?? null,
         requestBudgetMicros: input.requestBudgetMicros ?? null,
+        operationId: input.operationId ?? null,
+        taskProfile: input.taskProfile ?? {},
+        selectionReason: input.selectionReason ?? null,
         error: input.error ?? null
       }).returning();
-      if (costMicros > 0) {
+      if (costMicros > 0 && input.runId) {
         await tx.update(runs).set({
           costMicros: drizzleSql`${runs.costMicros} + ${costMicros}`,
           updatedAt: new Date()

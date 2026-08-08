@@ -1,3 +1,6 @@
+import type { ModelTaskProfile } from "@/lib/ai/model-policy";
+import { isUiAuditMode } from "@/lib/ui-audit-mode";
+
 /**
  * OpenAI-compatible tool-calling shapes, passed through LiteLLM unchanged.
  * A tool's JSON Schema lives in `parameters`; LiteLLM forwards `tools`
@@ -57,6 +60,7 @@ export async function requestLiteLLM(
   messages: ChatMessage[],
   options: ModelRequestOptions = {}
 ) {
+  if (isUiAuditMode()) throw new Error("Model calls are disabled in UI audit mode.");
   const baseUrl = process.env.LITELLM_BASE_URL;
   const apiKey = process.env.LITELLM_API_KEY;
   if (!baseUrl || !apiKey) {
@@ -166,6 +170,7 @@ export async function requestModel(
     maxCostMicros?: number;
     structuredOutput?: boolean;
     tools?: ToolDefinition[];
+    taskProfile?: ModelTaskProfile;
   }
 ) {
   const internalUrl = process.env.BUSINESS_OS_INTERNAL_URL;
@@ -191,6 +196,7 @@ export async function requestModel(
       maxCostMicros: telemetry?.maxCostMicros,
       structuredOutput: telemetry?.structuredOutput,
       tools: telemetry?.tools
+      ,taskProfile: telemetry?.taskProfile
     })
   });
   if (!response.ok) {

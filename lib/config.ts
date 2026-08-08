@@ -102,7 +102,7 @@ export const optionalWithConsequence: ConfigRequirement[] = [
   },
   {
     key: "DOCUMENT_CONVERSION_SERVICE_URL",
-    reason: "Uploads are not converted or OCR'd; Korean-safe PDF and DOCX export is unavailable."
+    reason: "Advanced PDF/DOCX export is unavailable; supported text, Markdown, and simple DOCX imports still work locally."
   },
   {
     key: "ORGANIZATION_BUDGET_CENTS",

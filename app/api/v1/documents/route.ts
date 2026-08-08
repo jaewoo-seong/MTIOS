@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { guard } from "@/lib/api/guard";
-import { MAX_UPLOAD_BYTES } from "@/lib/documents/convert";
+import { MAX_UPLOAD_BYTES, preflightDocument } from "@/lib/documents/convert";
 import { ingestDocument } from "@/lib/documents/intelligence";
 import { repository } from "@/lib/repository";
 
@@ -44,6 +44,14 @@ export const POST = guard(async (request) => {
   }
 
   const buffer = Buffer.from(await file.arrayBuffer());
+  try {
+    await preflightDocument(file.name, file.type || "application/octet-stream", buffer);
+  } catch (error) {
+    return NextResponse.json({
+      error: "unsupported_document",
+      detail: error instanceof Error ? error.message : "This document cannot be imported."
+    }, { status: 422 });
+  }
   const projectId = String(form.get("projectId") ?? "") || null;
   const result = await ingestDocument({
     folderId: folder.id,

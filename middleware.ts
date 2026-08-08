@@ -41,6 +41,12 @@ type Claims = {
 export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname;
 
+  // Local fixture mode is an authenticated UI harness, never a production
+  // authentication option. Keep this check explicit and Edge-safe.
+  if (process.env.NODE_ENV !== "production" && process.env.UI_AUDIT_MODE === "true") {
+    return NextResponse.next();
+  }
+
   // Perimeter first, before any application logic. Everything below this point
   // assumes the request already cleared the outer gate.
   const gate = basicAuthGate(request, path);

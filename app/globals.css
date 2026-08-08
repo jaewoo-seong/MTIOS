@@ -171,6 +171,16 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 
 /* ── Shell ────────────────────────────────────────────────────────────── */
 .app-shell { min-height: 100vh; display: grid; grid-template-columns: var(--sidebar-w) minmax(0, 1fr); }
+.ui-audit-banner {
+  position: fixed; inset: 0 0 auto; z-index: 100; height: 28px;
+  display: flex; align-items: center; justify-content: center;
+  border-bottom: 1px solid #6f4c00; background: #fff0b8; color: #4a3200;
+  font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: .04em;
+}
+.app-shell:has(.ui-audit-banner) .sidebar { top: 28px; }
+.app-shell:has(.ui-audit-banner) .topbar { top: 28px; }
+.app-shell:has(.ui-audit-banner) .main { padding-top: 28px; }
+.auth-dev-note { margin: 0; color: var(--ink-mute); font-size: var(--t-label); text-align: center; }
 .sidebar {
   position: fixed; inset: 0 auto 0 0; z-index: 20; width: var(--sidebar-w);
   display: flex; flex-direction: column; padding: var(--sp-4) var(--sp-3);

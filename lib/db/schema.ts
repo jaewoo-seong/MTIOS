@@ -295,7 +295,7 @@ export const runEvents = pgTable("run_events", {
 
 export const modelCalls = pgTable("model_calls", {
   id: uuid("id").defaultRandom().primaryKey(),
-  runId: uuid("run_id").references(() => runs.id, { onDelete: "cascade" }).notNull(),
+  runId: uuid("run_id").references(() => runs.id, { onDelete: "cascade" }),
   projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }),
   userId: uuid("user_id").references(() => users.id, { onDelete: "set null" }),
   agentType: text("agent_type"),
@@ -312,6 +312,9 @@ export const modelCalls = pgTable("model_calls", {
   attemptCount: integer("attempt_count").default(1).notNull(),
   structuredOutputValid: boolean("structured_output_valid"),
   requestBudgetMicros: bigint("request_budget_micros", { mode: "number" }),
+  operationId: text("operation_id"),
+  taskProfile: jsonb("task_profile").$type<Record<string, unknown>>().default({}).notNull(),
+  selectionReason: text("selection_reason"),
   error: text("error"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
 });

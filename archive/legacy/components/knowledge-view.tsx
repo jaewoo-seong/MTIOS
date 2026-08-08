@@ -1,4 +1,4 @@
-"use client";
+"use client"; // Archived: legacy general knowledge surface.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BookOpen, Check, Loader2, Plus, Trash2, X } from "lucide-react";

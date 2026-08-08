@@ -14,6 +14,11 @@ const candidateSchema = z.object({
   pricingClass: z.enum(["paid", "free"]),
   productionApproved: z.boolean(),
   licensingStatus: z.enum(["approved", "testing_only", "unverified"])
+  ,strengths: z.array(z.enum(["research", "writing", "editing", "extraction", "translation", "classification", "planning", "review", "creative"])).max(9).optional()
+  ,languages: z.array(z.enum(["en", "ko"])).max(2).optional()
+  ,supportsStructuredOutput: z.boolean().optional()
+  ,supportsTools: z.boolean().optional()
+  ,longContext: z.boolean().optional()
 });
 const schema = z.object({
   route: routeSchema,

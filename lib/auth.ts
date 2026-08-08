@@ -10,6 +10,7 @@ import {
   users
 } from "@/lib/db/schema";
 import { MTI_ORGANIZATION_ID } from "@/lib/repository";
+import { isUiAuditMode, uiAuditClaims } from "@/lib/ui-audit-mode";
 
 export const SESSION_COOKIE = "mti_session";
 export const SESSION_IDLE_MS = 12 * 60 * 60 * 1000;
@@ -201,6 +202,7 @@ export async function verifySessionToken(token: string | undefined | null): Prom
 }
 
 export async function currentSession(options: { admin?: boolean; allowPasswordChange?: boolean } = {}) {
+  if (isUiAuditMode()) return uiAuditClaims();
   const cookieStore = await cookies();
   const claims = await verifySessionToken(cookieStore.get(SESSION_COOKIE)?.value);
   if (!claims) throw new AuthError("unauthorized", 401);
@@ -233,6 +235,9 @@ export function shouldRotateSession(claimsExpiresAt: number, now = Date.now()) {
 }
 
 export async function refreshSession() {
+  if (isUiAuditMode()) {
+    return { token: "ui-audit-local-only", claims: uiAuditClaims(), rotated: false };
+  }
   const cookieStore = await cookies();
   const currentToken = cookieStore.get(SESSION_COOKIE)?.value;
   const claims = await currentSession({ allowPasswordChange: true });

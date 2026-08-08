@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { convertToMarkdown, detectKind, titleFromFilename } from "@/lib/documents/convert";
+import { convertToMarkdown, detectKind, preflightDocument, titleFromFilename } from "@/lib/documents/convert";
 import { repository } from "@/lib/repository";
 
 const buffer = (value: string) => Buffer.from(value, "utf8");
@@ -44,23 +44,6 @@ describe("convertToMarkdown", () => {
     expect(result.markdown).toBe("The substitution needs approval.");
   });
 
-  it("builds a markdown table from CSV, honouring quoted delimiters", async () => {
-    const csv = 'Company,Units\n"Namsan Robotics, Inc.",5200\nHanbit Devices,9500\n';
-    const result = await convertToMarkdown("leads.csv", "text/csv", buffer(csv));
-    expect(result.kind).toBe("csv");
-    expect(result.markdown.split("\n")).toEqual([
-      "| Company | Units |",
-      "| --- | --- |",
-      "| Namsan Robotics, Inc. | 5200 |",
-      "| Hanbit Devices | 9500 |"
-    ]);
-  });
-
-  it("escapes pipes so a cell cannot break the table", async () => {
-    const result = await convertToMarkdown("t.csv", "text/csv", buffer('A\n"x|y"\n'));
-    expect(result.markdown).toContain("x\\|y");
-  });
-
   it("takes the title from the first real heading in markdown", async () => {
     const result = await convertToMarkdown(
       "sample.md",
@@ -71,16 +54,20 @@ describe("convertToMarkdown", () => {
     expect(result.wordCount).toBeGreaterThan(0);
   });
 
-  it("pretty-prints JSON into a fenced block", async () => {
-    const result = await convertToMarkdown("q.json", "application/json", buffer('{"id":"Q-1"}'));
-    expect(result.markdown).toBe('```json\n{\n  "id": "Q-1"\n}\n```');
+  it("rejects former document formats at the import boundary", async () => {
+    for (const [filename, mime] of [["leads.csv", "text/csv"], ["q.json", "application/json"], ["r.html", "text/html"]]) {
+      await expect(convertToMarkdown(filename, mime, buffer("content"))).rejects.toThrow(/Unsupported file type/);
+    }
   });
 
-  it("converts HTML to markdown and strips scripts", async () => {
-    const html = "<h1>Report</h1><p>Body text</p><script>alert(1)</script>";
-    const result = await convertToMarkdown("r.html", "text/html", buffer(html));
-    expect(result.markdown).toContain("# Report");
-    expect(result.markdown).not.toContain("alert");
+  it("rejects PDF with an explicit deferred-support message", async () => {
+    await expect(preflightDocument("brief.pdf", "application/pdf", buffer("%PDF")))
+      .rejects.toThrow(/PDF importing is not available yet/);
+  });
+
+  it("requires UTF-8 for text imports", async () => {
+    await expect(preflightDocument("brief.txt", "text/plain", Buffer.from([0xff, 0xfe, 0x00])))
+      .rejects.toThrow(/UTF-8/);
   });
 
   it("rejects file types it cannot read", async () => {

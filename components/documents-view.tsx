@@ -32,7 +32,7 @@ function EditorLoading() {
 }
 
 const UPLOAD_CONCURRENCY = 3;
-const ACCEPT = ".pdf,.docx,.html,.htm,.csv,.tsv,.json,.md,.markdown,.txt";
+const ACCEPT = ".docx,.md,.markdown,.txt";
 type DocumentIntelligenceSummary = {
   conversions: Array<{
     status: string;
@@ -357,7 +357,7 @@ export function DocumentsView({
           <div className="document-dropzone">
             <Upload size={22} aria-hidden />
             <strong>{t("Drop files here to import")}</strong>
-            <p>{t("PDF, DOCX, HTML, CSV, TSV, JSON, Markdown, and text files are converted to readable markdown.")}</p>
+            <p>{t("Text, Markdown, and simple Word documents are converted to editable Markdown. PDF importing is not available yet.")}</p>
             <button className="primary" onClick={() => fileInputRef.current?.click()} disabled={!activeFolderId}>
               {t("Choose files")}
             </button>

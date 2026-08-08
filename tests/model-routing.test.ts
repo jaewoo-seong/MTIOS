@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { modelRoutePolicies, modelRequestSchema, resolveModelPolicy } from "@/lib/ai/model-policy";
+import {
+  inferTaskProfile, modelRoutePolicies, modelRequestSchema,
+  rankModelCandidates, resolveModelPolicy
+} from "@/lib/ai/model-policy";
 import { extractToolCalls } from "@/lib/ai/litellm";
 import { workerCatalog } from "@/lib/workflows/contracts";
 
@@ -14,14 +17,14 @@ describe("model routing policy", () => {
     expect(modelRoutePolicies.multilingual_embedding.maxCostMicros).toBeGreaterThan(0);
     // OpenRouter only: the NVIDIA candidate was removed along with its LiteLLM
     // entries, so nothing lists a provider that cannot serve a request.
-    expect(modelRoutePolicies.worker_research.candidates.map((item) => item.provider))
-      .toEqual(["openrouter"]);
+    expect(modelRoutePolicies.worker_research.candidates.length).toBeGreaterThan(2);
+    expect(modelRoutePolicies.worker_research.candidates.every((item) => item.provider === "openrouter")).toBe(true);
   });
 
   it("resolves production workers through an approved free OpenRouter model", () => {
     vi.stubEnv("NODE_ENV", "production");
     const worker = resolveModelPolicy("worker_research");
-    expect(worker.candidates).toHaveLength(1);
+    expect(worker.candidates.length).toBeGreaterThan(2);
     expect(worker.candidates[0]).toMatchObject({
       modelEnv: "OPENROUTER_FREE_RESEARCH_MODEL", gatewayModel: "auto:free_research_nemotron",
       pricingClass: "free", productionApproved: true
@@ -34,8 +37,8 @@ describe("model routing policy", () => {
     vi.stubEnv("NVIDIA_PRODUCTION_APPROVED", "true");
     // The approval flag gates a candidate; it must not conjure one. The
     // existing approved OpenRouter worker remains the only candidate.
-    expect(resolveModelPolicy("worker_research").candidates.map((item) => item.provider))
-      .toEqual(["openrouter"]);
+    expect(resolveModelPolicy("worker_research").candidates.every((item) => item.provider === "openrouter"))
+      .toBe(true);
   });
 
   it("does not change the approved route when testing mode is enabled", () => {
@@ -43,14 +46,26 @@ describe("model routing policy", () => {
     vi.stubEnv("ALLOW_TESTING_MODELS", "true");
     const policy = resolveModelPolicy("worker_research");
     expect(policy.testingMode).toBe(true);
-    expect(policy.candidates.map((candidate) => candidate.provider))
-      .toEqual(["openrouter"]);
+    expect(policy.candidates.every((candidate) => candidate.provider === "openrouter"))
+      .toBe(true);
     expect(policy.candidates.every((candidate) => candidate.productionApproved)).toBe(true);
   });
 
   it("caps caller budgets at the route policy maximum", () => {
     expect(resolveModelPolicy("worker_fast", 999_999).maxCostMicros)
       .toBe(modelRoutePolicies.worker_fast.maxCostMicros);
+  });
+
+  it("selects a multilingual model for Korean editing and a long-context model for dossier writing", () => {
+    const editing = inferTaskProfile("worker_editing", [{ content: "한국어 문서를 자연스럽게 수정하세요." }]);
+    const editingRanked = rankModelCandidates(modelRoutePolicies.worker_editing, editing);
+    expect(editingRanked[0].candidate.gatewayModel).toContain("gemma_multilingual");
+
+    const writing = inferTaskProfile("worker_writing", [{ content: "Write a complete long-form company dossier." }], {
+      expectedOutput: "long", factuality: "high"
+    });
+    const writingRanked = rankModelCandidates(modelRoutePolicies.worker_writing, writing);
+    expect(writingRanked[0].candidate.longContext).toBe(true);
   });
 
   it("validates supported chat routes and structured-output controls", () => {

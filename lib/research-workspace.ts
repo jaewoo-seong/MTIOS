@@ -17,6 +17,7 @@ import {
   projects
 } from "@/lib/db/schema";
 import { MTI_ORGANIZATION_ID } from "@/lib/repository";
+import { isUiAuditMode } from "@/lib/ui-audit-mode";
 
 export const strategyShape = z.object({
   geographicScope: z.array(z.string().trim().min(1).max(200)).max(50),
@@ -108,6 +109,7 @@ export async function ensureResearchProject(projectId: string) {
 export async function getResearchWorkspace(projectId: string) {
   const settings = await ensureResearchProject(projectId);
   if (!db) {
+    if (isUiAuditMode()) return uiAuditResearchWorkspace(projectId, settings);
     return {
       settings,
       strategies: memory.strategies.filter((item) => item.projectId === projectId),
@@ -141,6 +143,52 @@ export async function getResearchWorkspace(projectId: string) {
     )),
     projectDocuments,
     revisionRequests: revisions
+  };
+}
+
+function uiAuditResearchWorkspace(projectId: string, settings: Record<string, unknown>) {
+  const campaignId = "60000000-0000-4000-8000-000000000001";
+  const strategyId = "70000000-0000-4000-8000-000000000001";
+  const dossierId = "30000000-0000-4000-8000-000000000001";
+  const updatedAt = "2026-08-07T18:30:00.000Z";
+  const activeSettings = { ...settings, activeStrategyVersionId: strategyId };
+  const dossier = {
+    id: dossierId, title: "Hanseong Precision Systems — Master Dossier",
+    filename: "hanseong-precision-systems.md", sourceKind: "markdown",
+    wordCount: 142, updatedAt
+  };
+  return {
+    settings: activeSettings,
+    strategies: [{
+      id: strategyId, projectId, version: 3, title: "Verified Korean manufacturing expansion signals",
+      summary: "Prioritize manufacturers with recent investment, hiring, facility expansion, or export-market signals.",
+      status: "active", createdAt: updatedAt,
+      strategy: {
+        geographicScope: ["Seoul Capital Area", "Chungcheong", "Busan", "Ulsan"],
+        industries: ["Advanced manufacturing", "Industrial automation", "Robotics", "Supply-chain technology"],
+        targetProfile: "Operating Korean companies with verifiable growth or transformation signals and a plausible need for MTI market, workforce, or commercial intelligence.",
+        exclusions: ["Directories", "Dormant entities", "Companies without an identifiable operating presence"],
+        qualificationRules: ["Evidence of Korean operations", "At least one recent commercial, workforce, or investment signal", "Plausible MTI service opportunity"],
+        sourcePlan: ["Official company sources", "Government and industry records", "Recent reputable news", "Public hiring sources"],
+        queryFamilies: ["Korean factory expansion 2026", "Korea industrial automation hiring", "Busan manufacturing investment"],
+        requiredDossierSections: ["Executive summary", "Company profile", "Leadership", "HR intelligence", "Recent news", "Opportunity analysis", "Sources"],
+        evidenceStandard: "Cite every material claim and label inference, unknowns, and conflicting evidence.",
+        newsFreshnessDays: 365
+      }
+    }],
+    messages: [
+      { id: "71000000-0000-4000-8000-000000000001", role: "user", content: "Prioritize expansion and workforce signals, and keep completed dossiers unchanged until I approve revisions.", strategyVersionId: null, createdAt: "2026-08-07T17:55:00.000Z" },
+      { id: "71000000-0000-4000-8000-000000000002", role: "assistant", content: "Strategy v3 is active for the next discovery batch. Existing dossiers remain on their approved versions.", strategyVersionId: strategyId, createdAt: "2026-08-07T17:56:00.000Z" }
+    ],
+    campaigns: [{ id: campaignId, name: "Korean advanced manufacturing prospects", status: "active" }],
+    candidates: [
+      { id: "72000000-0000-4000-8000-000000000001", campaignId, data: { legalName: "Hanseong Precision Systems", website: "https://example.com/company", location: "Gyeonggi-do", industry: "Precision manufacturing" }, priority: 9, qualificationScore: 88, queueStatus: "completed", dossierStatus: "completed", dossierReason: "Qualified with expansion and hiring evidence.", disposition: "unreviewed", strategyVersionId: strategyId, linkedDocumentId: dossierId, updatedAt },
+      { id: "72000000-0000-4000-8000-000000000002", campaignId, data: { legalName: "Busan Robotics & Logistics Innovation Consortium With A Deliberately Long Name", website: "", location: "Busan", industry: "Robotics" }, priority: 8, qualificationScore: 74, queueStatus: "queued", dossierStatus: "researching", dossierReason: null, disposition: "unreviewed", strategyVersionId: strategyId, linkedDocumentId: null, updatedAt },
+      { id: "72000000-0000-4000-8000-000000000003", campaignId, data: { legalName: "충청 스마트팩토리 솔루션", website: "https://example.com/ko", location: "충청남도", industry: "스마트 제조" }, priority: 4, qualificationScore: 69, queueStatus: "queued", dossierStatus: "pending", dossierReason: null, disposition: "unreviewed", strategyVersionId: strategyId, linkedDocumentId: null, updatedAt },
+      { id: "72000000-0000-4000-8000-000000000004", campaignId, data: { legalName: "Unverified Industrial Directory Entry", location: "Unknown" }, priority: 1, qualificationScore: 21, queueStatus: "held", dossierStatus: "failed", dossierReason: "Official operating identity could not be verified.", disposition: "declined", strategyVersionId: strategyId, linkedDocumentId: null, updatedAt }
+    ],
+    documents: [dossier], projectDocuments: [dossier],
+    revisionRequests: [{ id: "73000000-0000-4000-8000-000000000001", documentId: dossierId, status: "queued", instruction: "Verify the latest hiring activity and expand the workforce section.", createdAt: updatedAt }]
   };
 }
 
