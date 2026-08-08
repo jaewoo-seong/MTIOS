@@ -109,8 +109,14 @@ Settings advertise a provider that cannot serve a request.
 > ```bash
 > mkdir /tmp/litellm-deploy
 > cp railway/litellm/Dockerfile railway/litellm/config.yaml /tmp/litellm-deploy/
-> cd /tmp/litellm-deploy && railway up --service litellm --ci
+> cd /tmp/litellm-deploy
+> railway up --project <project-id> --environment <environment-id> \
+>   --service <litellm-service-id> --ci
 > ```
+>
+> Resolve and copy all three IDs from `railway status --json` while still in
+> the linked repository. A service name alone is not sufficient from an
+> unlinked temporary directory: Railway may create a new project instead.
 >
 > Then confirm from the runtime logs that Uvicorn is serving on port 4000, and
 > that no unexpected model literal appears in the `register_model` warnings.
@@ -127,8 +133,20 @@ Tavily is the only general web-search provider. Set both keys on **app**
 (`lib/research/engine.ts` runs in-process there, not in `mcp-tools`):
 
 - `TAVILY_API_KEY` — primary
-- `TAVILY_API_KEY_BACKUP` — spare, tried automatically when the primary is
-  rate-limited or out of quota
+- `TAVILY_API_KEY_BACKUP` — second authorized account, tried automatically
+  when the primary is rate-limited or out of quota
+- `TAVILY_API_KEY_3` — optional third authorized account
+
+Official-site mapping and scraping use Firecrawl account slots on `app`:
+
+- `FIRECRAWL_API_KEY`
+- `FIRECRAWL_API_KEY_2`
+- `FIRECRAWL_API_KEY_3`
+
+The account pool rotates only on quota/rate-limit or provider failure and
+records usage per account. The default dossier caps Firecrawl Map at 16 URLs
+and scrapes at most 8 pages, preventing a broad site map from consuming an
+entire free allowance for one company.
 
 Brave was removed deliberately, and Wikimedia no longer claims the `web`
 category. Redundancy comes from a second key on the same service rather than a

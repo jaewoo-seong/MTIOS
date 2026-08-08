@@ -4,6 +4,7 @@ import { db } from "@/lib/db/client";
 import {
   campaignCandidates,
   canonicalCompanies,
+  companyAliases,
   companyCandidates,
   companyIdentifiers,
   companyProjectLinks,
@@ -166,6 +167,9 @@ export async function findCompanyMatches(input: CompanyInput): Promise<CompanyMa
       if (company.normalizedName === name && (company.countryCode?.toUpperCase() ?? null) === country) {
         return [{ companyId: company.id, tier: "name_country", confidence: 92, reviewRequired: false }];
       }
+      if ((company.tradingNames ?? []).some((alias) => normalizeCompanyName(alias) === name)) {
+        return [{ companyId: company.id, tier: "name_country", confidence: 90, reviewRequired: false }];
+      }
       if (similarity(company.normalizedName, name) >= 0.75) {
         return [{ companyId: company.id, tier: "fuzzy_review", confidence: 70, reviewRequired: true }];
       }
@@ -188,6 +192,15 @@ export async function findCompanyMatches(input: CompanyInput): Promise<CompanyMa
         companyId, tier: "official_identifier", confidence: 100, reviewRequired: false
       }));
     }
+  }
+
+  const [aliasMatch] = await db.select({ companyId: companyAliases.companyId })
+    .from(companyAliases).where(and(
+      eq(companyAliases.organizationId, MTI_ORGANIZATION_ID),
+      eq(companyAliases.normalizedAlias, name)
+    )).limit(1);
+  if (aliasMatch) {
+    return [{ companyId: aliasMatch.companyId, tier: "name_country", confidence: 90, reviewRequired: false }];
   }
 
   const exact = await db.select({
@@ -230,7 +243,10 @@ export async function findCompanyMatches(input: CompanyInput): Promise<CompanyMa
 
 export async function registerCompany(input: CompanyInput) {
   const match = (await findCompanyMatches(input))[0];
-  if (match && !match.reviewRequired) return { companyId: match.companyId, created: false, match };
+  if (match && !match.reviewRequired) {
+    await enrichExistingCompany(match.companyId, input);
+    return { companyId: match.companyId, created: false, match };
+  }
   if (match?.reviewRequired) return { companyId: null, created: false, match };
 
   const normalizedName = normalizeCompanyName(input.legalName);
@@ -264,6 +280,15 @@ export async function registerCompany(input: CompanyInput) {
         ...normalizeIdentifier(item)
       })));
     }
+    if ((input.tradingNames ?? []).length > 0) {
+      await tx.insert(companyAliases).values((input.tradingNames ?? []).map((alias) => ({
+        organizationId: MTI_ORGANIZATION_ID,
+        companyId: company.id,
+        alias,
+        normalizedAlias: normalizeCompanyName(alias),
+        language: /[\uac00-\ud7af]/.test(alias) ? "ko" : "en"
+      }))).onConflictDoNothing();
+    }
     if (input.source) {
       await tx.insert(companySources).values({
         organizationId: MTI_ORGANIZATION_ID,
@@ -276,6 +301,44 @@ export async function registerCompany(input: CompanyInput) {
       });
     }
     return { companyId: company.id, created: true, match: null };
+  });
+}
+
+async function enrichExistingCompany(companyId: string, input: CompanyInput) {
+  if (!db) {
+    const company = memory.companies.find((item) => item.id === companyId);
+    if (company) company.tradingNames = [...new Set([...(company.tradingNames ?? []), ...(input.tradingNames ?? [])])];
+    return;
+  }
+  await db.transaction(async (tx) => {
+    if ((input.tradingNames ?? []).length > 0) {
+      await tx.insert(companyAliases).values((input.tradingNames ?? []).map((alias) => ({
+        organizationId: MTI_ORGANIZATION_ID,
+        companyId,
+        alias,
+        normalizedAlias: normalizeCompanyName(alias),
+        language: /[\uac00-\ud7af]/.test(alias) ? "ko" : "en"
+      }))).onConflictDoNothing();
+    }
+    if (input.source) {
+      await tx.insert(companySources).values({
+        organizationId: MTI_ORGANIZATION_ID,
+        companyId,
+        sourceUrl: input.source.url,
+        sourceType: input.source.type ?? "web",
+        title: input.source.title ?? "",
+        evidence: input.source.evidence ?? {},
+        expiresAt: input.source.expiresAt ?? null
+      }).onConflictDoUpdate({
+        target: [companySources.companyId, companySources.sourceUrl],
+        set: {
+          title: input.source.title ?? "",
+          evidence: input.source.evidence ?? {},
+          retrievedAt: new Date(),
+          expiresAt: input.source.expiresAt ?? null
+        }
+      });
+    }
   });
 }
 

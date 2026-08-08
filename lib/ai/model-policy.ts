@@ -115,7 +115,7 @@ export const modelRoutePolicies: Record<ModelRoute, ModelRoutePolicy> = {
   // it describes what WOULD serve the route, not something that works today.
   multilingual_embedding: { purpose: "Multilingual embeddings (unserved: no embedding provider configured)", maxCostMicros: 10_000, structuredOutput: false, candidates: [fast] },
   multilingual_reranking: { purpose: "Multilingual reranking (unserved: no reranking provider configured)", maxCostMicros: 20_000, structuredOutput: false, candidates: [fast] },
-  premium_fallback: { purpose: "Admin-approved premium fallback", maxCostMicros: 300_000, structuredOutput: true, candidates: [premiumFallback] }
+  premium_fallback: { purpose: "GPT Luna fallback after free models fail", maxCostMicros: 300_000, structuredOutput: true, candidates: [premiumFallback] }
 };
 
 const defaultKind: Partial<Record<ModelRoute, ModelTaskKind>> = {

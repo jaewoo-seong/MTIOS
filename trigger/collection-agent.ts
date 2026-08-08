@@ -498,9 +498,14 @@ export async function runDossierLoop(
     ? steer.qualificationRules
     : payload.qualificationRules;
 
-  const claim = await deps.callWorkflowApp<{ claimed: boolean; leaseToken: string | null }>({
+  const claim = await deps.callWorkflowApp<{
+    claimed: boolean;
+    leaseToken: string | null;
+    contextSnapshot: { id: string; context: Record<string, unknown> } | null;
+  }>({
     action: "dossier_claim",
     runId: payload.runId,
+    projectId: payload.projectId,
     campaignId: payload.campaignId,
     candidateId: payload.candidateId
   });
@@ -511,19 +516,30 @@ export async function runDossierLoop(
     return { candidateId: payload.candidateId, status: "skipped", reason: "Already claimed by another worker." };
   }
   const leaseToken = claim.leaseToken;
-  const label = entityLabel(payload.candidateData);
+  const frozen = claim.contextSnapshot?.context as {
+    candidate?: { data?: Record<string, unknown> };
+    campaign?: { qualificationRules?: string[]; documentTemplate?: string; entitySchema?: EntityFieldSchema[] };
+    strategy?: unknown;
+  } | undefined;
+  const candidateData = frozen?.candidate?.data ?? payload.candidateData;
+  const frozenRules = frozen?.campaign?.qualificationRules;
+  const effectiveRules = frozenRules && frozenRules.length > 0 ? frozenRules : qualificationRules;
+  const documentTemplate = frozen?.campaign?.documentTemplate || payload.documentTemplate;
+  const entitySchema = frozen?.campaign?.entitySchema?.length ? frozen.campaign.entitySchema : payload.entitySchema;
+  const effectivePayload = { ...payload, candidateData, qualificationRules: effectiveRules, documentTemplate, entitySchema };
+  const label = entityLabel(candidateData);
 
   try {
-    const evidence = await gatherDossierEvidence(payload, deps, label);
+    const evidence = await gatherDossierEvidence(effectivePayload, deps, label);
 
     const extraction = await deps.requestModel("worker_structured", [
       {
         role: "system",
         content: [
           "Fill in the declared fields for one entity from the supplied evidence.",
-          `Fields: ${JSON.stringify(payload.entitySchema)}.`,
-          qualificationRules.length > 0
-            ? `The entity qualifies only if: ${qualificationRules.join("; ")}.`
+          `Fields: ${JSON.stringify(entitySchema)}.`,
+          effectiveRules.length > 0
+            ? `The entity qualifies only if: ${effectiveRules.join("; ")}.`
             : "No extra qualification rules beyond the field descriptions.",
           'Return JSON only: {"qualifies":true|false,"reason":"string","fields":{"field_name":"value"}}.',
           "Omit any field the evidence does not support. Never guess a value to fill a gap - an " +
@@ -532,7 +548,7 @@ export async function runDossierLoop(
       },
       {
         role: "user",
-        content: JSON.stringify({ knownSoFar: payload.candidateData, evidence })
+        content: JSON.stringify({ knownSoFar: candidateData, frozenStrategy: frozen?.strategy ?? null, evidence })
       }
     ], { runId: payload.runId });
 
@@ -554,14 +570,14 @@ export async function runDossierLoop(
       return { candidateId: payload.candidateId, status: "disqualified", reason: extracted.reason };
     }
 
-    const merged = { ...payload.candidateData, ...extracted.fields };
+    const merged = { ...candidateData, ...extracted.fields };
     const writeUp = await deps.requestModel("worker_writing", [
       {
         role: "system",
         content: [
           "Write one markdown document about a single entity, following the supplied template.",
           "Template:",
-          payload.documentTemplate,
+          documentTemplate,
           "Use only the supplied fields and evidence. Where the template asks for something the " +
             "evidence does not cover, write that it is not established rather than filling the gap.",
           "Return the markdown document itself, with no preamble and no code fence."
@@ -611,6 +627,25 @@ async function gatherDossierEvidence(
   deps: DossierDeps,
   label: string
 ): Promise<unknown[]> {
+  const evidence: unknown[] = [];
+  const officialDomain = [payload.candidateData.website, payload.candidateData.domain]
+    .find((value): value is string => typeof value === "string" && value.trim().length > 0);
+  if (officialDomain) {
+    try {
+      const { result } = await deps.callWorkflowApp<{ result: unknown }>({
+        action: "official_site_research",
+        runId: payload.runId,
+        projectId: payload.projectId,
+        campaignId: payload.campaignId,
+        candidateId: payload.candidateId,
+        domain: officialDomain,
+        maxPages: 8
+      });
+      evidence.push({ sourceRole: "official_company_site", result });
+    } catch (error) {
+      evidence.push({ sourceRole: "official_company_site", error: error instanceof Error ? error.message : "official-site research failed" });
+    }
+  }
   const planned = await deps.requestModel("worker_structured", [
     {
       role: "system",
@@ -634,7 +669,6 @@ async function gatherDossierEvidence(
     queries = [label];
   }
 
-  const evidence: unknown[] = [];
   for (const query of queries.slice(0, DOSSIER_SEARCH_STEPS)) {
     try {
       const { result } = await deps.callWorkflowApp<{ result: unknown }>({
@@ -649,7 +683,7 @@ async function gatherDossierEvidence(
         candidateId: payload.candidateId,
         query: query.slice(0, 2000)
       });
-      evidence.push(result);
+      evidence.push({ sourceRole: "external_verification", result });
     } catch (error) {
       evidence.push({ query, error: error instanceof Error ? error.message : "search failed" });
     }

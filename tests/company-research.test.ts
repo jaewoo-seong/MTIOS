@@ -52,6 +52,19 @@ describe("canonical company identity", () => {
     });
     expect(matches.some((match) => match.tier === "fuzzy_review" && match.reviewRequired)).toBe(true);
   });
+
+  it("matches Korean and English aliases to one canonical company", async () => {
+    const created = await registerCompany({
+      legalName: "Hanguk Precision Systems",
+      tradingNames: ["한국정밀시스템"],
+      countryCode: "KR"
+    });
+    const matches = await findCompanyMatches({
+      legalName: "한국정밀시스템",
+      countryCode: "KR"
+    });
+    expect(matches[0]).toMatchObject({ companyId: created.companyId, reviewRequired: false });
+  });
 });
 
 describe("durable research campaign behavior", () => {

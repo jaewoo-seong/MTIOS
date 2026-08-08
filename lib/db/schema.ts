@@ -1299,6 +1299,21 @@ export const canonicalCompanies = pgTable("canonical_companies", {
   uniqueIndex("canonical_company_org_domain_idx").on(table.organizationId, table.normalizedDomain)
 ]);
 
+export const companyAliases = pgTable("company_aliases", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  companyId: uuid("company_id").references(() => canonicalCompanies.id, { onDelete: "cascade" }).notNull(),
+  alias: text("alias").notNull(),
+  normalizedAlias: text("normalized_alias").notNull(),
+  language: text("language").default("unknown").notNull(),
+  aliasType: text("alias_type").default("trading_name").notNull(),
+  sourceUrl: text("source_url"),
+  ...timestamps
+}, (table) => [
+  uniqueIndex("company_alias_company_normalized_idx").on(table.companyId, table.normalizedAlias),
+  index("company_alias_org_normalized_idx").on(table.organizationId, table.normalizedAlias)
+]);
+
 export const companyIdentifiers = pgTable("company_identifiers", {
   id: uuid("id").defaultRandom().primaryKey(),
   organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
@@ -1558,6 +1573,86 @@ export const collectionCandidateClaims = pgTable("collection_candidate_claims", 
 }, (table) => [
   uniqueIndex("collection_candidate_active_claim_idx").on(table.campaignId, table.candidateId),
   index("collection_candidate_lease_idx").on(table.leaseExpiresAt)
+]);
+
+/** Immutable input boundary for one dossier attempt. Strategy changes made
+ * after the claim therefore affect the next claim, never a worker mid-file. */
+export const dossierContextSnapshots = pgTable("dossier_context_snapshots", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  campaignId: uuid("campaign_id").references(() => collectionCampaigns.id, { onDelete: "cascade" }).notNull(),
+  candidateId: uuid("candidate_id").references(() => collectionCandidates.id, { onDelete: "cascade" }).notNull(),
+  runId: uuid("run_id").references(() => runs.id, { onDelete: "set null" }),
+  strategyVersionId: uuid("strategy_version_id").references(() => projectStrategyVersions.id, { onDelete: "set null" }),
+  context: jsonb("context").$type<Record<string, unknown>>().default({}).notNull(),
+  contentHash: text("content_hash").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
+}, (table) => [
+  index("dossier_context_candidate_idx").on(table.candidateId, table.createdAt),
+  index("dossier_context_run_idx").on(table.runId)
+]);
+
+/** One row is one independently owned provider account/quota pool. Only an
+ * environment-variable reference is stored; raw credentials never enter DB. */
+export const researchProviderAccounts = pgTable("research_provider_accounts", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  provider: text("provider").notNull(),
+  label: text("label").notNull(),
+  ownerLabel: text("owner_label").default("").notNull(),
+  credentialEnv: text("credential_env").notNull(),
+  priority: integer("priority").default(100).notNull(),
+  quotaPeriod: text("quota_period").default("monthly").notNull(),
+  allowance: integer("allowance"),
+  resetAt: timestamp("reset_at", { withTimezone: true }),
+  cooldownUntil: timestamp("cooldown_until", { withTimezone: true }),
+  status: text("status").default("active").notNull(),
+  authorizationConfirmedAt: timestamp("authorization_confirmed_at", { withTimezone: true }),
+  lastSuccessAt: timestamp("last_success_at", { withTimezone: true }),
+  lastErrorAt: timestamp("last_error_at", { withTimezone: true }),
+  lastError: text("last_error"),
+  ...timestamps
+}, (table) => [
+  uniqueIndex("research_provider_account_env_idx").on(table.organizationId, table.credentialEnv),
+  index("research_provider_account_priority_idx").on(table.organizationId, table.provider, table.status, table.priority)
+]);
+
+export const researchProviderAccountUsage = pgTable("research_provider_account_usage", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  accountId: uuid("account_id").references(() => researchProviderAccounts.id, { onDelete: "cascade" }).notNull(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }),
+  runId: uuid("run_id").references(() => runs.id, { onDelete: "set null" }),
+  candidateId: uuid("candidate_id").references(() => collectionCandidates.id, { onDelete: "set null" }),
+  operation: text("operation").notNull(),
+  quantity: integer("quantity").default(1).notNull(),
+  status: text("status").default("attempted").notNull(),
+  idempotencyKey: text("idempotency_key"),
+  occurredAt: timestamp("occurred_at", { withTimezone: true }).defaultNow().notNull()
+}, (table) => [
+  uniqueIndex("research_provider_account_usage_idempotency_idx").on(table.accountId, table.idempotencyKey),
+  index("research_provider_account_usage_window_idx").on(table.accountId, table.occurredAt)
+]);
+
+export const companyDiscoveryEvents = pgTable("company_discovery_events", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  campaignId: uuid("campaign_id").references(() => collectionCampaigns.id, { onDelete: "set null" }),
+  candidateId: uuid("candidate_id").references(() => collectionCandidates.id, { onDelete: "set null" }),
+  companyId: uuid("company_id").references(() => canonicalCompanies.id, { onDelete: "set null" }),
+  providerAccountId: uuid("provider_account_id").references(() => researchProviderAccounts.id, { onDelete: "set null" }),
+  query: text("query").notNull(),
+  resultUrl: text("result_url"),
+  discoveredName: text("discovered_name").notNull(),
+  resolution: text("resolution").notNull(),
+  resolutionReason: text("resolution_reason"),
+  strategyVersionId: uuid("strategy_version_id").references(() => projectStrategyVersions.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
+}, (table) => [
+  index("company_discovery_project_company_idx").on(table.projectId, table.companyId, table.createdAt),
+  index("company_discovery_candidate_idx").on(table.candidateId)
 ]);
 
 export const researchProviders = pgTable("research_providers", {

@@ -39,7 +39,7 @@ export const researchProviderCatalog: ResearchProviderDefinition[] = [
     category: ["web", "company"],
     baseUrl: "https://api.tavily.com/search",
     credentialEnv: "TAVILY_API_KEY",
-    fallbackCredentialEnvs: ["TAVILY_API_KEY_BACKUP"],
+    fallbackCredentialEnvs: ["TAVILY_API_KEY_BACKUP", "TAVILY_API_KEY_3"],
     requiresCredential: true,
     priority: 10,
     requestsPerSecond: 2,

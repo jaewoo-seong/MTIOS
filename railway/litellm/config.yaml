@@ -12,11 +12,8 @@ model_list:
   - model_name: executive_review
     litellm_params: *executive
 
-  # premium_fallback is what an admin approves when free routes are exhausted,
-  # so it reads its own variable — sharing the executive alias made "approve a
-  # premium fallback" silently mean "use the executive model", which is not
-  # necessarily the same choice. lib/ai/usage.ts already reads
-  # PREMIUM_FALLBACK_MODEL; this makes that read meaningful.
+  # Dedicated GPT Luna fallback. The exact provider slug is supplied through
+  # PREMIUM_FALLBACK_MODEL so the app never invents a model identifier.
   - model_name: premium_fallback
     litellm_params:
       model: os.environ/PREMIUM_FALLBACK_MODEL

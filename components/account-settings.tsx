@@ -178,8 +178,20 @@ type AnalyticsPayload = {
   providerReported: { tavily: { configured: boolean; available: boolean; data?: Record<string, unknown> } };
 };
 
+type ProviderAccount = {
+  id: string; provider: "tavily" | "firecrawl"; label: string; ownerLabel: string;
+  credentialEnv: string; priority: number; allowance: number | null; status: string;
+  resetAt: string | null; cooldownUntil: string | null; credentialConfigured: boolean;
+  authorizationConfirmed: boolean; lastError: string | null;
+};
+
 export function AiAnalyticsSettings({ onError }: { onError: (message: string) => void }) {
   const [data, setData] = useState<AnalyticsPayload | null>(null);
+  const [accounts, setAccounts] = useState<ProviderAccount[]>([]);
+  const [accountProvider, setAccountProvider] = useState<"tavily" | "firecrawl">("tavily");
+  const [accountLabel, setAccountLabel] = useState("");
+  const [accountOwner, setAccountOwner] = useState("");
+  const [accountEnv, setAccountEnv] = useState("");
   const [days, setDays] = useState("30");
   const [provider, setProvider] = useState("");
   const [route, setRoute] = useState("");
@@ -190,8 +202,14 @@ export function AiAnalyticsSettings({ onError }: { onError: (message: string) =>
     const from = new Date(to.getTime() - Number(days) * 86_400_000);
     return `from=${encodeURIComponent(from.toISOString())}&to=${encodeURIComponent(to.toISOString())}`;
   }, [days]);
-  const load = useCallback(() => request<{ data: AnalyticsPayload }>(`/api/v1/admin/ai-analytics?${range}`)
-    .then((payload) => setData(payload.data)), [range]);
+  const load = useCallback(async () => {
+    const [analytics, providerAccounts] = await Promise.all([
+      request<{ data: AnalyticsPayload }>(`/api/v1/admin/ai-analytics?${range}`),
+      request<{ data: ProviderAccount[] }>("/api/v1/admin/provider-accounts")
+    ]);
+    setData(analytics.data);
+    setAccounts(providerAccounts.data);
+  }, [range]);
   useEffect(() => { load().catch((error: Error) => onError(error.message)); }, [load, onError]);
   async function addQuota() {
     try {
@@ -210,6 +228,30 @@ export function AiAnalyticsSettings({ onError }: { onError: (message: string) =>
     } catch (error) {
       onError(error instanceof Error ? error.message : "Quota could not be saved.");
     }
+  }
+  async function addProviderAccount() {
+    try {
+      await request("/api/v1/admin/provider-accounts", {
+        method: "POST",
+        body: JSON.stringify({
+          provider: accountProvider, label: accountLabel, ownerLabel: accountOwner,
+          credentialEnv: accountEnv, priority: accounts.filter((item) => item.provider === accountProvider).length + 1,
+          allowance: 1000, quotaPeriod: "monthly", authorizationConfirmed: true
+        })
+      });
+      setAccountLabel(""); setAccountOwner(""); setAccountEnv("");
+      await load();
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "Provider account could not be saved.");
+    }
+  }
+  async function toggleProviderAccount(account: ProviderAccount) {
+    try {
+      await request("/api/v1/admin/provider-accounts", {
+        method: "PATCH", body: JSON.stringify({ id: account.id, status: account.status === "active" ? "disabled" : "active" })
+      });
+      await load();
+    } catch (error) { onError(error instanceof Error ? error.message : "Provider account could not be updated."); }
   }
   const breakdowns = useMemo(() => {
     const group = (key: "projectName" | "model" | "agentType" | "provider") => Object.entries((data?.rows ?? []).reduce<Record<string, number>>((totals, row) => {
@@ -254,6 +296,24 @@ export function AiAnalyticsSettings({ onError }: { onError: (message: string) =>
                 <span>${(Number(row.costMicros) / 1_000_000).toFixed(4)}</span>
               </div>
             ))}
+          </div>
+          <div className="quota-section">
+            <div className="surface-header"><div><h3>Research provider accounts</h3><span>Independent authorized Tavily and Firecrawl quota pools. API keys stay in environment secrets.</span></div></div>
+            <div className="admin-create-row quota-create">
+              <select value={accountProvider} onChange={(event) => setAccountProvider(event.target.value as "tavily" | "firecrawl")}><option value="tavily">Tavily</option><option value="firecrawl">Firecrawl</option></select>
+              <input placeholder="Account label" value={accountLabel} onChange={(event) => setAccountLabel(event.target.value)} />
+              <input placeholder="Owner label" value={accountOwner} onChange={(event) => setAccountOwner(event.target.value)} />
+              <input placeholder="Environment secret name" value={accountEnv} onChange={(event) => setAccountEnv(event.target.value.toUpperCase())} />
+              <button className="secondary" disabled={!accountLabel || !/^[A-Z][A-Z0-9_]{2,99}$/.test(accountEnv)} onClick={() => void addProviderAccount()}><Plus size={14} /> Add account</button>
+            </div>
+            {accounts.map((account) => <div className="quota-row" key={account.id}>
+              <div><strong>{account.provider} · {account.label}</strong><span>{account.ownerLabel || "Personal account"} · priority {account.priority}</span></div>
+              <div />
+              <strong>{account.credentialConfigured ? "Secret connected" : "Secret missing"}</strong>
+              <span>{account.authorizationConfirmed ? "Authorized" : "Authorization required"}{account.cooldownUntil ? ` · cooldown until ${new Date(account.cooldownUntil).toLocaleString()}` : ""}</span>
+              <button className="secondary" onClick={() => void toggleProviderAccount(account)}>{account.status === "active" ? "Disable" : "Enable"}</button>
+            </div>)}
+            {accounts.length === 0 && <div className="empty-inline">No provider accounts registered. Legacy environment keys remain available until accounts are added.</div>}
           </div>
           <div className="quota-section">
             <div className="surface-header"><h3>Free API quotas</h3></div>

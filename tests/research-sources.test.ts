@@ -10,7 +10,8 @@ import { researchProviderCatalog } from "@/lib/research/providers";
 
 const originalEnvironment = {
   TAVILY_API_KEY: process.env.TAVILY_API_KEY,
-  TAVILY_API_KEY_BACKUP: process.env.TAVILY_API_KEY_BACKUP
+  TAVILY_API_KEY_BACKUP: process.env.TAVILY_API_KEY_BACKUP,
+  TAVILY_API_KEY_3: process.env.TAVILY_API_KEY_3
 };
 
 afterEach(() => {
@@ -18,6 +19,8 @@ afterEach(() => {
   else process.env.TAVILY_API_KEY = originalEnvironment.TAVILY_API_KEY;
   if (originalEnvironment.TAVILY_API_KEY_BACKUP === undefined) delete process.env.TAVILY_API_KEY_BACKUP;
   else process.env.TAVILY_API_KEY_BACKUP = originalEnvironment.TAVILY_API_KEY_BACKUP;
+  if (originalEnvironment.TAVILY_API_KEY_3 === undefined) delete process.env.TAVILY_API_KEY_3;
+  else process.env.TAVILY_API_KEY_3 = originalEnvironment.TAVILY_API_KEY_3;
 });
 
 const ids = () => ({
@@ -96,6 +99,7 @@ describe("research execution", () => {
   it("does not fall back to another provider when Tavily has no key at all", async () => {
     delete process.env.TAVILY_API_KEY;
     delete process.env.TAVILY_API_KEY_BACKUP;
+    delete process.env.TAVILY_API_KEY_3;
     let calls = 0;
 
     const result = await runResearchQuery({
@@ -112,7 +116,7 @@ describe("research execution", () => {
     expect(result.issues).toContainEqual(expect.objectContaining({
       provider: "tavily",
       state: "unavailable",
-      message: expect.stringContaining("TAVILY_API_KEY / TAVILY_API_KEY_BACKUP")
+      message: expect.stringContaining("TAVILY_API_KEY / TAVILY_API_KEY_BACKUP / TAVILY_API_KEY_3")
     }));
   });
 

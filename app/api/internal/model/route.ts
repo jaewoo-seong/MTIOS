@@ -23,6 +23,8 @@ export async function POST(request: Request) {
   const parsed = await parseJson(request, modelRequestSchema);
   if (parsed.error) return parsed.error;
   const startedAt = Date.now();
+  const automaticLunaFallback = process.env.AUTO_LUNA_FALLBACK === "true" &&
+    Boolean(process.env.PREMIUM_FALLBACK_MODEL);
   const policy = resolveModelPolicy(
     parsed.data.model,
     parsed.data.maxCostMicros,
@@ -34,7 +36,7 @@ export async function POST(request: Request) {
     const quota = await evaluateFreeRoute(parsed.data.model, policy.candidates);
     if (!quota.available) {
       const approved = await approvedPremiumFallback(parsed.data.runId, parsed.data.model);
-      if (approved) {
+      if (approved || automaticLunaFallback) {
         selectedRoute = "premium_fallback";
         selectedCandidate = resolveModelPolicy("premium_fallback").candidates[0];
       } else {
@@ -87,7 +89,21 @@ export async function POST(request: Request) {
         attemptErrors.push(`${resolveGatewayModel(selectedCandidate.gatewayModel)}: ${error instanceof Error ? error.message : "failed"}`);
       }
     }
-    if (!response) throw new Error(`All eligible free model candidates failed. ${attemptErrors.join("; ")}`);
+    if (!response && selectedRoute !== "premium_fallback" && automaticLunaFallback) {
+      selectedRoute = "premium_fallback";
+      selectedCandidate = resolveModelPolicy("premium_fallback").candidates[0];
+      selectionReason = "all eligible free models failed; automatic GPT Luna fallback";
+      try {
+        response = await requestLiteLLM(resolveGatewayModel(selectedCandidate.gatewayModel), parsed.data.messages, {
+          maxCostMicros: Math.min(policy.maxCostMicros, resolveModelPolicy("premium_fallback").maxCostMicros),
+          responseFormat: structuredOutput ? { type: "json_object" } : undefined,
+          tools: parsed.data.tools
+        });
+      } catch (error) {
+        attemptErrors.push(`premium_fallback: ${error instanceof Error ? error.message : "failed"}`);
+      }
+    }
+    if (!response) throw new Error(`All eligible model candidates failed. ${attemptErrors.join("; ")}`);
     if (response && typeof response === "object") {
       Object.assign(response, {
         _mti_routing: {
@@ -113,6 +129,9 @@ export async function POST(request: Request) {
       };
       const cost = payload.usage?.cost ?? payload._hidden_params?.response_cost ?? 0;
       const costMicros = Math.max(0, Math.round(cost * 1_000_000));
+      const fallbackReason = selectedRoute === "premium_fallback"
+        ? selectionReason
+        : payload._hidden_params?.fallback_reason ?? null;
       if (costMicros > policy.maxCostMicros) {
         throw new Error(`Model call exceeded route budget for ${parsed.data.model}.`);
       }
@@ -137,10 +156,10 @@ export async function POST(request: Request) {
         outputTokens: payload.usage?.completion_tokens ?? 0,
         costMicros,
         latencyMs: Date.now() - startedAt,
-        fallbackReason: payload._hidden_params?.fallback_reason ?? null,
+        fallbackReason,
         licensingStatus: selectedCandidate.licensingStatus,
         environment: policy.environment,
-        attemptCount: payload._hidden_params?.fallback_reason ? 2 : 1,
+        attemptCount: Math.max(1, attemptErrors.length + 1),
         structuredOutputValid,
         requestBudgetMicros: policy.maxCostMicros,
         operationId: request.headers.get("x-mti-operation-id") ?? crypto.randomUUID(),
@@ -168,7 +187,7 @@ export async function POST(request: Request) {
         latencyMs: Date.now() - startedAt,
         inputTokens: payload.usage?.prompt_tokens ?? 0,
         outputTokens: payload.usage?.completion_tokens ?? 0,
-        fallbackReason: payload._hidden_params?.fallback_reason ?? null
+        fallbackReason
       });
     }
     return NextResponse.json(response);
@@ -185,7 +204,7 @@ export async function POST(request: Request) {
       error: reason instanceof Error ? reason.message : "Model request failed."
     });
     if (parsed.data.runId) {
-      if (selectedRoute !== "premium_fallback" &&
+      if (!automaticLunaFallback && selectedRoute !== "premium_fallback" &&
           policy.candidates.some((candidate) => candidate.pricingClass === "free")) {
         const approval = await createPremiumApproval({
           runId: parsed.data.runId,

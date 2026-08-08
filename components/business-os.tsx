@@ -929,7 +929,7 @@ function ModelSettings({ onError }: { onError: (message: string) => void }) {
 }
 
 function friendlyRouteName(route: string) {
-  return ({ executive_reasoning: "Premium strategist", executive_review: "Premium reviewer", premium_fallback: "Premium fallback", worker_research: "Company research", worker_creative: "Creative work", worker_writing: "Dossier writing", worker_editing: "Editing", worker_structured: "Data extraction", worker_translation: "Translation", worker_fast: "Quick classification" } as Record<string, string>)[route] ?? route.replaceAll("_", " ");
+  return ({ executive_reasoning: "Premium strategist", executive_review: "Premium reviewer", premium_fallback: "GPT Luna fallback", worker_research: "Company research", worker_creative: "Creative work", worker_writing: "Dossier writing", worker_editing: "Editing", worker_structured: "Data extraction", worker_translation: "Translation", worker_fast: "Quick classification" } as Record<string, string>)[route] ?? route.replaceAll("_", " ");
 }
 
 function McpSettings({ onError }: { onError: (message: string) => void }) {

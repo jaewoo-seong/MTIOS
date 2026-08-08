@@ -183,6 +183,13 @@
       "when": 1786158000000,
       "tag": "0025_task_aware_model_calls",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1786161600000,
+      "tag": "0026_research_context_provider_accounts",
+      "breakpoints": true
     }
   ]
 }

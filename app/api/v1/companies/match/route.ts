@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { parseJson } from "@/lib/http";
 import { findCompanyMatches } from "@/lib/company-research";
-import { companyInputSchema } from "@/app/api/v1/companies/route";
+import { companyInputSchema } from "@/lib/company-input";
 
 import { guard } from "@/lib/api/guard";
 export const POST = guard(async (request) => {

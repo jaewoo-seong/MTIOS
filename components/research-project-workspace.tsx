@@ -32,6 +32,7 @@ type Workspace = {
   settings: Settings; strategies: Strategy[]; messages: Message[]; candidates: Candidate[];
   documents: Dossier[]; projectDocuments: Dossier[]; campaigns: Array<{ id: string; name: string; status: string }>;
   revisionRequests: Array<{ id: string; documentId: string; status: string; instruction: string; createdAt: string }>;
+  contextSnapshots: Array<{ id: string; candidateId: string; strategyVersionId: string | null; contentHash: string; createdAt: string }>;
 };
 type Tab = "strategy" | "queue" | "dossiers";
 
@@ -312,12 +313,14 @@ function QueueView({ projectId, workspace, load, busy, setBusy, onError, onOpenD
             <thead><tr><th>Company</th><th>Qualification</th><th>Priority</th><th>Research</th><th>Decision</th><th /></tr></thead>
             <tbody>{visible.map((item) => {
               const name = companyName(item.data);
+              const snapshot = workspace.contextSnapshots?.find((context) => context.candidateId === item.id);
+              const strategy = workspace.strategies.find((version) => version.id === (snapshot?.strategyVersionId ?? item.strategyVersionId));
               return (
                 <tr key={item.id}>
                   <td><strong>{name}</strong><span>{companyDetail(item.data)}</span></td>
                   <td>{item.qualificationScore ?? "—"}</td>
                   <td><div className="priority-control"><button onClick={() => void candidate(item.id, { priority: item.priority - 1 })}><ArrowDown size={13} /></button><strong>{item.priority}</strong><button onClick={() => void candidate(item.id, { priority: item.priority + 1 })}><ArrowUp size={13} /></button></div></td>
-                  <td><span className={`pill ${item.dossierStatus === "completed" ? "good" : item.dossierStatus === "failed" ? "crit" : ""}`}>{item.queueStatus === "held" ? "held" : item.dossierStatus}</span>{item.dossierReason && <small>{item.dossierReason}</small>}</td>
+                  <td><span className={`pill ${item.dossierStatus === "completed" ? "good" : item.dossierStatus === "failed" ? "crit" : ""}`}>{item.queueStatus === "held" ? "held" : item.dossierStatus}</span>{snapshot && <small title={snapshot.contentHash}>Context locked · strategy {strategy ? `v${strategy.version}` : "snapshot"}</small>}{item.dossierReason && <small>{item.dossierReason}</small>}</td>
                   <td><select value={item.disposition} onChange={(event) => void candidate(item.id, { disposition: event.target.value })}><option value="unreviewed">Unreviewed</option><option value="approved">Approved</option><option value="declined">Declined</option><option value="needs_revision">Needs revision</option></select></td>
                   <td><div className="row-actions"><button className="quiet" onClick={() => void candidate(item.id, { held: item.queueStatus !== "held" })}>{item.queueStatus === "held" ? <Play size={13} /> : <Pause size={13} />}{item.queueStatus === "held" ? "Resume" : "Hold"}</button>{item.linkedDocumentId && <button className="quiet" onClick={() => onOpenDocument(item.linkedDocumentId as string)}><FileText size={13} /> Open</button>}</div></td>
                 </tr>

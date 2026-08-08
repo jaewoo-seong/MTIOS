@@ -22,6 +22,12 @@ import {
   recordExternalProviderUsage
 } from "@/lib/ai/usage";
 import { logResearchQuery } from "@/lib/observability/logger";
+import {
+  availableProviderAccounts,
+  recordProviderAccountUsage,
+  updateProviderAccountHealth,
+  type ProviderAccountRef
+} from "@/lib/research/accounts";
 
 export type NormalizedEvidence = {
   id: string;
@@ -187,8 +193,12 @@ export async function runResearchQuery(input: {
   let fallbackFrom: string | null = null;
   for (const definition of candidates) {
     if (used >= queryBudget || evidence.length >= (input.maxResults ?? 20)) break;
-    const credentials = configuredCredentials(definition);
-    if (definition.requiresCredential && credentials.length === 0) {
+    const legacyCredentialEnvs = [definition.credentialEnv, ...(definition.fallbackCredentialEnvs ?? [])]
+      .filter((name): name is string => Boolean(name));
+    const accounts = definition.requiresCredential
+      ? await availableProviderAccounts(definition.key, legacyCredentialEnvs)
+      : [];
+    if (definition.requiresCredential && accounts.length === 0) {
       issues.push({
         provider: definition.key,
         state: "unavailable",
@@ -207,7 +217,12 @@ export async function runResearchQuery(input: {
       fallbackFrom = definition.key;
       continue;
     }
-    const quota = await providerQuotaAvailable(definition.key, "research");
+    // Independently owned account pools enforce their own allowance in
+    // availableProviderAccounts. The legacy provider-wide quota remains the
+    // safety net only when no managed accounts have been registered.
+    const quota = accounts.some((account) => account.id)
+      ? { available: true }
+      : await providerQuotaAvailable(definition.key, "research");
     if (!quota.available) {
       issues.push({
         provider: definition.key,
@@ -230,7 +245,7 @@ export async function runResearchQuery(input: {
       fallbackFrom,
       { projectId: input.projectId, runId: input.runId ?? null },
       options,
-      credentials
+      accounts
     );
     if (result.issue) {
       issues.push(result.issue);
@@ -293,7 +308,7 @@ async function queryProvider(
     sleep?: (milliseconds: number) => Promise<void>;
     now?: () => Date;
   },
-  credentials: string[] = configuredCredentials(provider)
+  accounts: ProviderAccountRef[] = []
 ) {
   const started = Date.now();
   const cacheKey = hash(`${provider.key}|${language}|${query.trim().toLowerCase()}`);
@@ -320,12 +335,12 @@ async function queryProvider(
   // One pass per key. A key that is rate-limited or out of quota is a fact
   // about that key, not about the provider, so the spare key gets a full
   // attempt before the query gives up and moves to a different service.
-  const keys = credentials.length > 0 ? credentials : [null];
+  const keys: Array<ProviderAccountRef | null> = accounts.length > 0 ? accounts : [null];
   let issue: { provider: string; state: string; message: string } | null = null;
-  for (const [index, credentialEnv] of keys.entries()) {
+  for (const [index, account] of keys.entries()) {
     const attempt = await queryProviderWithKey(
       queryId, providerId, provider, query, language, fallbackFrom, scope, options,
-      credentialEnv, started, cacheKey
+      account, started, cacheKey
     );
     if (!attempt.issue) return attempt;
     issue = attempt.issue;
@@ -348,7 +363,7 @@ async function queryProviderWithKey(
     sleep?: (milliseconds: number) => Promise<void>;
     now?: () => Date;
   },
-  credentialEnv: string | null,
+  account: ProviderAccountRef | null,
   started: number,
   cacheKey: string
 ) {
@@ -363,7 +378,14 @@ async function queryProviderWithKey(
         projectId: scope.projectId,
         runId: scope.runId
       });
-      const response = await executeAdapter(provider, query, language, fetcher, credentialEnv);
+      const response = await executeAdapter(provider, query, language, fetcher, account?.credentialEnv ?? null);
+      if (account) {
+        await recordProviderAccountUsage({
+          account, projectId: scope.projectId, runId: scope.runId,
+          operation: "research", status: response.ok ? "completed" : `http_${response.status}`,
+          idempotencyKey: `${queryId}:${attempt}:${account.credentialEnv}`
+        });
+      }
       if (response.status === 429 || response.status === 503) {
         const retryAfterMs = parseRetryAfter(response.headers.get("retry-after"), attempt);
         await persistAttempt(queryId, providerId, {
@@ -379,12 +401,21 @@ async function queryProviderWithKey(
           await (options.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms))))(retryAfterMs);
           continue;
         }
+        if (account) await updateProviderAccountHealth(account, {
+          error: `HTTP ${response.status}`,
+          cooldownUntil: new Date(Date.now() + retryAfterMs)
+        });
         return {
           evidence: [],
           issue: { provider: provider.key, state: "rate_limited", message: `HTTP ${response.status}` }
         };
       }
+      if (response.status === 401 || response.status === 403) {
+        if (account) await updateProviderAccountHealth(account, { error: `HTTP ${response.status}`, disable: true });
+        throw new Error(`HTTP ${response.status}`);
+      }
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      if (account) await updateProviderAccountHealth(account, { success: true });
       const raw = await response.json() as unknown;
       const normalized = normalizeProviderResponse(provider, raw, query, language);
       await writeCache(providerId, cacheKey, normalized, provider.cacheTtlSeconds);
@@ -418,6 +449,7 @@ async function queryProviderWithKey(
       return { evidence, issue: null };
     } catch (error) {
       lastErrorMessage = error instanceof Error ? error.message : "Provider request failed.";
+      if (account) await updateProviderAccountHealth(account, { error: lastErrorMessage });
       if (attempt < 3) {
         await (options.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms))))(250 * 2 ** (attempt - 1));
       }

@@ -28,6 +28,8 @@ import { isValidWorkflowRequest } from "@/lib/internal-auth";
 import { invokeMcpTool } from "@/lib/mcp/platform";
 import { logResearchQuery } from "@/lib/observability/logger";
 import { getRunResearchCostCents } from "@/lib/research/engine";
+import { createDossierContextSnapshot } from "@/lib/research/context-snapshot";
+import { researchOfficialSite } from "@/lib/research/official-site";
 import { repository } from "@/lib/repository";
 import {
   collectionPlanSchema,
@@ -117,8 +119,18 @@ const schema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("dossier_claim"),
     runId: z.string().uuid(),
+    projectId: z.string().uuid(),
     campaignId: z.string().uuid(),
     candidateId: z.string().uuid()
+  }),
+  z.object({
+    action: z.literal("official_site_research"),
+    runId: z.string().uuid(),
+    projectId: z.string().uuid(),
+    campaignId: z.string().uuid(),
+    candidateId: z.string().uuid(),
+    domain: z.string().trim().min(1).max(500),
+    maxPages: z.number().int().min(1).max(10).default(8)
   }),
   z.object({
     action: z.literal("dossier_result"),
@@ -417,7 +429,42 @@ export async function POST(request: Request) {
       candidateId: input.candidateId,
       leaseSeconds: 900
     });
-    return NextResponse.json({ claimed: claim !== null, leaseToken: claim?.leaseToken ?? null });
+    if (!claim) return NextResponse.json({ claimed: false, leaseToken: null, contextSnapshot: null });
+    try {
+      const contextSnapshot = await createDossierContextSnapshot({
+        projectId: input.projectId,
+        campaignId: input.campaignId,
+        candidateId: input.candidateId,
+        runId: input.runId
+      });
+      return NextResponse.json({ claimed: true, leaseToken: claim.leaseToken, contextSnapshot });
+    } catch (error) {
+      await releaseCollectionCandidateClaim(input.campaignId, input.candidateId, claim.leaseToken);
+      throw error;
+    }
+  }
+
+  if (input.action === "official_site_research") {
+    const cacheQuery = `official-site:${input.domain.trim().toLowerCase()}`;
+    const cached = await findCampaignEvidence(input.campaignId, cacheQuery, requestEmbedding);
+    if (cached.hit) {
+      return NextResponse.json({ result: cached.evidence, reused: true });
+    }
+    const result = await researchOfficialSite({
+      projectId: input.projectId,
+      runId: input.runId,
+      candidateId: input.candidateId,
+      domain: input.domain,
+      maxPages: input.maxPages
+    });
+    await recordCampaignEvidence({
+      campaignId: input.campaignId,
+      candidateId: input.candidateId,
+      query: cacheQuery,
+      evidence: result,
+      embedding: null
+    }).catch(() => undefined);
+    return NextResponse.json({ result, reused: false });
   }
 
   if (input.action === "dossier_result") {

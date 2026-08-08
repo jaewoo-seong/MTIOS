@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, max, sql } from "drizzle-orm";
+import { and, asc, desc, eq, max, sql } from "drizzle-orm";
 import { z } from "zod";
 import { requestModel } from "@/lib/ai/litellm";
 import { parseModelJson } from "@/lib/ai/model-json";
@@ -9,6 +9,7 @@ import {
   collectionCampaigns,
   collectionCandidates,
   dossierRevisionRequests,
+  dossierContextSnapshots,
   documentRevisions,
   documents,
   projectResearchSettings,
@@ -114,14 +115,14 @@ export async function getResearchWorkspace(projectId: string) {
       settings,
       strategies: memory.strategies.filter((item) => item.projectId === projectId),
       messages: memory.messages.filter((item) => item.projectId === projectId),
-      campaigns: [], candidates: [], documents: [], projectDocuments: [], revisionRequests: []
+      campaigns: [], candidates: [], documents: [], projectDocuments: [], revisionRequests: [], contextSnapshots: []
     };
   }
   const database = requireDatabase();
   const campaigns = await database.select().from(collectionCampaigns)
     .where(eq(collectionCampaigns.projectId, projectId)).orderBy(desc(collectionCampaigns.createdAt));
   const campaignIds = new Set(campaigns.map((item) => item.id));
-  const [strategies, messages, allCandidates, projectDocuments, revisions] = await Promise.all([
+  const [strategies, messages, allCandidates, projectDocuments, revisions, contextSnapshots] = await Promise.all([
     database.select().from(projectStrategyVersions).where(eq(projectStrategyVersions.projectId, projectId))
       .orderBy(desc(projectStrategyVersions.version)),
     database.select().from(projectStrategyMessages).where(eq(projectStrategyMessages.projectId, projectId))
@@ -133,7 +134,15 @@ export async function getResearchWorkspace(projectId: string) {
     }).from(documents).where(and(eq(documents.projectId, projectId), eq(documents.organizationId, MTI_ORGANIZATION_ID)))
       .orderBy(desc(documents.updatedAt)),
     database.select().from(dossierRevisionRequests).where(eq(dossierRevisionRequests.projectId, projectId))
-      .orderBy(desc(dossierRevisionRequests.createdAt))
+      .orderBy(desc(dossierRevisionRequests.createdAt)),
+    database.select({
+      id: dossierContextSnapshots.id,
+      candidateId: dossierContextSnapshots.candidateId,
+      strategyVersionId: dossierContextSnapshots.strategyVersionId,
+      contentHash: dossierContextSnapshots.contentHash,
+      createdAt: dossierContextSnapshots.createdAt
+    }).from(dossierContextSnapshots).where(eq(dossierContextSnapshots.projectId, projectId))
+      .orderBy(desc(dossierContextSnapshots.createdAt))
   ]);
   return {
     settings, strategies, messages, campaigns,
@@ -142,7 +151,8 @@ export async function getResearchWorkspace(projectId: string) {
       (candidate) => campaignIds.has(candidate.campaignId) && candidate.linkedDocumentId === document.id
     )),
     projectDocuments,
-    revisionRequests: revisions
+    revisionRequests: revisions,
+    contextSnapshots
   };
 }
 
@@ -188,7 +198,8 @@ function uiAuditResearchWorkspace(projectId: string, settings: Record<string, un
       { id: "72000000-0000-4000-8000-000000000004", campaignId, data: { legalName: "Unverified Industrial Directory Entry", location: "Unknown" }, priority: 1, qualificationScore: 21, queueStatus: "held", dossierStatus: "failed", dossierReason: "Official operating identity could not be verified.", disposition: "declined", strategyVersionId: strategyId, linkedDocumentId: null, updatedAt }
     ],
     documents: [dossier], projectDocuments: [dossier],
-    revisionRequests: [{ id: "73000000-0000-4000-8000-000000000001", documentId: dossierId, status: "queued", instruction: "Verify the latest hiring activity and expand the workforce section.", createdAt: updatedAt }]
+    revisionRequests: [{ id: "73000000-0000-4000-8000-000000000001", documentId: dossierId, status: "queued", instruction: "Verify the latest hiring activity and expand the workforce section.", createdAt: updatedAt }],
+    contextSnapshots: [{ id: "74000000-0000-4000-8000-000000000001", candidateId: "72000000-0000-4000-8000-000000000001", strategyVersionId: strategyId, contentHash: "ui-audit-context", createdAt: updatedAt }]
   };
 }
 
@@ -220,6 +231,7 @@ export async function proposeResearchStrategy(input: {
         "You are the premium research strategist for a continuous company-research project.",
         "Respond to the operator, and propose a complete next strategy. Preserve good parts of the active strategy unless asked to replace them.",
         "The strategy controls future discovery and queued dossiers; completed documents are never silently rewritten.",
+        "For Korean markets, queryFamilies must include useful Korean-language and English-language searches.",
         'Return JSON only: {"title":"string","summary":"string","response":"string","strategy":{',
         '"geographicScope":["string"],"industries":["string"],"targetProfile":"string","exclusions":["string"],',
         '"qualificationRules":["string"],"sourcePlan":["string"],"queryFamilies":["string"],',
@@ -303,13 +315,9 @@ export async function activateResearchStrategy(projectId: string, strategyVersio
         status: "active", updatedAt: new Date()
       }).where(eq(collectionCampaigns.projectId, projectId));
     }
-    if (campaigns.length > 0) {
-      await tx.update(collectionCandidates).set({ strategyVersionId, updatedAt: new Date() })
-        .where(and(
-          inArray(collectionCandidates.campaignId, campaigns.map((campaign) => campaign.id)),
-          eq(collectionCandidates.queueStatus, "queued")
-        ));
-    }
+    // Existing queued companies stay pinned to the strategy that discovered
+    // them. The new version governs future discovery; changing an already-
+    // qualified company requires an explicit requalification action.
     return active;
   });
 }
