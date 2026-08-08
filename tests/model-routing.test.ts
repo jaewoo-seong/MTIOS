@@ -23,7 +23,7 @@ describe("model routing policy", () => {
     const worker = resolveModelPolicy("worker_research");
     expect(worker.candidates).toHaveLength(1);
     expect(worker.candidates[0]).toMatchObject({
-      modelEnv: "OPENROUTER_FREE_RESEARCH_MODEL", gatewayModel: "free_research_nemotron",
+      modelEnv: "OPENROUTER_FREE_RESEARCH_MODEL", gatewayModel: "auto:free_research_nemotron",
       pricingClass: "free", productionApproved: true
     });
     expect(resolveModelPolicy("executive_reasoning").candidates).toHaveLength(1);

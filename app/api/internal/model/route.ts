@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requestLiteLLM, type ModelRoute } from "@/lib/ai/litellm";
-import { modelRequestSchema, resolveModelPolicy } from "@/lib/ai/model-policy";
+import { modelRequestSchema, resolveGatewayModel, resolveModelPolicy } from "@/lib/ai/model-policy";
 import { parseJson } from "@/lib/http";
 import { isValidWorkflowRequest } from "@/lib/internal-auth";
 import { logModelCall, logger } from "@/lib/observability/logger";
@@ -58,7 +58,7 @@ export async function POST(request: Request) {
   }
   try {
     const structuredOutput = parsed.data.structuredOutput ?? policy.structuredOutput;
-    const response = await requestLiteLLM(selectedCandidate.gatewayModel || selectedRoute, parsed.data.messages, {
+    const response = await requestLiteLLM(resolveGatewayModel(selectedCandidate.gatewayModel || selectedRoute), parsed.data.messages, {
       maxCostMicros: policy.maxCostMicros,
       responseFormat: structuredOutput ? { type: "json_object" } : undefined,
       tools: parsed.data.tools

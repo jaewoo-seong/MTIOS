@@ -4,6 +4,7 @@ import { parseJson } from "@/lib/http";
 import { requestEmbedding, requestLiteLLM, requestReranking } from "@/lib/ai/litellm";
 import { listModelRouteRevisions, setModelRevisionState } from "@/lib/settings";
 import { guard } from "@/lib/api/guard";
+import { resolveGatewayModel } from "@/lib/ai/model-policy";
 
 const schema = z.object({
   action: z.enum(["test", "approve", "activate", "rollback"])
@@ -28,7 +29,7 @@ export const POST = guard<{ revisionId: string }>(async (request, { params }) =>
         } else if (revision.route === "multilingual_reranking") {
           await requestReranking("MTI", ["MTI Korea", "Unrelated"]);
         } else {
-          const response = await requestLiteLLM(revision.configuration.candidates[0]?.gatewayModel ?? revision.route, [
+          const response = await requestLiteLLM(resolveGatewayModel(revision.configuration.candidates[0]?.gatewayModel ?? revision.route), [
             { role: "user", content: "Return JSON with {\"status\":\"ok\"}." }
           ], {
             maxCostMicros: revision.configuration.maxCostMicros,

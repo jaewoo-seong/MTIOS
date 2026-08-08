@@ -768,7 +768,28 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 /* Three explicit columns — identity, what is serving it, controls — so the
    model in use is scannable down a single line instead of buried among
    inputs, which was the main complaint about the old single-row layout. */
-.model-routes { display: grid; }
+.model-routes { display: grid; gap: var(--sp-3); padding: var(--sp-4); }
+.model-routing-head > div:first-child { display: grid; gap: 3px; }
+.model-route-card { display: grid; grid-template-columns: minmax(180px, .8fr) minmax(300px, 1.4fr) auto; align-items: center; gap: var(--sp-4); padding: var(--sp-4); border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); }
+.model-route-card:hover { border-color: var(--line-strong); }
+.model-route-choice { min-width: 0; display: flex; align-items: center; gap: var(--sp-3); }
+.model-mode { flex: 0 0 auto; }
+.model-picker { min-width: 0; width: 100%; height: 36px; padding: 0 var(--sp-3); border: 1px solid var(--line-strong); border-radius: var(--r-md); background: var(--surface); color: var(--ink); }
+.model-auto-result { min-width: 0; display: flex; align-items: center; gap: var(--sp-2); color: var(--ink-soft); font-size: var(--t-meta); }
+.model-auto-result svg { flex: 0 0 auto; color: var(--accent); }
+.model-auto-result span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.model-route-actions { display: flex; align-items: center; justify-content: flex-end; gap: var(--sp-2); }
+.model-advanced { position: relative; }
+.model-advanced > summary { cursor: pointer; list-style: none; color: var(--ink-mute); font-size: var(--t-meta); }
+.model-advanced > summary::-webkit-details-marker { display: none; }
+.model-advanced[open] > div { position: absolute; z-index: 5; right: 0; top: calc(100% + 8px); width: 310px; display: grid; gap: var(--sp-3); padding: var(--sp-4); border: 1px solid var(--line-strong); border-radius: var(--r-md); background: var(--surface); box-shadow: var(--lift); }
+.model-advanced label { display: grid; gap: var(--sp-1); color: var(--ink-soft); font-size: var(--t-meta); }
+.model-advanced input[type="number"] { width: 100%; height: 34px; padding: 0 var(--sp-2); border: 1px solid var(--line); border-radius: var(--r-md); }
+.model-advanced small { color: var(--ink-faint); line-height: 1.45; }
+.model-help-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--sp-3); padding: var(--sp-4); border-top: 1px solid var(--line); background: var(--sunk); }
+.model-help-strip > div { display: grid; gap: 3px; }
+.model-help-strip strong { font-size: var(--t-meta); }
+.model-help-strip span { color: var(--ink-mute); font-size: var(--t-label); line-height: 1.5; }
 .model-route {
   display: grid; grid-template-columns: minmax(180px, 1fr) minmax(160px, 1.2fr) auto;
   gap: var(--sp-4); align-items: center;
@@ -1051,6 +1072,11 @@ button:disabled { cursor: not-allowed; opacity: .45; }
   .project-create-layout { grid-template-columns: 1fr; }
   .project-brief-panel textarea { min-height: 220px; }
   .analytics-breakdowns { grid-template-columns: 1fr 1fr; }
+  .model-route-card { grid-template-columns: 1fr; align-items: stretch; }
+  .model-route-choice { align-items: stretch; flex-direction: column; }
+  .model-route-actions { grid-column: auto; justify-content: space-between; }
+  .model-advanced[open] > div { position: fixed; left: var(--sp-4); right: var(--sp-4); top: auto; bottom: var(--sp-4); width: auto; }
+  .model-help-strip { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 1100px) {
@@ -1058,6 +1084,9 @@ button:disabled { cursor: not-allowed; opacity: .45; }
   .model-route-row { grid-template-columns: 1fr; }
   .model-route { grid-template-columns: 1fr; gap: var(--sp-2); }
   .model-route-controls { justify-content: flex-start; }
+  .model-route-card { grid-template-columns: minmax(160px, .7fr) minmax(260px, 1.3fr); }
+  .model-route-actions { grid-column: 2; }
+  .model-help-strip { grid-template-columns: 1fr 1fr; }
   .admin-create-row, .quota-create { grid-template-columns: 1fr 1fr; }
   .admin-user-row { grid-template-columns: minmax(220px, 1fr) 100px 76px; }
   .admin-user-row button { grid-column: auto; }

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { modelRoutes } from "@/lib/ai/litellm";
-import { modelRoutePolicies } from "@/lib/ai/model-policy";
+import { gatewayModelCatalog, modelRoutePolicies, resolveGatewayModel } from "@/lib/ai/model-policy";
 import { parseJson } from "@/lib/http";
 import { createModelRouteRevision, listModelRouteRevisions } from "@/lib/settings";
 import { guard } from "@/lib/api/guard";
@@ -35,9 +35,15 @@ export const POST = guard(async (request) => {
   const parsed = await parseJson(request, schema);
   if (parsed.error) return parsed.error;
   const base = modelRoutePolicies[parsed.data.route];
+  const invalidModel = parsed.data.candidates.some((candidate) =>
+    candidate.provider === "openrouter" &&
+    !gatewayModelCatalog.some((item) => item.gatewayModel === resolveGatewayModel(candidate.gatewayModel)) &&
+    !parsed.data.route.startsWith("executive") && parsed.data.route !== "premium_fallback"
+  );
+  if (invalidModel) return NextResponse.json({ error: "Model is not in the approved catalog." }, { status: 400 });
   const unsafePromotion = parsed.data.candidates.some((candidate) => {
     const current = base.candidates.find((item) =>
-      item.provider === candidate.provider && item.gatewayModel === candidate.gatewayModel
+      item.provider === candidate.provider && resolveGatewayModel(item.gatewayModel) === resolveGatewayModel(candidate.gatewayModel)
     );
     return candidate.productionApproved && !current?.productionApproved &&
       !(candidate.provider === "nvidia" && process.env.NVIDIA_PRODUCTION_APPROVED === "true");

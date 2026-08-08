@@ -29,7 +29,7 @@ const haiku: ModelCandidate = {
 const premiumFallback: ModelCandidate = { ...haiku, modelEnv: "PREMIUM_FALLBACK_MODEL", gatewayModel: "premium_fallback" };
 const freeCandidate = (gatewayModel: string, modelEnv: string): ModelCandidate => ({
   provider: "openrouter",
-  gatewayModel,
+  gatewayModel: `auto:${gatewayModel}`,
   modelEnv,
   pricingClass: "free",
   productionApproved: true,
@@ -49,6 +49,10 @@ const longform = freeCandidate("free_longform_nemotron", "OPENROUTER_FREE_LONGFO
 const multilingual = freeCandidate("free_gemma_multilingual", "OPENROUTER_FREE_MULTILINGUAL_MODEL");
 const structured = freeCandidate("free_gemma_structured", "OPENROUTER_FREE_STRUCTURED_MODEL");
 const fast = freeCandidate("free_fast_nemotron", "OPENROUTER_FREE_FAST_MODEL");
+
+export function resolveGatewayModel(gatewayModel: string) {
+  return gatewayModel.startsWith("auto:") ? gatewayModel.slice(5) : gatewayModel;
+}
 
 export const modelRoutePolicies: Record<ModelRoute, ModelRoutePolicy> = {
   executive_reasoning: { purpose: "Planning and clarification", maxCostMicros: 300_000, structuredOutput: true, candidates: [haiku] },

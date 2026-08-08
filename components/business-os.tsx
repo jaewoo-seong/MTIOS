@@ -718,8 +718,8 @@ type ModelSettingsPayload = {
   revisions: Array<{ id: string; route: string; version: number; status: string; testStatus: string }>;
   catalog: Array<{ gatewayModel: string; model: string; label: string }>;
   routes: Array<{
-    route: string; purpose: string; maxCostMicros: number; structuredOutput: boolean;
-    candidates: Array<{ order: number; provider: "openrouter" | "nvidia"; model: string; modelEnv: string; gatewayModel: string; pricingClass: "paid" | "free"; productionApproved: boolean; licensingStatus: "approved" | "testing_only" | "unverified"; enabled: boolean }>;
+    route: string; purpose: string; maxCostMicros: number; structuredOutput: boolean; recommendedGatewayModel: string;
+    candidates: Array<{ order: number; provider: "openrouter" | "nvidia"; model: string; modelEnv: string; gatewayModel: string; selectionMode: "auto" | "manual"; pricingClass: "paid" | "free"; productionApproved: boolean; licensingStatus: "approved" | "testing_only" | "unverified"; enabled: boolean }>;
   }>;
 };
 
@@ -727,40 +727,60 @@ function ModelSettings({ onError }: { onError: (message: string) => void }) {
   const { t } = useI18n();
   const [value, setValue] = useState<ModelSettingsPayload | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const [drafts, setDrafts] = useState<Record<string, { maxCostMicros: number; structuredOutput: boolean; gatewayModel: string }>>({});
+  const [drafts, setDrafts] = useState<Record<string, { maxCostMicros: number; structuredOutput: boolean; gatewayModel: string; mode: "auto" | "manual" }>>({});
   const lastSuccessful = value?.recentCalls.find((call) => !call.error);
+  const pendingRevisions = value?.revisions.filter((revision) => ["draft", "approved"].includes(revision.status)) ?? [];
   const load = useCallback(() => api<ModelSettingsPayload>("/api/v1/settings/models").then((payload) => {
     setValue(payload);
-    setDrafts((current) => Object.fromEntries(payload.routes.map((route) => [
+    setDrafts(Object.fromEntries(payload.routes.map((route) => [
       route.route,
-      current[route.route] ?? {
+      {
         maxCostMicros: route.maxCostMicros,
         structuredOutput: route.structuredOutput,
-        gatewayModel: route.candidates[0]?.gatewayModel ?? route.route
+        gatewayModel: route.candidates[0]?.gatewayModel.replace(/^auto:/, "") ?? route.route,
+        mode: route.candidates[0]?.selectionMode ?? "manual"
       }
     ])));
   }), []);
   useEffect(() => { load().catch((error: Error) => onError(error.message)); }, [load, onError]);
-  async function stage(route: ModelSettingsPayload["routes"][number]) {
-    setBusy(route.route);
-    try {
-      await api("/api/v1/settings/models/revisions", {
+  async function createAndActivate(route: ModelSettingsPayload["routes"][number], mode = drafts[route.route]?.mode ?? "manual") {
+      const draft = drafts[route.route];
+      const revision = await api<{ data: { id: string } }>("/api/v1/settings/models/revisions", {
         method: "POST",
         body: JSON.stringify({
           route: route.route,
-          maxCostMicros: drafts[route.route]?.maxCostMicros ?? route.maxCostMicros,
-          structuredOutput: drafts[route.route]?.structuredOutput ?? route.structuredOutput,
+          maxCostMicros: draft?.maxCostMicros ?? route.maxCostMicros,
+          structuredOutput: draft?.structuredOutput ?? route.structuredOutput,
           candidates: route.candidates.map(({ provider, modelEnv, gatewayModel, pricingClass, productionApproved, licensingStatus }) => ({
-            provider, modelEnv, gatewayModel: drafts[route.route]?.gatewayModel ?? gatewayModel, pricingClass, productionApproved, licensingStatus
+            provider, modelEnv,
+            gatewayModel: mode === "auto" ? `auto:${draft?.gatewayModel ?? gatewayModel.replace(/^auto:/, "")}` : (draft?.gatewayModel ?? gatewayModel.replace(/^auto:/, "")),
+            pricingClass, productionApproved, licensingStatus
           }))
         })
       });
+      for (const action of ["test", "approve", "activate"] as const) {
+        await api(`/api/v1/settings/models/revisions/${revision.data.id}`, { method: "POST", body: JSON.stringify({ action }) });
+      }
+  }
+  async function applyRoute(route: ModelSettingsPayload["routes"][number]) {
+    setBusy(route.route);
+    try {
+      await createAndActivate(route);
       await load();
     } catch (error) {
-      onError(error instanceof Error ? error.message : "Route revision could not be staged.");
+      onError(error instanceof Error ? error.message : "Model route could not be applied.");
     } finally {
       setBusy(null);
     }
+  }
+  async function applyAutoAll() {
+    if (!value) return;
+    setBusy("all");
+    try {
+      await api("/api/v1/settings/models/auto", { method: "POST" });
+      await load();
+    } catch (error) { onError(error instanceof Error ? error.message : "Automatic routing could not be applied to every worker."); }
+    finally { setBusy(null); }
   }
   async function transition(id: string, action: "test" | "approve" | "activate" | "rollback") {
     setBusy(id);
@@ -777,92 +797,55 @@ function ModelSettings({ onError }: { onError: (message: string) => void }) {
   }
   return (
     <section className="surface settings-wide">
-      <div className="surface-header"><h2>{t("Model routing")}</h2><span>{value ? `${value.gateway} · ${value.environment} · ${value.testingMode ? t("testing mode") : t("production policy")} · ${t(value.health)}` : t("Loading…")}</span></div>
+      <div className="surface-header model-routing-head"><div><h2>{t("Model routing")}</h2><span>{t("Choose automatic recommendations or pin a model for each job.")}</span></div>{value && <div className="surface-actions"><span className={`pill ${value.health === "ok" ? "good" : "warn"}`}>{t(value.health)}</span><button className="primary" disabled={busy !== null} onClick={() => void applyAutoAll()}>{busy === "all" && <Loader2 size={13} className="spin" />} {t("Auto-select all workers")}</button></div>}</div>
       {!value ? <div className="empty-inline">{t("Loading model routes…")}</div> : (
         <div className="model-routes">
-          {value.routes.map((route) => (
-            <div className="model-route" key={route.route}>
+          {value.routes.filter((route) => !route.route.startsWith("multilingual_")).map((route) => {
+            const draft = drafts[route.route];
+            const configurable = route.route.startsWith("worker_");
+            return <div className="model-route-card" key={route.route}>
               <div className="model-route-id">
-                <strong>{route.route}</strong>
+                <strong>{friendlyRouteName(route.route)}</strong>
                 <span>{t(route.purpose)}</span>
               </div>
-              <div className="model-route-serving">
-                {route.candidates.length === 0
-                  ? <span className="pill warn">{t("No model configured")}</span>
-                  : route.candidates.map((candidate) => (
-                    <span
-                      className={candidate.enabled ? "pill good" : "pill warn"}
-                      key={`${candidate.order}-${candidate.provider}`}
-                      title={`${candidate.provider} · ${t(candidate.licensingStatus)}`}
-                    >
-                      {candidate.model}
-                    </span>
-                  ))}
-              </div>
-              <div className="model-route-controls">
-                {!route.route.startsWith("executive") && route.route !== "premium_fallback" && (
-                  <label className="model-route-control">
-                    {t("Serving model")}
-                    <select value={drafts[route.route]?.gatewayModel ?? route.candidates[0]?.gatewayModel} onChange={(event) => setDrafts((current) => ({
+              <div className="model-route-choice">
+                {configurable ? <div className="segmented-control model-mode" role="group" aria-label={t("Model selection mode")}>
+                  <button className={draft?.mode === "auto" ? "active" : ""} onClick={() => setDrafts((current) => ({ ...current, [route.route]: { ...current[route.route], mode: "auto", gatewayModel: route.recommendedGatewayModel } }))}>{t("Auto")}</button>
+                  <button className={draft?.mode === "manual" ? "active" : ""} onClick={() => setDrafts((current) => ({ ...current, [route.route]: { ...current[route.route], mode: "manual" } }))}>{t("Manual")}</button>
+                </div> : <span className="pill">{t("Managed premium route")}</span>}
+                {configurable && draft?.mode === "manual" ? (
+                  <select className="model-picker" aria-label={t("Serving model")} value={draft.gatewayModel} onChange={(event) => setDrafts((current) => ({
                       ...current,
                       [route.route]: {
-                        maxCostMicros: current[route.route]?.maxCostMicros ?? route.maxCostMicros,
-                        structuredOutput: current[route.route]?.structuredOutput ?? route.structuredOutput,
+                        ...current[route.route],
                         gatewayModel: event.target.value
                       }
                     }))}>
                       {value.catalog.map((item) => <option key={item.gatewayModel} value={item.gatewayModel}>{item.label}</option>)}
                     </select>
-                  </label>
-                )}
-                <label className="model-route-control">
-                  {t("Cost cap")}
-                  <input
-                    type="number"
-                    min="0.001"
-                    max="1"
-                    step="0.001"
-                    value={(drafts[route.route]?.maxCostMicros ?? route.maxCostMicros) / 1_000_000}
-                    onChange={(event) => setDrafts((current) => ({
-                      ...current,
-                      [route.route]: {
-                        maxCostMicros: Math.round(Number(event.target.value) * 1_000_000),
-                        structuredOutput: current[route.route]?.structuredOutput ?? route.structuredOutput,
-                        gatewayModel: current[route.route]?.gatewayModel ?? route.candidates[0]?.gatewayModel ?? route.route
-                      }
-                    }))}
-                  />
-                </label>
-                <label className="model-route-check">
-                  <input
-                    type="checkbox"
-                    checked={drafts[route.route]?.structuredOutput ?? route.structuredOutput}
-                    onChange={(event) => setDrafts((current) => ({
-                      ...current,
-                      [route.route]: {
-                        maxCostMicros: current[route.route]?.maxCostMicros ?? route.maxCostMicros,
-                        structuredOutput: event.target.checked,
-                        gatewayModel: current[route.route]?.gatewayModel ?? route.candidates[0]?.gatewayModel ?? route.route
-                      }
-                    }))}
-                  />
-                  {t("Structured output")}
-                </label>
-                <button className="secondary" disabled={busy !== null} onClick={() => void stage(route)}>{t("Stage revision")}</button>
+                ) : <div className="model-auto-result"><Sparkles size={14} /><span>{route.candidates[0]?.model}</span></div>}
               </div>
-            </div>
-          ))}
+              <div className="model-route-actions">
+                <details className="model-advanced"><summary>{t("Advanced")}</summary><div>
+                  <label>{t("Cost cap")}<input type="number" min="0.001" max="1" step="0.001" value={(draft?.maxCostMicros ?? route.maxCostMicros) / 1_000_000} onChange={(event) => setDrafts((current) => ({ ...current, [route.route]: { ...current[route.route], maxCostMicros: Math.round(Number(event.target.value) * 1_000_000) } }))} /><small>{t("Maximum estimated USD allowed for one model call.")}</small></label>
+                  <label className="model-route-check"><input type="checkbox" checked={draft?.structuredOutput ?? route.structuredOutput} onChange={(event) => setDrafts((current) => ({ ...current, [route.route]: { ...current[route.route], structuredOutput: event.target.checked } }))} />{t("Structured output")}<small>{t("Requires valid JSON so software can reliably read fields and lists.")}</small></label>
+                </div></details>
+                {configurable && <button className="primary" disabled={busy !== null} onClick={() => void applyRoute(route)}>{busy === route.route && <Loader2 size={13} className="spin" />} {t("Apply")}</button>}
+              </div>
+            </div>})}
         </div>
       )}
+
+      <div className="model-help-strip"><div><strong>{t("Auto")}</strong><span>{t("Chooses the recommended free model for that type of work.")}</span></div><div><strong>{t("Structured output")}</strong><span>{t("Makes the answer machine-readable JSON instead of free-form prose.")}</span></div><div><strong>{t("Cost cap")}</strong><span>{t("Stops a single call from exceeding its maximum estimated spend.")}</span></div><div><strong>{t("Safe apply")}</strong><span>{t("Creates a staged revision, tests it, approves it, and activates it. The previous version remains available for rollback.")}</span></div></div>
 
       {/* Pending revisions were previously appended to the route list, so a
           staged change looked like another route. They are a queue of things
           awaiting a decision, which is a different kind of thing. */}
-      {value && value.revisions.length > 0 && (
+      {value && pendingRevisions.length > 0 && (
         <div className="settings-block">
           <h3>{t("Pending route changes")}</h3>
           <div className="model-routes">
-            {value.revisions.map((revision) => (
+            {pendingRevisions.map((revision) => (
               <div className="model-route" key={revision.id}>
                 <div className="model-route-id">
                   <strong>{revision.route} v{revision.version}</strong>
@@ -894,6 +877,10 @@ function ModelSettings({ onError }: { onError: (message: string) => void }) {
       )}
     </section>
   );
+}
+
+function friendlyRouteName(route: string) {
+  return ({ executive_reasoning: "Premium strategist", executive_review: "Premium reviewer", premium_fallback: "Premium fallback", worker_research: "Company research", worker_creative: "Creative work", worker_writing: "Dossier writing", worker_editing: "Editing", worker_structured: "Data extraction", worker_translation: "Translation", worker_fast: "Quick classification" } as Record<string, string>)[route] ?? route.replaceAll("_", " ");
 }
 
 function McpSettings({ onError }: { onError: (message: string) => void }) {
