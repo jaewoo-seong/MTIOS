@@ -18,32 +18,33 @@ describe("model routing policy", () => {
       .toEqual(["openrouter"]);
   });
 
-  it("keeps testing-only free providers out of production resolution", () => {
+  it("resolves production workers only through an approved paid model", () => {
     vi.stubEnv("NODE_ENV", "production");
-    expect(() => resolveModelPolicy("worker_research")).toThrow(/production-approved/i);
+    const worker = resolveModelPolicy("worker_research");
+    expect(worker.candidates).toHaveLength(1);
+    expect(worker.candidates[0]).toMatchObject({
+      modelEnv: "WORKER_MODEL", pricingClass: "paid", productionApproved: true
+    });
     expect(resolveModelPolicy("executive_reasoning").candidates).toHaveLength(1);
   });
 
   it("cannot promote NVIDIA into production while no NVIDIA candidate is configured", () => {
     vi.stubEnv("NODE_ENV", "production");
     vi.stubEnv("NVIDIA_PRODUCTION_APPROVED", "true");
-    // The approval flag gates a candidate; it must not conjure one. With
-    // OpenRouter as the only provider, worker routes stay unresolvable in
-    // production rather than quietly routing somewhere unconfigured. The gate
-    // itself still lives in resolveModelPolicy for when NVIDIA is re-added.
-    expect(() => resolveModelPolicy("worker_research")).toThrow(/production-approved/i);
+    // The approval flag gates a candidate; it must not conjure one. The
+    // existing approved OpenRouter worker remains the only candidate.
+    expect(resolveModelPolicy("worker_research").candidates.map((item) => item.provider))
+      .toEqual(["openrouter"]);
   });
 
-  it("allows testing-only candidates through an explicit production test gate", () => {
+  it("does not change the approved route when testing mode is enabled", () => {
     vi.stubEnv("NODE_ENV", "production");
     vi.stubEnv("ALLOW_TESTING_MODELS", "true");
     const policy = resolveModelPolicy("worker_research");
     expect(policy.testingMode).toBe(true);
     expect(policy.candidates.map((candidate) => candidate.provider))
       .toEqual(["openrouter"]);
-    expect(policy.candidates.every((candidate) =>
-      candidate.licensingStatus === "testing_only"
-    )).toBe(true);
+    expect(policy.candidates.every((candidate) => candidate.productionApproved)).toBe(true);
   });
 
   it("caps caller budgets at the route policy maximum", () => {

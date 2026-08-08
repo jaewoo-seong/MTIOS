@@ -47,6 +47,30 @@ export async function dispatchCollectionContinuation(input: {
   return { workflowRunId: handle.id, mode: "managed" };
 }
 
+export async function dispatchDossierRevision(requestId: string): Promise<TriggerDispatch> {
+  if (!process.env.TRIGGER_SECRET_KEY) return { workflowRunId: null, mode: "local" };
+  const handle = await tasks.trigger("dossier-revision-worker", { requestId }, {
+    idempotencyKey: `dossier-revision:${requestId}`
+  });
+  return { workflowRunId: handle.id, mode: "managed" };
+}
+
+export async function dispatchResearchProject(projectId: string): Promise<TriggerDispatch> {
+  if (!process.env.TRIGGER_SECRET_KEY) return { workflowRunId: null, mode: "local" };
+  const handle = await tasks.trigger("research-project-dispatcher", { projectId }, {
+    idempotencyKey: `research-dispatch:${projectId}:${Date.now()}`
+  });
+  return { workflowRunId: handle.id, mode: "managed" };
+}
+
+export async function dispatchResearchDiscovery(projectId: string): Promise<TriggerDispatch> {
+  if (!process.env.TRIGGER_SECRET_KEY) return { workflowRunId: null, mode: "local" };
+  const handle = await tasks.trigger("research-discovery-worker", { projectId, cyclesRemaining: 3 }, {
+    idempotencyKey: `research-discovery:${projectId}:${Date.now()}`
+  });
+  return { workflowRunId: handle.id, mode: "managed" };
+}
+
 /**
  * Asks Trigger.dev to cancel a run in flight.
  *

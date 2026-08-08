@@ -323,6 +323,7 @@ export interface KnowledgeEntry {
 
 export interface ClientDatabase {
   id: string;
+  projectId: string | null;
   name: string;
   description: string;
   recordCount: number;

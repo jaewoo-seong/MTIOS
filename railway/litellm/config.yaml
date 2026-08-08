@@ -22,25 +22,24 @@ model_list:
       model: os.environ/PREMIUM_FALLBACK_MODEL
       api_key: os.environ/OPENROUTER_API_KEY
 
-  # `model` is sourced from OPENROUTER_FREE_MODEL rather than a literal, so the
-  # value the Settings page displays (lib/ai/model-policy.ts reads the same env
-  # var) is guaranteed to be the model actually invoked, not just a label.
+  # Research workers use a production-approved paid model. Free/testing-only
+  # models are deliberately excluded from the production dossier pipeline.
   - model_name: worker_research
-    litellm_params: &openrouter_free
-      model: os.environ/OPENROUTER_FREE_MODEL
+    litellm_params: &worker
+      model: os.environ/WORKER_MODEL
       api_key: os.environ/OPENROUTER_API_KEY
   - model_name: worker_creative
-    litellm_params: *openrouter_free
+    litellm_params: *worker
   - model_name: worker_writing
-    litellm_params: *openrouter_free
+    litellm_params: *worker
   - model_name: worker_editing
-    litellm_params: *openrouter_free
+    litellm_params: *worker
   - model_name: worker_structured
-    litellm_params: *openrouter_free
+    litellm_params: *worker
   - model_name: worker_translation
-    litellm_params: *openrouter_free
+    litellm_params: *worker
   - model_name: worker_fast
-    litellm_params: *openrouter_free
+    litellm_params: *worker
 
   # OpenRouter is deliberately the only provider right now. NVIDIA entries
   # (worker_nvidia, and NVIDIA-backed embedding/reranking) were removed rather

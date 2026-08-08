@@ -1,0 +1,2 @@
+ALTER TABLE "project_research_settings" ADD COLUMN "discovery_cursor" integer DEFAULT 0 NOT NULL;--> statement-breakpoint
+ALTER TABLE "project_research_settings" ADD COLUMN "last_discovery_at" timestamp with time zone;

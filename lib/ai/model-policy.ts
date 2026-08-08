@@ -23,12 +23,12 @@ const haiku: ModelCandidate = {
   productionApproved: true,
   licensingStatus: "approved"
 };
-const openRouterFree: ModelCandidate = {
+const paidWorker: ModelCandidate = {
   provider: "openrouter",
-  modelEnv: "OPENROUTER_FREE_MODEL",
-  pricingClass: "free",
-  productionApproved: false,
-  licensingStatus: "testing_only"
+  modelEnv: "WORKER_MODEL",
+  pricingClass: "paid",
+  productionApproved: true,
+  licensingStatus: "approved"
 };
 
 /**
@@ -39,7 +39,7 @@ const openRouterFree: ModelCandidate = {
  *
  * `provider` still admits "nvidia" so re-adding it is a one-line change.
  */
-const workerCandidates = [openRouterFree] as const;
+const workerCandidates = [paidWorker] as const;
 
 export const modelRoutePolicies: Record<ModelRoute, ModelRoutePolicy> = {
   executive_reasoning: { purpose: "Planning and clarification", maxCostMicros: 300_000, structuredOutput: true, candidates: [haiku] },

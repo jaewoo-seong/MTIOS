@@ -381,14 +381,14 @@ describe("Stage 4 - Dossier Loop", () => {
     expect(searches[0].query).toBe("Acme Robotics");
   });
 
-  it("caps the number of searches regardless of how many the model plans", async () => {
+  it("supports the full ten-query dossier research pass", async () => {
     const deps = dossierDeps({
-      planContent: JSON.stringify({ queries: ["a", "b", "c", "d", "e", "f", "g"] })
+      planContent: JSON.stringify({ queries: ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"] })
     });
 
     await runDossierLoop(dossierPayload, deps);
 
-    expect(deps.calls.filter((call) => call.action === "scouting_search")).toHaveLength(4);
+    expect(deps.calls.filter((call) => call.action === "scouting_search")).toHaveLength(10);
   });
 
   it("still produces a dossier when a search fails, rather than failing the candidate", async () => {

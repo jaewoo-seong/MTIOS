@@ -474,6 +474,7 @@ function DocumentModal({
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [viewMode, setViewMode] = useState<"edited" | "original" | "proposed">("edited");
+  const [revisionPreviewId, setRevisionPreviewId] = useState<string | null>(null);
   const [renderedMarkdown, setRenderedMarkdown] = useState(document.markdown);
   const [originalUrl, setOriginalUrl] = useState<string | null>(null);
   const [intelligence, setIntelligence] = useState<DocumentIntelligenceSummary | null>(null);
@@ -527,8 +528,7 @@ function DocumentModal({
     }
   }
 
-  async function approveExtraction() {
-    const revision = intelligence?.revisions[0];
+  async function approveRevision(revision = intelligence?.revisions[0]) {
     if (!revision) return;
     try {
       const response = await fetch(
@@ -536,7 +536,9 @@ function DocumentModal({
         { method: "POST" }
       );
       if (!response.ok) throw new Error("Could not approve this document revision.");
-      if (revision.source === "ai_repair") setRenderedMarkdown(revision.markdown);
+      if (revision.source === "ai_repair" || revision.source === "agent_rework" || revision.source === "rollback") {
+        setRenderedMarkdown(revision.markdown);
+      }
       setViewMode("edited");
       setIntelligence((current) => current ? {
         ...current,
@@ -651,7 +653,7 @@ function DocumentModal({
               >
                 {t("Original")}
               </button>
-              {intelligence?.revisions[0]?.source === "ai_repair" &&
+              {(intelligence?.revisions[0]?.source === "ai_repair" || intelligence?.revisions[0]?.source === "agent_rework") &&
                 !intelligence.revisions[0].approved && (
                   <button
                     className={viewMode === "proposed" ? "active" : ""}
@@ -709,10 +711,34 @@ function DocumentModal({
               conversion={intelligence.conversions[0]}
               revisionCount={intelligence.revisions.length}
               approved={intelligence.revisions[0]?.approved ?? false}
-              onApprove={() => void approveExtraction()}
+              onApprove={() => void approveRevision()}
               onRetry={() => void retryConversion()}
               onRepair={() => void repairConversion()}
             />
+          )}
+          {intelligence && intelligence.revisions.length > 0 && (
+            <div className="document-version-strip" aria-label={t("Document versions")}>
+              <span>{t("Versions")}</span>
+              {intelligence.revisions.map((revision) => (
+                <button
+                  key={revision.id}
+                  className={revisionPreviewId === revision.id ? "active" : ""}
+                  onClick={() => {
+                    setRevisionPreviewId(revision.id);
+                    setViewMode("proposed");
+                  }}
+                >
+                  v{revision.revision} · {revision.source.replaceAll("_", " ")}
+                  {revision.approved ? " ✓" : ""}
+                </button>
+              ))}
+              {revisionPreviewId && intelligence.revisions.find((item) => item.id === revisionPreviewId)?.approved === false && (
+                <button className="primary" onClick={() => {
+                  const revision = intelligence.revisions.find((item) => item.id === revisionPreviewId);
+                  if (revision) void approveRevision(revision);
+                }}>{t("Accept this version")}</button>
+              )}
+            </div>
           )}
           {viewMode === "original" && originalUrl ? (
             document.mimeType === "application/pdf" || document.mimeType.startsWith("image/") ? (
@@ -728,7 +754,7 @@ function DocumentModal({
             )
           ) : viewMode === "proposed" && intelligence?.revisions[0] ? (
             <div className="doc-page">
-              <Markdown source={intelligence.revisions[0].markdown} />
+              <Markdown source={intelligence.revisions.find((item) => item.id === revisionPreviewId)?.markdown ?? intelligence.revisions[0].markdown} />
             </div>
           ) : (
             <div className="doc-page">

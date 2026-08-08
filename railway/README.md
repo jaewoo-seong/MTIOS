@@ -13,7 +13,7 @@ Create services for:
 
 Managed Trigger.dev remains external. Set `TRIGGER_DISPATCH_URL` to the deployed command workflow endpoint and use the command ID as its idempotency key.
 
-The app health check is `/api/health`. Run migrations as a Railway pre-deploy command after a PostgreSQL service is connected.
+The app health check is `/api/health`. Apply migrations manually before the corresponding app release; the current production image omits Drizzle Kit and cannot run them as a pre-deploy command.
 
 Phase 2 context retrieval requires PostgreSQL `pgvector`; migration `0003`
 creates the extension, full-text index, and HNSW vector index. Configure
@@ -51,28 +51,23 @@ Noto CJK fonts for Korean OCR and exports.
 Configure full LiteLLM model identifiers, not short provider aliases:
 
 **OpenRouter is the only configured provider.** One key,
-`OPENROUTER_API_KEY`, serves every route — free and paid alike. Three model
+`OPENROUTER_API_KEY`, serves every route. Three model
 variables:
 
 - `EXECUTIVE_MODEL` — planning and review
-- `PREMIUM_FALLBACK_MODEL` — the admin-approved escalation when free routes
-  are exhausted; deliberately its own variable rather than an alias of
+- `PREMIUM_FALLBACK_MODEL` — the admin-approved escalation; deliberately its own variable rather than an alias of
   `EXECUTIVE_MODEL`, so approving a premium fallback is a real choice
-- `OPENROUTER_FREE_MODEL` — the seven worker routes
+- `WORKER_MODEL` — the production-approved research, extraction, writing, and editing model used by sub-agents
 
 All three live on the **litellm** service, which reads them via
-`os.environ/...`. `EXECUTIVE_MODEL` and `OPENROUTER_FREE_MODEL` are
+`os.environ/...`. `EXECUTIVE_MODEL` and `WORKER_MODEL` are
 additionally read by the **app** (`lib/ai/model-policy.ts`,
 `lib/ai/usage.ts`) for the Settings display and quota math, so set those on
 both — if the two disagree, Settings shows a model that is not the one being
 invoked.
 
-When choosing a free model, check `supported_parameters` on
-`https://openrouter.ai/api/v1/models` first: several free models support
-`tools` but **not** `response_format`, which breaks the structured worker
-routes (`worker_structured`, `worker_research`) and the Phase 13 Scouting
-Loop. `openrouter/free` is an auto-router that supports tools, JSON, and
-reasoning, and fails over across free models as quotas exhaust.
+Choose a worker model that supports structured output/JSON because discovery,
+qualification, and dossier query planning depend on it.
 
 ### No embeddings, by choice
 

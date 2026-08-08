@@ -142,6 +142,64 @@ export const projectMemory = pgTable("project_memory", {
   ...timestamps
 });
 
+/** Durable, versioned instructions shared by every worker in a project. */
+export const projectStrategyVersions = pgTable("project_strategy_versions", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  version: integer("version").notNull(),
+  title: text("title").notNull(),
+  summary: text("summary").default("").notNull(),
+  strategy: jsonb("strategy").$type<{
+    geographicScope: string[];
+    industries: string[];
+    targetProfile: string;
+    exclusions: string[];
+    qualificationRules: string[];
+    sourcePlan: string[];
+    queryFamilies: string[];
+    requiredDossierSections: string[];
+    evidenceStandard: string;
+    newsFreshnessDays: number;
+  }>().notNull(),
+  status: text("status").default("proposed").notNull(),
+  basedOnVersionId: uuid("based_on_version_id"),
+  proposedBy: uuid("proposed_by").references(() => users.id, { onDelete: "set null" }),
+  approvedBy: uuid("approved_by").references(() => users.id, { onDelete: "set null" }),
+  approvedAt: timestamp("approved_at", { withTimezone: true }),
+  ...timestamps
+}, (table) => [
+  uniqueIndex("project_strategy_version_idx").on(table.projectId, table.version),
+  index("project_strategy_status_idx").on(table.projectId, table.status)
+]);
+
+export const projectStrategyMessages = pgTable("project_strategy_messages", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  role: text("role").notNull(),
+  content: text("content").notNull(),
+  strategyVersionId: uuid("strategy_version_id").references(() => projectStrategyVersions.id, { onDelete: "set null" }),
+  attachmentDocumentIds: jsonb("attachment_document_ids").$type<string[]>().default([]).notNull(),
+  createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
+}, (table) => [index("project_strategy_message_time_idx").on(table.projectId, table.createdAt)]);
+
+export const projectResearchSettings = pgTable("project_research_settings", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  activeStrategyVersionId: uuid("active_strategy_version_id").references(() => projectStrategyVersions.id, { onDelete: "set null" }),
+  dossierWorkerLimit: integer("dossier_worker_limit").default(3).notNull(),
+  revisionWorkerLimit: integer("revision_worker_limit").default(2).notNull(),
+  queueBufferTarget: integer("queue_buffer_target").default(8).notNull(),
+  discoveryCursor: integer("discovery_cursor").default(0).notNull(),
+  lastDiscoveryAt: timestamp("last_discovery_at", { withTimezone: true }),
+  discoveryEnabled: boolean("discovery_enabled").default(true).notNull(),
+  researchPaused: boolean("research_paused").default(false).notNull(),
+  ...timestamps
+}, (table) => [uniqueIndex("project_research_settings_project_idx").on(table.projectId)]);
+
 export const agendas = pgTable("agendas", {
   id: uuid("id").defaultRandom().primaryKey(),
   projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
@@ -523,12 +581,38 @@ export const documentRevisions = pgTable("document_revisions", {
   markdown: text("markdown").notNull(),
   contentHash: text("content_hash").notNull(),
   source: text("source").notNull(),
+  baseRevision: integer("base_revision"),
+  changeSummary: text("change_summary").default("").notNull(),
+  feedbackRequestId: uuid("feedback_request_id"),
+  strategyVersionId: uuid("strategy_version_id").references(() => projectStrategyVersions.id, { onDelete: "set null" }),
   conversionId: uuid("conversion_id").references(() => documentConversions.id, { onDelete: "set null" }),
   createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
   approved: boolean("approved").default(false).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
 }, (table) => [
   uniqueIndex("document_revision_document_number_idx").on(table.documentId, table.revision)
+]);
+
+/** Agent rework is intentionally independent of the primary dossier queue. */
+export const dossierRevisionRequests = pgTable("dossier_revision_requests", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  documentId: uuid("document_id").references(() => documents.id, { onDelete: "cascade" }).notNull(),
+  baseRevision: integer("base_revision").notNull(),
+  instruction: text("instruction").notNull(),
+  questions: jsonb("questions").$type<string[]>().default([]).notNull(),
+  attachmentDocumentIds: jsonb("attachment_document_ids").$type<string[]>().default([]).notNull(),
+  status: text("status").default("queued").notNull(),
+  triggerRunId: text("trigger_run_id"),
+  outputRevisionId: uuid("output_revision_id").references(() => documentRevisions.id, { onDelete: "set null" }),
+  error: text("error"),
+  createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  ...timestamps
+}, (table) => [
+  index("dossier_revision_project_status_idx").on(table.projectId, table.status),
+  index("dossier_revision_document_time_idx").on(table.documentId, table.createdAt)
 ]);
 
 export const storageObjects = pgTable("storage_objects", {
@@ -1066,15 +1150,22 @@ export const deadLetters = pgTable("dead_letters", {
 export const clientDatabases = pgTable("client_databases", {
   id: uuid("id").defaultRandom().primaryKey(),
   organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   description: text("description").default("").notNull(),
   schema: jsonb("schema").$type<Record<string, unknown>>().default({}).notNull(),
   ...timestamps
-});
+}, (table) => [uniqueIndex("client_database_project_idx").on(table.projectId)]);
 
 export const clientRecords = pgTable("client_records", {
   id: uuid("id").defaultRandom().primaryKey(),
   databaseId: uuid("database_id").references(() => clientDatabases.id, { onDelete: "cascade" }).notNull(),
+  companyId: uuid("company_id"),
+  dossierDocumentId: uuid("dossier_document_id").references(() => documents.id, { onDelete: "set null" }),
+  disposition: text("disposition").default("researching").notNull(),
+  priority: integer("priority").default(0).notNull(),
+  qualificationScore: integer("qualification_score"),
+  researchStatus: text("research_status").default("queued").notNull(),
   data: jsonb("data").$type<Record<string, unknown>>().default({}).notNull(),
   fingerprint: text("fingerprint"),
   ...timestamps
@@ -1429,6 +1520,12 @@ export const collectionCandidates = pgTable("collection_candidates", {
   data: jsonb("data").$type<Record<string, unknown>>().default({}).notNull(),
   resolution: text("resolution").default("new").notNull(),
   resolutionReason: text("resolution_reason"),
+  strategyVersionId: uuid("strategy_version_id").references(() => projectStrategyVersions.id, { onDelete: "set null" }),
+  priority: integer("priority").default(0).notNull(),
+  qualificationScore: integer("qualification_score"),
+  queueStatus: text("queue_status").default("queued").notNull(),
+  heldAt: timestamp("held_at", { withTimezone: true }),
+  disposition: text("disposition").default("unreviewed").notNull(),
   // Stage 4 (Dossier Loop) outcome - separate from `resolution` above, which
   // is the entity's discovery identity and never changes after Stage 3.
   // pending | researching | completed | disqualified | failed

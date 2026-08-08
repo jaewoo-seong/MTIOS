@@ -498,6 +498,8 @@ export async function POST(request: Request) {
   }
 
   if (input.action === "cross_link") {
+    const campaign = await getCollectionCampaign(input.campaignId);
+    if (!campaign) return NextResponse.json({ error: "Collection campaign not found." }, { status: 404 });
     const published = await crossLinkCollectionCampaign(input.campaignId, {
       resolveFolderId: async () => (await repository.createFolder("Collected dossiers")).id,
       createDocument: (document) => repository.createDocument({
@@ -511,8 +513,14 @@ export async function POST(request: Request) {
         storageKey: null
       }),
       ensureDatabase: async (name, description) => {
-        const existing = (await repository.listClientDatabases()).find((item) => item.name === name);
-        return existing ?? await repository.createClientDatabase({ name, description });
+        const existing = (await repository.listClientDatabases()).find(
+          (item) => item.projectId === campaign.projectId
+        );
+        return existing ?? await repository.createClientDatabase({
+          name: `${campaign.name} client database`,
+          description,
+          projectId: campaign.projectId
+        });
       },
       createChangeSet: (set) => createClientChangeSet(set),
       submitChangeSet: (changeSetId) => submitClientChangeSet(changeSetId)

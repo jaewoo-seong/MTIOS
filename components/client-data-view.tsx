@@ -1,10 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Database, FileText, Loader2, Plus, Upload } from "lucide-react";
+import { Database, FileText, Loader2, Upload } from "lucide-react";
 import { DOSSIER_DOCUMENT_COLUMN } from "@/lib/collection-columns";
 import type { ClientDatabase, ClientRecord, Project } from "@/lib/domain";
-import { PromptDialog } from "@/components/ui/dialogs";
 import { ResearchImportDialog } from "@/components/research-import-dialog";
 import { useI18n } from "@/lib/i18n";
 
@@ -20,7 +19,6 @@ export function ClientDataView({
   const [activeId, setActiveId] = useState<string | null>(null);
   const [records, setRecords] = useState<ClientRecord[]>([]);
   const [loading, setLoading] = useState(true);
-  const [creating, setCreating] = useState(false);
   const [importing, setImporting] = useState(false);
 
   const loadDatabases = useCallback(async () => {
@@ -46,46 +44,17 @@ export function ClientDataView({
       .catch((reason: Error) => onError(reason.message));
   }, [activeId, onError]);
 
-  async function createDatabase(name: string) {
-    setCreating(false);
-    try {
-      const response = await fetch("/api/v1/client-databases", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, description: "" })
-      });
-      if (!response.ok) throw new Error("Could not create the database.");
-      const payload = (await response.json()) as { data: ClientDatabase };
-      await loadDatabases();
-      setActiveId(payload.data.id);
-    } catch (reason) {
-      onError(reason instanceof Error ? reason.message : "Could not create the database.");
-    }
-  }
-
   if (loading) {
     return <div className="loading-state"><Loader2 size={20} className="spin" /><span>{t("Loading client data")}</span></div>;
   }
 
   if (databases.length === 0) {
     return (
-      <>
-        <div className="empty-module">
-          <div className="empty-icon"><Database size={22} aria-hidden /></div>
-          <h2>{t("No client databases")}</h2>
-          <p>{t("Create a database. Record changes enter through approved project proposals.")}</p>
-          <button className="primary" onClick={() => setCreating(true)}><Plus size={14} aria-hidden /> {t("Create database")}</button>
-        </div>
-        {creating && (
-          <PromptDialog
-            title={t("Create client database")}
-            label={t("Database name")}
-            placeholder={t("Korean medical device manufacturers")}
-            onSubmit={createDatabase}
-            onCancel={() => setCreating(false)}
-          />
-        )}
-      </>
+      <div className="empty-module">
+        <div className="empty-icon"><Database size={22} aria-hidden /></div>
+        <h2>{t("No client databases")}</h2>
+        <p>{t("Create a research project first. Its linked company database is created automatically.")}</p>
+      </div>
     );
   }
 
@@ -99,9 +68,6 @@ export function ClientDataView({
       <aside className="document-folders">
         <div className="list-heading">
           <span>{t("Databases")}</span>
-          <button onClick={() => setCreating(true)} aria-label={t("Create database")} title={t("Create database")}>
-            <Plus size={14} />
-          </button>
         </div>
         {databases.map((database) => (
           <button
@@ -111,7 +77,10 @@ export function ClientDataView({
             onClick={() => setActiveId(database.id)}
           >
             <Database size={15} aria-hidden />
-            <span className="folder-name">{database.name}</span>
+            <span className="folder-name">
+              {database.name}
+              {!database.projectId && <small>{t("Legacy database")}</small>}
+            </span>
           </button>
         ))}
       </aside>
@@ -168,16 +137,6 @@ export function ClientDataView({
           </div>
         )}
       </section>
-
-      {creating && (
-        <PromptDialog
-          title={t("Create client database")}
-          label={t("Database name")}
-          placeholder={t("Korean medical device manufacturers")}
-          onSubmit={createDatabase}
-          onCancel={() => setCreating(false)}
-        />
-      )}
 
       {importing && active && (
         <ResearchImportDialog

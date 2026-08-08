@@ -460,7 +460,7 @@ export type DossierResult = {
   reason: string | null;
 };
 
-const DOSSIER_SEARCH_STEPS = 4;
+const DOSSIER_SEARCH_STEPS = 10;
 
 type DossierDeps = {
   requestModel: typeof requestModel;
@@ -617,6 +617,8 @@ async function gatherDossierEvidence(
       content: [
         `Plan up to ${DOSSIER_SEARCH_STEPS} web searches to research one specific entity in depth.`,
         `Fields that need supporting evidence: ${JSON.stringify(payload.entitySchema)}.`,
+        "Cover official identity, products and markets, leadership, HR and hiring, recent news, financial or growth signals, risks, and plausible service opportunities.",
+        "Prefer official pages, filings, government records, reputable news, and public professional sources; use distinct queries rather than repeating the same result set.",
         'Return JSON only: {"queries":["string"]}.'
       ].join("\n")
     },

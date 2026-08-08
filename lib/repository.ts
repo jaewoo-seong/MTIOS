@@ -37,6 +37,7 @@ import {
   modelCalls,
   milestones,
   projectRecords,
+  projectResearchSettings,
   projects,
   reports,
   reviewDecisions as reviewDecisionRows,
@@ -305,6 +306,7 @@ const knowledgeRow = (row: typeof knowledgeEntries.$inferSelect): KnowledgeEntry
 
 const clientDatabaseRow = (row: typeof clientDatabases.$inferSelect): ClientDatabase => ({
   id: row.id,
+  projectId: row.projectId,
   name: row.name,
   description: row.description,
   recordCount: 0,
@@ -349,15 +351,34 @@ export const repository = {
         ...input
       };
       store.projects.unshift(project);
+      store.clientDatabases.unshift({
+        id: crypto.randomUUID(), projectId: project.id,
+        name: `${project.name} companies`, description: `Companies researched for ${project.name}.`,
+        recordCount: 0, createdAt: now()
+      });
       return project;
     }
-    const [row] = await db.insert(projects).values({
-      organizationId: MTI_ORGANIZATION_ID,
-      ownerId: actorId,
-      ...governance,
-      ...input
-    }).returning();
-    return projectRow(row);
+    return db.transaction(async (tx) => {
+      const [row] = await tx.insert(projects).values({
+        organizationId: MTI_ORGANIZATION_ID,
+        ownerId: actorId,
+        ...governance,
+        ...input
+      }).returning();
+      await Promise.all([
+        tx.insert(projectResearchSettings).values({
+          organizationId: MTI_ORGANIZATION_ID,
+          projectId: row.id
+        }),
+        tx.insert(clientDatabases).values({
+          organizationId: MTI_ORGANIZATION_ID,
+          projectId: row.id,
+          name: `${row.name} companies`,
+          description: `Companies researched for ${row.name}.`
+        })
+      ]);
+      return projectRow(row);
+    });
   },
   async updateProject(id: string, input: Partial<Project>) {
     if (!db) {
@@ -815,14 +836,17 @@ export const repository = {
       .where(eq(clientDatabases.organizationId, MTI_ORGANIZATION_ID))
       .orderBy(desc(clientDatabases.createdAt))).map(clientDatabaseRow);
   },
-  async createClientDatabase(input: Pick<ClientDatabase, "name" | "description">) {
+  async createClientDatabase(input: Pick<ClientDatabase, "name" | "description"> & { projectId?: string | null }) {
     if (!db) {
-      const database: ClientDatabase = { id: crypto.randomUUID(), recordCount: 0, createdAt: now(), ...input };
+      const database: ClientDatabase = {
+        id: crypto.randomUUID(), recordCount: 0, createdAt: now(),
+        ...input, projectId: input.projectId ?? null
+      };
       store.clientDatabases.unshift(database);
       return database;
     }
     const [row] = await db.insert(clientDatabases).values({
-      organizationId: MTI_ORGANIZATION_ID, ...input
+      organizationId: MTI_ORGANIZATION_ID, ...input, projectId: input.projectId ?? null
     }).returning();
     return clientDatabaseRow(row);
   },

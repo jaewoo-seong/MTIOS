@@ -245,7 +245,11 @@ export async function convertDocumentIntelligence(input: {
 export async function recordDocumentRevision(input: {
   documentId: string;
   markdown: string;
-  source: "conversion" | "manual" | "ai_repair" | "rollback";
+  source: "conversion" | "manual" | "ai_repair" | "agent_rework" | "rollback";
+  baseRevision?: number | null;
+  changeSummary?: string;
+  feedbackRequestId?: string | null;
+  strategyVersionId?: string | null;
   conversionId?: string | null;
   approved?: boolean;
 }) {
@@ -262,6 +266,10 @@ export async function recordDocumentRevision(input: {
       markdown: input.markdown,
       contentHash,
       source: input.source,
+      baseRevision: input.baseRevision ?? null,
+      changeSummary: input.changeSummary ?? "",
+      feedbackRequestId: input.feedbackRequestId ?? null,
+      strategyVersionId: input.strategyVersionId ?? null,
       conversionId: input.conversionId ?? null,
       createdBy: MTI_OPERATOR_ID,
       approved: input.approved ?? false,
@@ -282,6 +290,10 @@ export async function recordDocumentRevision(input: {
       markdown: input.markdown,
       contentHash,
       source: input.source,
+      baseRevision: input.baseRevision ?? null,
+      changeSummary: input.changeSummary ?? "",
+      feedbackRequestId: input.feedbackRequestId ?? null,
+      strategyVersionId: input.strategyVersionId ?? null,
       conversionId: input.conversionId ?? null,
       createdBy: MTI_OPERATOR_ID,
       approved: input.approved ?? false
@@ -344,19 +356,39 @@ export async function approveDocumentRevision(documentId: string, revisionId: st
       item.id === revisionId && item.documentId === documentId
     );
     if (!revision) return null;
+    if (revision.source === "agent_rework") {
+      const latestApproved = memory.revisions
+        .filter((item) => item.documentId === documentId && item.approved)
+        .sort((left, right) => Number(right.revision) - Number(left.revision))[0];
+      if (latestApproved && Number(latestApproved.revision) > Number(revision.baseRevision ?? 0)) {
+        throw new Error("The document changed after this rework began. Compare the versions before accepting it.");
+      }
+    }
     revision.approved = true;
-    if (revision.source === "ai_repair" || revision.source === "rollback") {
+    if (revision.source === "ai_repair" || revision.source === "agent_rework" || revision.source === "rollback") {
       await repository.updateDocument(documentId, { markdown: String(revision.markdown) });
     }
     return revision;
   }
-  const [revision] = await db.update(documentRevisions).set({ approved: true })
-    .where(and(
+  const [candidate] = await db.select().from(documentRevisions).where(and(
       eq(documentRevisions.id, revisionId),
       eq(documentRevisions.documentId, documentId),
       eq(documentRevisions.organizationId, MTI_ORGANIZATION_ID)
-    )).returning();
-  if (revision && (revision.source === "ai_repair" || revision.source === "rollback")) {
+    )).limit(1);
+  if (!candidate) return null;
+  if (candidate.source === "agent_rework") {
+    const [latestApproved] = await db.select().from(documentRevisions).where(and(
+      eq(documentRevisions.documentId, documentId),
+      eq(documentRevisions.organizationId, MTI_ORGANIZATION_ID),
+      eq(documentRevisions.approved, true)
+    )).orderBy(desc(documentRevisions.revision)).limit(1);
+    if (latestApproved && latestApproved.revision > (candidate.baseRevision ?? 0)) {
+      throw new Error("The document changed after this rework began. Compare the versions before accepting it.");
+    }
+  }
+  const [revision] = await db.update(documentRevisions).set({ approved: true })
+    .where(eq(documentRevisions.id, revisionId)).returning();
+  if (revision && (revision.source === "ai_repair" || revision.source === "agent_rework" || revision.source === "rollback")) {
     await repository.updateDocument(documentId, { markdown: revision.markdown });
   }
   return revision ?? null;

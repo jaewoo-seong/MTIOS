@@ -1,10 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Archive,
   ArchiveRestore,
-  BookOpen,
   Bot,
   CircleAlert,
   Database,
@@ -20,23 +19,10 @@ import {
   Sparkles,
   X
 } from "lucide-react";
-import type {
-  Agenda,
-  AgendaWorkType,
-  Deliverable,
-  ExecutiveCommand,
-  Milestone,
-  Project,
-  ProjectRecord,
-  Report,
-  WorkspaceDocument
-} from "@/lib/domain";
-import { CampaignsView } from "@/components/campaigns-view";
+import type { Agenda, AgendaWorkType, Deliverable, ExecutiveCommand, Milestone, Project, ProjectRecord, Report } from "@/lib/domain";
 import { ClientDataView } from "@/components/client-data-view";
-import { ClientChangeReview } from "@/components/client-change-review";
 import { DocumentsView } from "@/components/documents-view";
-import { KnowledgeView } from "@/components/knowledge-view";
-import { LiveActivity } from "@/components/live-activity";
+import { ResearchProjectWorkspace } from "@/components/research-project-workspace";
 import { SearchPalette } from "@/components/search-palette";
 import { Modal } from "@/components/ui/modal";
 import { useI18n, type RegionalPreferences } from "@/lib/i18n";
@@ -46,7 +32,7 @@ import {
   PasswordSettings
 } from "@/components/account-settings";
 
-type PageId = "agent" | "projects" | "documents" | "data" | "knowledge" | "settings";
+type PageId = "projects" | "documents" | "data" | "settings";
 type ProjectDetail = Project & {
   agendas: Agenda[];
   milestones: Milestone[];
@@ -58,26 +44,18 @@ type AppSession = {
 };
 
 const navItems: Array<{ id: PageId; label: string; icon: typeof Bot }> = [
-  { id: "agent", label: "Executive Agent", icon: Bot },
   { id: "projects", label: "Projects", icon: FolderKanban },
   { id: "documents", label: "Documents", icon: FileText },
-  { id: "data", label: "Client & Data", icon: Database },
-  { id: "knowledge", label: "Knowledge Base", icon: BookOpen },
+  { id: "data", label: "Client Databases", icon: Database },
   { id: "settings", label: "Settings", icon: Settings }
 ];
 
 const pageCopy: Record<PageId, { title: string; subtitle: string; command: string; actions: string[] }> = {
-  agent: {
-    title: "Executive Agent",
-    subtitle: "Portfolio, knowledge, client data, decisions, and instructions",
-    command: "Give the Executive Agent an instruction across projects, data, knowledge, or decisions.",
-    actions: ["Delegate work", "Review decisions", "Summarize portfolio"]
-  },
   projects: {
-    title: "Project Command Center",
-    subtitle: "Long-lived context, agendas, execution, and outputs",
-    command: "Add a project agenda, change scope, run the next batch, or request an output.",
-    actions: ["Add agenda", "Run next batch", "Change scope", "Review plan"]
+    title: "Research Projects",
+    subtitle: "Strategy, continuous company research, and master dossiers",
+    command: "",
+    actions: []
   },
   documents: {
     title: "Documents",
@@ -86,16 +64,10 @@ const pageCopy: Record<PageId, { title: string; subtitle: string; command: strin
     actions: ["Draft report", "Save report", "Export"]
   },
   data: {
-    title: "Client & Data",
-    subtitle: "Configurable databases, records, imports, and enrichment",
+    title: "Client Databases",
+    subtitle: "One company database per research project",
     command: "Enrich records, validate sources, create a view, or link data to a project.",
     actions: ["Create database", "Import CSV", "Validate records"]
-  },
-  knowledge: {
-    title: "Knowledge Base",
-    subtitle: "Approved organizational memory with provenance",
-    command: "Propose memory, review findings, or link a project decision.",
-    actions: ["Propose memory", "Review updates", "Link decision"]
   },
   settings: {
     title: "Settings",
@@ -119,7 +91,7 @@ async function api<T>(url: string, init?: RequestInit): Promise<T> {
 
 export function BusinessOS() {
   const { t } = useI18n();
-  const [page, setPage] = useState<PageId>("agent");
+  const [page, setPage] = useState<PageId>("projects");
   const [projects, setProjects] = useState<Project[]>([]);
   const [reports, setReports] = useState<Report[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
@@ -209,13 +181,6 @@ export function BusinessOS() {
   useEffect(() => {
     window.localStorage.setItem(`executive-command:draft:${page}`, command);
   }, [command, page]);
-
-  const counts = useMemo(() => ({
-    active: projects.filter((project) => project.status === "active").length,
-    archived: projects.filter((project) => project.status === "archived").length,
-    workingReports: reports.filter((report) => report.status !== "saved").length,
-    savedReports: reports.filter((report) => report.status === "saved").length
-  }), [projects, reports]);
 
   const navCounts: Partial<Record<PageId, number>> = {
     projects: projects.filter((project) => project.status === "active").length,
@@ -361,13 +326,6 @@ export function BusinessOS() {
           )}
           {loading ? <LoadingState /> : (
             <>
-              {page === "agent" && (
-                <AgentView
-                  counts={counts}
-                  hasProjects={projects.length > 0}
-                  onCreate={() => setCreateOpen(true)}
-                />
-              )}
               {page === "projects" && (
                 <ProjectsView
                   projects={projects}
@@ -401,18 +359,17 @@ export function BusinessOS() {
                   }}
                 />
               )}
-              {page === "knowledge" && <KnowledgeView onError={pushError} />}
               {page === "settings" && <SettingsView onError={pushError} role={session?.user.role ?? "member"} />}
             </>
           )}
         </section>
 
-        <ExecutiveCommand
+        {page !== "projects" && <ExecutiveCommand
           page={page}
           value={command}
           pending={pendingCommand}
           busy={commandBusy}
-          disabled={page === "projects" && !selectedProjectId}
+          disabled={false}
           onChange={setCommand}
           onSubmit={submitCommand}
           onConfirm={confirmCommand}
@@ -422,7 +379,7 @@ export function BusinessOS() {
             setPendingCommand(null);
             window.localStorage.removeItem("executive-command:pending");
           }}
-        />
+        />}
       </main>
 
       {searchOpen && (
@@ -434,7 +391,7 @@ export function BusinessOS() {
               setFocusDocumentId(hit.documentId);
               setPage("documents");
             } else if (hit.kind === "knowledge") {
-              setPage("knowledge");
+              setPage("documents");
             } else if (hit.kind === "database") {
               setPage("data");
             } else if (hit.projectId) {
@@ -465,65 +422,6 @@ function LoadingState() {
   return <div className="loading-state"><Loader2 size={20} className="spin" /><span>{t("Loading workspace")}</span></div>;
 }
 
-function AgentView({ counts, hasProjects, onCreate }: {
-  counts: { active: number; archived: number; workingReports: number; savedReports: number };
-  hasProjects: boolean;
-  onCreate: () => void;
-}) {
-  const { t } = useI18n();
-  return (
-    <div className="agent-view">
-      <div className="metrics">
-        <Metric label={t("Active projects")} value={counts.active} note={t("In flight")} />
-        <Metric label={t("Working outputs")} value={counts.workingReports} note={t("Drafts in progress")} attention />
-        <Metric label={t("Saved reports")} value={counts.savedReports} note={t("Released")} />
-        <Metric label={t("Archived projects")} value={counts.archived} note={t("Closed")} />
-      </div>
-      {!hasProjects ? (
-        <EmptyModule
-          icon={Sparkles}
-          title={t("Start with a project")}
-          text={t("Projects give the Executive Agent durable context, constraints, agendas, and review gates.")}
-          action={t("Create project")}
-          onAction={onCreate}
-        />
-      ) : (
-        <div className="surface-grid">
-          <section className="surface">
-            <div className="surface-header"><h2>{t("Portfolio attention")}</h2></div>
-            <div className="empty-inline">{t("No blockers or decisions require attention.")}</div>
-          </section>
-          <section className="surface">
-            <div className="surface-header"><h2>{t("Agent allocation")}</h2></div>
-            <div className="empty-inline">{t("No worker runs are active.")}</div>
-          </section>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function Metric({ label, value, note, attention = false }: {
-  label: string;
-  value: number;
-  note?: string;
-  attention?: boolean;
-}) {
-  const { formatNumber, t } = useI18n();
-  return (
-    <div className={attention && value > 0 ? "metric attention" : "metric"}>
-      <span>{label}</span>
-      <strong>{formatNumber(value)}</strong>
-      {note && (
-        <span className="metric-note">
-          {attention && value > 0 && <span className="pill warn">{t("needs you")}</span>}
-          {note}
-        </span>
-      )}
-    </div>
-  );
-}
-
 function ProjectsView({ projects, project, selectedId, onSelect, onCreate, onError, onProjectsChanged, onOpenDocument }: {
   projects: Project[];
   project: ProjectDetail | null;
@@ -534,7 +432,7 @@ function ProjectsView({ projects, project, selectedId, onSelect, onCreate, onErr
   onProjectsChanged: () => Promise<void>;
   onOpenDocument: (documentId: string) => void;
 }) {
-  const { formatCurrency, formatNumber, t } = useI18n();
+  const { t } = useI18n();
   const [showArchived, setShowArchived] = useState(false);
   const [archiving, setArchiving] = useState(false);
   if (projects.length === 0) {
@@ -588,190 +486,24 @@ function ProjectsView({ projects, project, selectedId, onSelect, onCreate, onErr
       </aside>
       {project && (
         <div className="project-center">
-          <section className="project-title">
-            <div><span className="eyebrow">{t("Project command center")}</span><h2>{project.name}</h2><p>{project.objective}</p></div>
-            <div className="project-title-actions">
-              <span className={`pill ${project.status === "active" ? "good" : project.status === "archived" ? "" : "warn"}`}>
-                {t(project.status)}
-              </span>
-              {project.status === "archived" ? (
-                <button className="secondary" onClick={() => void setArchived(false)} disabled={archiving}>
-                  {archiving ? <Loader2 size={13} className="spin" aria-hidden /> : <ArchiveRestore size={13} aria-hidden />}
-                  {t("Restore")}
-                </button>
-              ) : (
-                <button className="secondary" onClick={() => void setArchived(true)} disabled={archiving}>
-                  {archiving ? <Loader2 size={13} className="spin" aria-hidden /> : <Archive size={13} aria-hidden />}
-                  {t("Archive")}
-                </button>
-              )}
-            </div>
-          </section>
-          <div className="project-context">
-            <ContextBlock label={t("Context")} value={project.context} />
-            <ContextBlock label={t("Scope")} value={project.scope} />
-            <div>
-              <span>{t("Constraints")}</span>
-              {project.constraints.length === 0 ? (
-                <p>{t("Not set")}</p>
-              ) : (
-                <ul className="constraint-list">
-                  {project.constraints.map((constraint) => <li key={constraint}>{constraint}</li>)}
-                </ul>
-              )}
-            </div>
-            <div>
-              <span>{t("Budget")}</span>
-              {project.budgetCents === null
-                ? <p>{t("Not set")}</p>
-                : <span className="budget-figure">{formatCurrency(project.budgetCents, project.budgetCurrency)}</span>}
-            </div>
-            <div>
-              <span>{t("Review gates")}</span>
-              <p>{project.reviewGates.length > 0 ? project.reviewGates.join(" · ") : t("Not set")}</p>
-            </div>
-            <div>
-              <span>{t("Output requirements")}</span>
-              <p>{project.outputRequirements.length > 0 ? project.outputRequirements.join(" · ") : t("Not set")}</p>
-            </div>
+          <div className="project-lifecycle-toolbar">
+            <span className={`pill ${project.status === "active" ? "good" : ""}`}>{t(project.status)}</span>
+            <button className="quiet" onClick={() => void setArchived(project.status !== "archived")} disabled={archiving}>
+              {archiving ? <Loader2 size={13} className="spin" aria-hidden /> : project.status === "archived" ? <ArchiveRestore size={13} aria-hidden /> : <Archive size={13} aria-hidden />}
+              {project.status === "archived" ? t("Restore") : t("Archive")}
+            </button>
           </div>
-          <CampaignsView
-            key={project.id}
-            projectId={project.id}
+          <ResearchProjectWorkspace
+            project={project}
             onError={onError}
             onOpenDocument={onOpenDocument}
           />
-          <div className="project-columns">
-            <section className="surface agenda-surface">
-              <div className="surface-header"><h2>{t("Agenda lifecycle")}</h2><span>{formatNumber(project.agendas.length)}</span></div>
-              {project.agendas.length === 0 ? (
-                <div className="empty-inline">{t("No agendas yet. Use Executive Command to add the first instruction.")}</div>
-              ) : (
-                <div className="agenda-list">
-                  {project.agendas.map((agenda) => (
-                    <AgendaRow key={agenda.id} agenda={agenda} />
-                  ))}
-                </div>
-              )}
-            </section>
-            <LiveActivity projectId={project.id} />
-          </div>
-          <div className="project-columns">
-            <ProjectRegister title={t("Milestones")} items={project.milestones.map((item) => item.title)} />
-            <ProjectRegister
-              title={t("Decisions, assumptions, and questions")}
-              items={project.records.map((item) => `${item.kind}: ${item.content}`)}
-            />
-          </div>
-          <ProjectRegister
-            title={t("Deliverables")}
-            items={project.deliverables.map((item) => `${item.title} · ${item.status}`)}
-          />
-          <ClientChangeReview projectId={project.id} onError={onError} />
-          <ProjectFiles projectId={project.id} onOpenDocument={onOpenDocument} />
         </div>
       )}
     </div>
   );
 }
 
-/**
- * The title is derived from the instruction, so printing both is redundant.
- * The full instruction is available on expand instead.
- */
-function AgendaRow({ agenda }: { agenda: Agenda }) {
-  const { t } = useI18n();
-  const [expanded, setExpanded] = useState(false);
-  const truncated = agenda.instruction.trim() !== agenda.title.trim();
-
-  return (
-    <button
-      className="agenda-row"
-      onClick={() => truncated && setExpanded((value) => !value)}
-      aria-expanded={truncated ? expanded : undefined}
-      style={{ cursor: truncated ? "pointer" : "default" }}
-    >
-      <span className={`agenda-dot ${agenda.status}`} />
-      <div>
-        <strong>{agenda.title}</strong>
-        <span className="agenda-type">{t(agenda.workType.replace("_", " "))}</span>
-        {expanded && <p className="agenda-instruction">{agenda.instruction}</p>}
-      </div>
-      <span className={`pill ${agenda.status === "completed" ? "good" : agenda.status === "blocked" ? "crit" : agenda.status === "review" ? "warn" : ""}`}>
-        {t(agenda.status)}
-      </span>
-    </button>
-  );
-}
-
-function ProjectRegister({ title, items }: { title: string; items: string[] }) {
-  const { formatNumber, t } = useI18n();
-  return (
-    <section className="surface">
-      <div className="surface-header"><h2>{title}</h2><span>{formatNumber(items.length)}</span></div>
-      {items.length === 0
-        ? <div className="empty-inline">{t("Nothing recorded yet.")}</div>
-        : <ul className="constraint-list">{items.map((item) => <li key={item}>{item}</li>)}</ul>}
-    </section>
-  );
-}
-
-/** Documents attached to this project, so uploads are grounded in real work. */
-function ProjectFiles({ projectId, onOpenDocument }: {
-  projectId: string;
-  onOpenDocument: (documentId: string) => void;
-}) {
-  const { formatNumber, t } = useI18n();
-  const [files, setFiles] = useState<WorkspaceDocument[] | null>(null);
-
-  useEffect(() => {
-    let live = true;
-    fetch("/api/v1/documents")
-      .then((response) => (response.ok ? response.json() : Promise.reject(new Error("failed"))))
-      .then((payload: { data: WorkspaceDocument[] }) => {
-        if (live) setFiles(payload.data.filter((document) => document.projectId === projectId));
-      })
-      .catch(() => { if (live) setFiles([]); });
-    return () => { live = false; };
-  }, [projectId]);
-
-  return (
-    <section className="surface">
-      <div className="surface-header">
-        <h2>{t("Project files")}</h2>
-        <span>{files === null ? "…" : t("{count} attached", { count: formatNumber(files.length) })}</span>
-      </div>
-      {files === null ? (
-        <div className="empty-inline">{t("Loading files…")}</div>
-      ) : files.length === 0 ? (
-        <div className="empty-inline">
-          {t("No files attached. Open a document and set its project to ground the agent in real BOMs and quotations.")}
-        </div>
-      ) : (
-        <ul className="document-list">
-          {files.map((file) => (
-            <li key={file.id}>
-              <div className="document-row" style={{ cursor: "default" }}>
-                <button className="document-open" onClick={() => onOpenDocument(file.id)}>
-                  <span className={`kind-badge ${file.sourceKind}`}>{file.sourceKind}</span>
-                  <span className="document-meta">
-                    <strong>{file.title}</strong>
-                    <span>{file.filename} · {t("{count} words", { count: formatNumber(file.wordCount) })}</span>
-                  </span>
-                </button>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
-  );
-}
-
-function ContextBlock({ label, value }: { label: string; value: string }) {
-  const { t } = useI18n();
-  return <div><span>{label}</span><p>{value || t("Not set")}</p></div>;
-}
 
 function SettingsView({ onError, role }: {
   onError: (message: string) => void;
