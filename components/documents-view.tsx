@@ -18,6 +18,7 @@ import type { DocumentFolder, Project, WorkspaceDocument, WorkspaceDocumentDetai
 import { ConfirmDialog, PromptDialog } from "@/components/ui/dialogs";
 import { Markdown } from "@/components/ui/markdown";
 import { Modal } from "@/components/ui/modal";
+import { HelpLink } from "@/components/help-provider";
 import { useI18n } from "@/lib/i18n";
 
 /** The rich text editor is a large dependency most sessions never open. */
@@ -249,6 +250,7 @@ export function DocumentsView({
           <button className="primary" onClick={() => setCreatingFolder(true)}>
             <FolderPlus size={14} aria-hidden /> {t("Create folder")}
           </button>
+          <HelpLink article="documents" label={t("How this works")} />
         </div>
         {creatingFolder && (
           <PromptDialog

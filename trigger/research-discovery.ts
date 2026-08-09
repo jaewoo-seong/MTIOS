@@ -44,12 +44,26 @@ export async function runResearchDiscovery(projectId: string, cyclesRemaining = 
   const [campaign] = await db.select().from(collectionCampaigns)
     .where(eq(collectionCampaigns.projectId, projectId)).orderBy(desc(collectionCampaigns.createdAt)).limit(1);
   if (!strategy || !campaign?.agendaId) return { status: "waiting_for_campaign" as const };
-  const [{ value: queued }] = await db.select({ value: count() }).from(collectionCandidates).where(and(
-    eq(collectionCandidates.campaignId, campaign.id),
-    eq(collectionCandidates.queueStatus, "queued"),
-    eq(collectionCandidates.dossierStatus, "pending")
-  ));
+  const [[{ value: queued }], [{ value: discovered }]] = await Promise.all([
+    db.select({ value: count() }).from(collectionCandidates).where(and(
+      eq(collectionCandidates.campaignId, campaign.id),
+      eq(collectionCandidates.queueStatus, "queued"),
+      eq(collectionCandidates.dossierStatus, "pending")
+    )),
+    db.select({ value: count() }).from(collectionCandidates)
+      .where(eq(collectionCandidates.campaignId, campaign.id))
+  ]);
+  if (campaign.targetCount !== null && Number(discovered) >= campaign.targetCount) {
+    return { status: "target_reached" as const, targetCount: campaign.targetCount };
+  }
   if (Number(queued) >= settings.queueBufferTarget) return { status: "buffer_full" as const };
+  const remainingTarget = campaign.targetCount === null
+    ? Number.POSITIVE_INFINITY
+    : Math.max(0, campaign.targetCount - Number(discovered));
+  const discoveryCapacity = Math.min(
+    Math.max(0, settings.queueBufferTarget - Number(queued)),
+    remainingTarget
+  );
 
   const fallbackQueries = [
     `${strategy.strategy.geographicScope.join(" ")} ${strategy.strategy.industries.join(" ")} companies`,
@@ -81,7 +95,7 @@ export async function runResearchDiscovery(projectId: string, cyclesRemaining = 
   ], { structuredOutput: true });
   const extracted = discoveryResult.parse(parseModelJson(text(response)));
   let added = 0;
-  for (const candidate of extracted.candidates.slice(0, Math.max(0, settings.queueBufferTarget - Number(queued)))) {
+  for (const candidate of extracted.candidates.slice(0, discoveryCapacity)) {
     const company = await registerCompany({
       legalName: candidate.legalName,
       tradingNames: candidate.aliases,
@@ -146,7 +160,8 @@ export async function runResearchDiscovery(projectId: string, cyclesRemaining = 
   await tasks.trigger("research-project-dispatcher", { projectId }, {
     idempotencyKey: `discovery-dispatch:${projectId}:${Date.now()}`
   });
-  if (added > 0 && cyclesRemaining > 1 && Number(queued) + added < settings.queueBufferTarget) {
+  const targetStillOpen = campaign.targetCount === null || Number(discovered) + added < campaign.targetCount;
+  if (added > 0 && targetStillOpen && cyclesRemaining > 1 && Number(queued) + added < settings.queueBufferTarget) {
     await tasks.trigger("research-discovery-worker", { projectId, cyclesRemaining: cyclesRemaining - 1 }, {
       idempotencyKey: `discovery-refill:${projectId}:${settings.discoveryCursor}:${cyclesRemaining}`
     });

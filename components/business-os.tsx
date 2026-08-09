@@ -7,6 +7,7 @@ import {
   ArchiveRestore,
   Bot,
   CircleAlert,
+  CircleHelp,
   Database,
   FileText,
   FolderKanban,
@@ -25,6 +26,8 @@ import {
 import type { Agenda, AgendaWorkType, Deliverable, ExecutiveCommand, Milestone, Project, ProjectRecord, WorkspaceDocument } from "@/lib/domain";
 import { ResearchProjectWorkspace } from "@/components/research-project-workspace";
 import { SearchPalette } from "@/components/search-palette";
+import { HelpLink, useHelp } from "@/components/help-provider";
+import type { HelpArticleId } from "@/lib/help/content";
 import { Modal } from "@/components/ui/modal";
 import { useI18n, type RegionalPreferences } from "@/lib/i18n";
 import {
@@ -85,6 +88,14 @@ const pageCopy: Record<PageId, { title: string; subtitle: string; command: strin
   }
 };
 
+/** The help topic each module opens from its header. */
+const pageHelp: Record<PageId, HelpArticleId> = {
+  projects: "starting-a-project",
+  documents: "documents",
+  data: "client-databases",
+  settings: "model-routing"
+};
+
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
     ...init,
@@ -114,6 +125,7 @@ export function BusinessOS() {
   const [commandBusy, setCommandBusy] = useState(false);
   const [agendaWorkType, setAgendaWorkType] = useState<AgendaWorkType>("custom");
   const [session, setSession] = useState<AppSession | null>(null);
+  const { openHelp, registerNavigator } = useHelp();
 
   const readLocation = useCallback(() => {
     const params = new URLSearchParams(window.location.search);
@@ -143,6 +155,9 @@ export function BusinessOS() {
     window.addEventListener("popstate", readLocation);
     return () => window.removeEventListener("popstate", readLocation);
   }, [readLocation]);
+
+  // Lets tour steps switch modules without the help layer owning navigation.
+  useEffect(() => { registerNavigator(navigatePage); }, [registerNavigator, navigatePage]);
 
   useEffect(() => {
     if (!selectedProjectId) return;
@@ -233,6 +248,7 @@ export function BusinessOS() {
   };
 
   // ⌘K / Ctrl+K opens search from anywhere, as the top bar advertises.
+  // "?" for help is handled by HelpProvider.
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
@@ -305,7 +321,7 @@ export function BusinessOS() {
       {process.env.NEXT_PUBLIC_UI_AUDIT_MODE === "true" && (
         <div className="ui-audit-banner" role="status">Development UI audit mode · fixture data · no production access</div>
       )}
-      <aside className="sidebar">
+      <aside className="sidebar" data-help-anchor="sidebar-nav">
         <div className="brand">
           <div className="brand-mark">MTI</div>
           <div>
@@ -321,6 +337,7 @@ export function BusinessOS() {
               <button
                 className={page === item.id ? "nav-item active" : "nav-item"}
                 key={item.id}
+                data-help-anchor={`nav-${item.id}`}
                 aria-current={page === item.id ? "page" : undefined}
                 onClick={() => navigatePage(item.id)}
               >
@@ -348,13 +365,16 @@ export function BusinessOS() {
       <main className="main">
         <header className="topbar">
           <div>
-            <h1>{t(pageCopy[page].title)}</h1>
+            <h1>{t(pageCopy[page].title)} <HelpLink article={pageHelp[page]} title={t("How this module works")} anchor="module-help" /></h1>
             <p>{t(pageCopy[page].subtitle)}</p>
           </div>
           <div className="topbar-actions">
             <button className="search-trigger" onClick={() => setSearchOpen(true)}>
               <Search size={15} aria-hidden /> {t("Search")}
               <kbd>⌘K</kbd>
+            </button>
+            <button className="help-trigger" aria-label={t("Help and tutorials")} title={t("Help and tutorials")} onClick={() => openHelp()}>
+              <CircleHelp size={15} aria-hidden /> <kbd>?</kbd>
             </button>
             <button className="primary" onClick={() => setCreateOpen(true)}><Plus size={15} aria-hidden /> {t("Create project")}</button>
           </div>
@@ -482,7 +502,7 @@ function ProjectsView({ projects, project, selectedId, onSelect, onCreate, onErr
   const [showArchived, setShowArchived] = useState(false);
   const [archiving, setArchiving] = useState(false);
   if (projects.length === 0) {
-    return <EmptyModule icon={FolderKanban} title={t("No projects")} text={t("Create a project to establish context, constraints, agendas, and output requirements.")} action={t("Create project")} onAction={onCreate} />;
+    return <EmptyModule icon={FolderKanban} title={t("No projects")} text={t("Create a project to establish context, constraints, agendas, and output requirements.")} action={t("Create project")} onAction={onCreate} help="starting-a-project" />;
   }
 
   const archivedCount = projects.filter((item) => item.status === "archived").length;
@@ -513,7 +533,7 @@ function ProjectsView({ projects, project, selectedId, onSelect, onCreate, onErr
 
   return (
     <div className="project-layout">
-      <aside className="project-list">
+      <aside className="project-list" data-help-anchor="project-list">
         <div className="list-heading">
           <span>{t("Projects")}</span>
           <button onClick={onCreate} aria-label={t("Create project")} title={t("Create project")}><Plus size={14} /></button>
@@ -763,6 +783,7 @@ type ModelSettingsPayload = {
   catalog: Array<{ gatewayModel: string; model: string; label: string }>;
   routes: Array<{
     route: string; purpose: string; maxCostMicros: number; structuredOutput: boolean; recommendedGatewayModel: string;
+    selectionMode: "auto" | "manual"; activeGatewayModel: string;
     candidates: Array<{ order: number; provider: "openrouter" | "nvidia"; model: string; modelEnv: string; gatewayModel: string; selectionMode: "auto" | "manual"; pricingClass: "paid" | "free"; productionApproved: boolean; licensingStatus: "approved" | "testing_only" | "unverified"; strengths: string[]; languages: string[]; supportsStructuredOutput: boolean; supportsTools: boolean; longContext: boolean; enabled: boolean }>;
   }>;
 };
@@ -771,7 +792,7 @@ function ModelSettings({ onError }: { onError: (message: string) => void }) {
   const { t } = useI18n();
   const [value, setValue] = useState<ModelSettingsPayload | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const [drafts, setDrafts] = useState<Record<string, { maxCostMicros: number; structuredOutput: boolean; gatewayModel: string; mode: "auto" | "manual" }>>({});
+  const [drafts, setDrafts] = useState<Record<string, { gatewayModel: string; mode: "auto" | "manual" }>>({});
   const lastSuccessful = value?.recentCalls.find((call) => !call.error);
   const pendingRevisions = value?.revisions.filter((revision) => ["draft", "approved"].includes(revision.status)) ?? [];
   const load = useCallback(() => api<ModelSettingsPayload>("/api/v1/settings/models").then((payload) => {
@@ -779,29 +800,27 @@ function ModelSettings({ onError }: { onError: (message: string) => void }) {
     setDrafts(Object.fromEntries(payload.routes.map((route) => [
       route.route,
       {
-        maxCostMicros: route.maxCostMicros,
-        structuredOutput: route.structuredOutput,
-        gatewayModel: route.candidates[0]?.gatewayModel.replace(/^auto:/, "") ?? route.route,
-        mode: route.candidates[0]?.selectionMode ?? "manual"
+        gatewayModel: route.activeGatewayModel,
+        mode: route.selectionMode
       }
     ])));
   }), []);
   useEffect(() => { load().catch((error: Error) => onError(error.message)); }, [load, onError]);
-  async function createAndActivate(route: ModelSettingsPayload["routes"][number], mode = drafts[route.route]?.mode ?? "manual") {
+  async function createAndActivate(route: ModelSettingsPayload["routes"][number], mode = drafts[route.route]?.mode ?? "manual", selectedGatewayModel = drafts[route.route]?.gatewayModel) {
       const draft = drafts[route.route];
       const selected = route.candidates.find((candidate) =>
-        candidate.gatewayModel.replace(/^auto:/, "") === draft?.gatewayModel
+        candidate.gatewayModel.replace(/^auto:/, "") === selectedGatewayModel
       ) ?? route.candidates[0];
       const candidates = mode === "auto" ? route.candidates : selected ? [selected] : [];
       const revision = await api<{ data: { id: string } }>("/api/v1/settings/models/revisions", {
         method: "POST",
         body: JSON.stringify({
           route: route.route,
-          maxCostMicros: draft?.maxCostMicros ?? route.maxCostMicros,
-          structuredOutput: draft?.structuredOutput ?? route.structuredOutput,
+          maxCostMicros: route.maxCostMicros,
+          structuredOutput: route.structuredOutput,
           candidates: candidates.map(({ provider, modelEnv, gatewayModel, pricingClass, productionApproved, licensingStatus, strengths, languages, supportsStructuredOutput, supportsTools, longContext }) => ({
             provider, modelEnv,
-            gatewayModel: mode === "auto" ? `auto:${gatewayModel.replace(/^auto:/, "")}` : (draft?.gatewayModel ?? gatewayModel.replace(/^auto:/, "")),
+            gatewayModel: mode === "auto" ? `auto:${gatewayModel.replace(/^auto:/, "")}` : (selectedGatewayModel ?? draft?.gatewayModel ?? gatewayModel.replace(/^auto:/, "")),
             pricingClass, productionApproved, licensingStatus, strengths, languages,
             supportsStructuredOutput, supportsTools, longContext
           }))
@@ -811,10 +830,10 @@ function ModelSettings({ onError }: { onError: (message: string) => void }) {
         await api(`/api/v1/settings/models/revisions/${revision.data.id}`, { method: "POST", body: JSON.stringify({ action }) });
       }
   }
-  async function applyRoute(route: ModelSettingsPayload["routes"][number]) {
+  async function applyRoute(route: ModelSettingsPayload["routes"][number], mode: "auto" | "manual", gatewayModel?: string) {
     setBusy(route.route);
     try {
-      await createAndActivate(route);
+      await createAndActivate(route, mode, gatewayModel);
       await load();
     } catch (error) {
       onError(error instanceof Error ? error.message : "Model route could not be applied.");
@@ -852,6 +871,13 @@ function ModelSettings({ onError }: { onError: (message: string) => void }) {
           {value.routes.filter((route) => !route.route.startsWith("multilingual_")).map((route) => {
             const draft = drafts[route.route];
             const configurable = route.route.startsWith("worker_");
+            // The picker can only offer models from this route's own pool, so
+            // the pinned value is resolved against that pool rather than taken
+            // from the draft blindly.
+            const options = route.candidates.map((candidate) => candidate.gatewayModel.replace(/^auto:/, ""));
+            const manualModel = [draft?.gatewayModel, route.activeGatewayModel]
+              .find((model): model is string => Boolean(model) && options.includes(model as string))
+              ?? options[0] ?? route.activeGatewayModel;
             return <div className="model-route-card" key={route.route}>
               <div className="model-route-id">
                 <strong>{friendlyRouteName(route.route)}</strong>
@@ -859,34 +885,44 @@ function ModelSettings({ onError }: { onError: (message: string) => void }) {
               </div>
               <div className="model-route-choice">
                 {configurable ? <div className="segmented-control model-mode" role="group" aria-label={t("Model selection mode")}>
-                  <button className={draft?.mode === "auto" ? "active" : ""} onClick={() => setDrafts((current) => ({ ...current, [route.route]: { ...current[route.route], mode: "auto", gatewayModel: route.recommendedGatewayModel } }))}>{t("Auto")}</button>
-                  <button className={draft?.mode === "manual" ? "active" : ""} onClick={() => setDrafts((current) => ({ ...current, [route.route]: { ...current[route.route], mode: "manual" } }))}>{t("Manual")}</button>
+                  <button className={draft?.mode === "auto" ? "active" : ""} disabled={busy !== null} onClick={() => {
+                    if (draft?.mode === "auto") return;
+                    if (!window.confirm(t("Return this job to automatic model selection? The pinned model will no longer be used."))) return;
+                    setDrafts((current) => ({ ...current, [route.route]: { ...current[route.route], mode: "auto", gatewayModel: route.recommendedGatewayModel } }));
+                    void applyRoute(route, "auto", route.recommendedGatewayModel);
+                  }}>{t("Auto")}</button>
+                  <button className={draft?.mode === "manual" ? "active" : ""} disabled={busy !== null} onClick={() => {
+                    if (draft?.mode === "manual") return;
+                    setDrafts((current) => ({ ...current, [route.route]: { ...current[route.route], mode: "manual", gatewayModel: manualModel } }));
+                    void applyRoute(route, "manual", manualModel);
+                  }}>{t("Manual")}</button>
                 </div> : <span className="pill">{t("Managed premium route")}</span>}
                 {configurable && draft?.mode === "manual" ? (
-                  <select className="model-picker" aria-label={t("Serving model")} value={draft.gatewayModel} onChange={(event) => setDrafts((current) => ({
+                  <select className="model-picker" aria-label={t("Serving model")} disabled={busy !== null} value={manualModel} onChange={(event) => { const gatewayModel = event.target.value; setDrafts((current) => ({
                       ...current,
-                      [route.route]: {
-                        ...current[route.route],
-                        gatewayModel: event.target.value
-                      }
-                    }))}>
-                      {value.catalog.map((item) => <option key={item.gatewayModel} value={item.gatewayModel}>{item.label}</option>)}
+                      [route.route]: { ...current[route.route], gatewayModel }
+                    })); void applyRoute(route, "manual", gatewayModel); }}>
+                      {route.candidates.map((candidate) => {
+                        const gatewayModel = candidate.gatewayModel.replace(/^auto:/, "");
+                        const label = value.catalog.find((item) => item.gatewayModel === gatewayModel)?.label ?? gatewayModel;
+                        return <option key={gatewayModel} value={gatewayModel}>{label}</option>;
+                      })}
                     </select>
                 ) : <div className="model-auto-result"><Sparkles size={14} /><span>{t("Selects per task from {count} eligible models", { count: route.candidates.length })}</span></div>}
               </div>
               <div className="model-route-actions">
-                <details className="model-advanced"><summary>{t("Advanced")}</summary><div>
-                  <label>{t("Cost cap")}<input type="number" min="0.001" max="1" step="0.001" value={(draft?.maxCostMicros ?? route.maxCostMicros) / 1_000_000} onChange={(event) => setDrafts((current) => ({ ...current, [route.route]: { ...current[route.route], maxCostMicros: Math.round(Number(event.target.value) * 1_000_000) } }))} /><small>{t("Maximum estimated USD allowed for one model call.")}</small></label>
-                  <label className="model-route-check"><input type="checkbox" checked={draft?.structuredOutput ?? route.structuredOutput} onChange={(event) => setDrafts((current) => ({ ...current, [route.route]: { ...current[route.route], structuredOutput: event.target.checked } }))} />{t("Structured output")}<small>{t("Requires valid JSON so software can reliably read fields and lists.")}</small></label>
-                </div></details>
-                {configurable && <button className="primary" disabled={busy !== null} onClick={() => void applyRoute(route)}>{busy === route.route && <Loader2 size={13} className="spin" />} {t("Apply")}</button>}
+                {busy === route.route && <span className="model-route-saving"><Loader2 size={13} className="spin" /> {t("Updating")}</span>}
               </div>
             </div>})}
+          {/* The cost-cap and structured-output controls are gone, so the strip
+              explains only what an operator can still change here. */}
+          <div className="model-help-strip">
+            <div><strong>{t("Auto")}</strong><span>{t("Scores eligible models for each individual task using language, tools, structure, context, quality, quota, and availability.")}</span></div>
+            <div><strong>{t("Manual")}</strong><span>{t("Pins one model for every task on this job. Switching back to Auto asks for confirmation.")}</span></div>
+            <div><strong>{t("Safe apply")}</strong><span>{t("Tests every candidate before atomically activating all automatic worker policies.")}</span></div>
+          </div>
         </div>
       )}
-
-      <div className="model-help-strip"><div><strong>{t("Auto")}</strong><span>{t("Scores eligible models for each individual task using language, tools, structure, context, quality, quota, and availability.")}</span></div><div><strong>{t("Structured output")}</strong><span>{t("Makes the answer machine-readable JSON instead of free-form prose.")}</span></div><div><strong>{t("Cost cap")}</strong><span>{t("Maximum allowed budget for one call; final provider cost is reconciled after completion.")}</span></div><div><strong>{t("Safe apply")}</strong><span>{t("Tests every candidate before atomically activating all automatic worker policies.")}</span></div></div>
-
       {/* Pending revisions were previously appended to the route list, so a
           staged change looked like another route. They are a queue of things
           awaiting a decision, which is a different kind of thing. */}
@@ -1058,19 +1094,22 @@ function Setting({ label, value }: { label: string; value: string }) {
   return <div className="setting"><span>{label}</span><strong>{value}</strong></div>;
 }
 
-function EmptyModule({ icon: Icon, title, text, action, onAction }: {
+function EmptyModule({ icon: Icon, title, text, action, onAction, help }: {
   icon: typeof Bot;
   title: string;
   text: string;
   action: string;
   onAction?: () => void;
+  help?: HelpArticleId;
 }) {
+  const { t } = useI18n();
   return (
     <div className="empty-module">
       <div className="empty-icon"><Icon size={22} /></div>
       <h2>{title}</h2>
       <p>{text}</p>
       <button className="primary" onClick={onAction}><Plus size={14} />{action}</button>
+      {help && <HelpLink article={help} label={t("How this works")} />}
     </div>
   );
 }

@@ -30,6 +30,8 @@ import { logResearchQuery } from "@/lib/observability/logger";
 import { getRunResearchCostCents } from "@/lib/research/engine";
 import { createDossierContextSnapshot } from "@/lib/research/context-snapshot";
 import { researchOfficialSite } from "@/lib/research/official-site";
+import { researchOfficialCompanyData } from "@/lib/research/company-enrichment";
+import { evidenceCapabilities } from "@/lib/research/evidence-capabilities";
 import { repository } from "@/lib/repository";
 import {
   collectionPlanSchema,
@@ -131,6 +133,15 @@ const schema = z.discriminatedUnion("action", [
     candidateId: z.string().uuid(),
     domain: z.string().trim().min(1).max(500),
     maxPages: z.number().int().min(1).max(10).default(8)
+  }),
+  z.object({
+    action: z.literal("official_company_enrichment"),
+    runId: z.string().uuid(),
+    projectId: z.string().uuid(),
+    campaignId: z.string().uuid(),
+    candidateId: z.string().uuid(),
+    company: z.record(z.string(), z.unknown()),
+    evidenceCapabilities: z.array(z.enum(evidenceCapabilities)).max(evidenceCapabilities.length).optional()
   }),
   z.object({
     action: z.literal("dossier_result"),
@@ -457,13 +468,48 @@ export async function POST(request: Request) {
       domain: input.domain,
       maxPages: input.maxPages
     });
-    await recordCampaignEvidence({
-      campaignId: input.campaignId,
+    // researchOfficialSite never throws: a missing key, a 429, or an exhausted
+    // account all return zero pages. Caching that would freeze the outage into
+    // campaign evidence for this domain permanently.
+    if (result.pages.length > 0) {
+      await recordCampaignEvidence({
+        campaignId: input.campaignId,
+        candidateId: input.candidateId,
+        query: cacheQuery,
+        evidence: result,
+        embedding: null
+      }).catch(() => undefined);
+    }
+    return NextResponse.json({ result, reused: false });
+  }
+
+  if (input.action === "official_company_enrichment") {
+    const name = [input.company.legalName, input.company.name, input.company.companyName]
+      .find((value): value is string => typeof value === "string" && value.trim().length > 0) ?? input.candidateId;
+    const capabilityKey = [...(input.evidenceCapabilities ?? [])].sort().join(",") || "default";
+    const cacheQuery = `official-company:${name.trim().toLowerCase()}:${capabilityKey}`;
+    const cached = await findCampaignEvidence(input.campaignId, cacheQuery, requestEmbedding);
+    if (cached.hit) return NextResponse.json({ result: cached.evidence, reused: true });
+    const result = await researchOfficialCompanyData({
+      projectId: input.projectId,
+      runId: input.runId,
       candidateId: input.candidateId,
-      query: cacheQuery,
-      evidence: result,
-      embedding: null
-    }).catch(() => undefined);
+      company: input.company,
+      evidenceCapabilities: input.evidenceCapabilities
+    });
+    // A missing key or a rate-limited registry would otherwise be frozen into
+    // campaign evidence for this company permanently. Only a fully successful
+    // pass is worth reusing; anything else is retried on the next dossier.
+    const reusable = result.length > 0 && result.every((item) => item.status === "available");
+    if (reusable) {
+      await recordCampaignEvidence({
+        campaignId: input.campaignId,
+        candidateId: input.candidateId,
+        query: cacheQuery,
+        evidence: result,
+        embedding: null
+      }).catch(() => undefined);
+    }
     return NextResponse.json({ result, reused: false });
   }
 

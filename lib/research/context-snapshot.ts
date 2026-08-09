@@ -10,6 +10,7 @@ import {
   projectStrategyVersions
 } from "@/lib/db/schema";
 import { MTI_ORGANIZATION_ID } from "@/lib/repository";
+import { buildDossierTemplate } from "@/lib/research/dossier-blueprint";
 
 export async function createDossierContextSnapshot(input: {
   projectId: string;
@@ -49,7 +50,8 @@ export async function createDossierContextSnapshot(input: {
     } : null,
     campaign: {
       id: campaign.id, name: campaign.name, entitySchema: campaign.entitySchema,
-      qualificationRules: campaign.qualificationRules, documentTemplate: campaign.documentTemplate
+      qualificationRules: campaign.qualificationRules,
+      documentTemplate: strategy ? buildDossierTemplate(strategy.strategy) : campaign.documentTemplate
     },
     candidate: { id: candidate.id, data: candidate.data, qualificationScore: candidate.qualificationScore },
     capturedAt: new Date().toISOString()

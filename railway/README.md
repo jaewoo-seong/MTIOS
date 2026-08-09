@@ -148,6 +148,19 @@ records usage per account. The default dossier caps Firecrawl Map at 16 URLs
 and scrapes at most 8 pages, preventing a broad site map from consuming an
 entire free allowance for one company.
 
+Bounded official-registry dossier enrichment also runs on `app`:
+
+- `OPENDART_API_KEY` — Korean company directory, profile, and recent filings
+- `KOREAN_PUBLIC_DATA_SERVICE_KEY` — Korean business-status verification when
+  the candidate already has a 10-digit business registration number
+- `SAM_GOV_API_KEY` — optional U.S. government-registered entity lookup
+- `CENSUS_API_KEY` — U.S. market statistics (the Census Data API now requires
+  a key)
+
+GLEIF global legal-entity lookup and SEC EDGAR lookup require no key. The
+dossier enrichment path is country-aware: it does not call every registry for
+every company, and the campaign evidence pool caches the result for reuse.
+
 Brave was removed deliberately, and Wikimedia no longer claims the `web`
 category. Redundancy comes from a second key on the same service rather than a
 different search engine, so a Tavily outage surfaces as an outage instead of

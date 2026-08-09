@@ -10,6 +10,7 @@ import { parseModelJson } from "@/lib/ai/model-json";
 import { callWorkflowApp } from "@/lib/workflows/callback";
 import { dossierExtractionSchema, dossierQueryPlanSchema } from "@/lib/workflows/contracts";
 import type { EntityFieldSchema } from "@/lib/collection-research";
+import type { EvidenceCapability } from "@/lib/research/evidence-capabilities";
 
 /**
  * Phase 13 Stage 3 - Scouting Loop. Unlike the fixed pipeline in
@@ -519,7 +520,7 @@ export async function runDossierLoop(
   const frozen = claim.contextSnapshot?.context as {
     candidate?: { data?: Record<string, unknown> };
     campaign?: { qualificationRules?: string[]; documentTemplate?: string; entitySchema?: EntityFieldSchema[] };
-    strategy?: unknown;
+    strategy?: { strategy?: { evidenceCapabilities?: EvidenceCapability[] } };
   } | undefined;
   const candidateData = frozen?.candidate?.data ?? payload.candidateData;
   const frozenRules = frozen?.campaign?.qualificationRules;
@@ -530,7 +531,12 @@ export async function runDossierLoop(
   const label = entityLabel(candidateData);
 
   try {
-    const evidence = await gatherDossierEvidence(effectivePayload, deps, label);
+    const evidence = await gatherDossierEvidence(
+      effectivePayload,
+      deps,
+      label,
+      frozen?.strategy?.strategy?.evidenceCapabilities
+    );
 
     const extraction = await deps.requestModel("worker_structured", [
       {
@@ -580,6 +586,8 @@ export async function runDossierLoop(
           documentTemplate,
           "Use only the supplied fields and evidence. Where the template asks for something the " +
             "evidence does not cover, write that it is not established rather than filling the gap.",
+          "Prioritize verified public contact information for relevant decision-makers. Include names, current titles, role relevance, and publicly published professional or business contact routes when supported. Never infer an email address or include private personal data.",
+          "Cite every material factual claim with an adjacent descriptive Markdown hyperlink, for example [OpenDART filing](https://example.com). Never print a bare full URL. Make every source-index entry a Markdown hyperlink and include its date.",
           "Return the markdown document itself, with no preamble and no code fence."
         ].join("\n")
       },
@@ -625,11 +633,29 @@ export async function runDossierLoop(
 async function gatherDossierEvidence(
   payload: DossierPayload,
   deps: DossierDeps,
-  label: string
+  label: string,
+  evidenceCapabilities?: EvidenceCapability[]
 ): Promise<unknown[]> {
   const evidence: unknown[] = [];
-  const officialDomain = [payload.candidateData.website, payload.candidateData.domain]
-    .find((value): value is string => typeof value === "string" && value.trim().length > 0);
+  try {
+    const { result } = await deps.callWorkflowApp<{ result: unknown }>({
+      action: "official_company_enrichment",
+      runId: payload.runId,
+      projectId: payload.projectId,
+      campaignId: payload.campaignId,
+      candidateId: payload.candidateId,
+      company: payload.candidateData,
+      evidenceCapabilities
+    });
+    evidence.push({ sourceRole: "official_registry_enrichment", result });
+  } catch (error) {
+    evidence.push({ sourceRole: "official_registry_enrichment", error: error instanceof Error ? error.message : "official registry research failed" });
+  }
+  const useOfficialWebsite = !evidenceCapabilities?.length || evidenceCapabilities.includes("official_website");
+  const officialDomain = useOfficialWebsite
+    ? [payload.candidateData.website, payload.candidateData.domain]
+      .find((value): value is string => typeof value === "string" && value.trim().length > 0)
+    : undefined;
   if (officialDomain) {
     try {
       const { result } = await deps.callWorkflowApp<{ result: unknown }>({
@@ -653,6 +679,7 @@ async function gatherDossierEvidence(
         `Plan up to ${DOSSIER_SEARCH_STEPS} web searches to research one specific entity in depth.`,
         `Fields that need supporting evidence: ${JSON.stringify(payload.entitySchema)}.`,
         "Cover official identity, products and markets, leadership, HR and hiring, recent news, financial or growth signals, risks, and plausible service opportunities.",
+        "Prioritize queries that verify the relevant buyer or sponsor, current title, public professional profile, and official business contact routes. Search official team/contact pages and public professional sources. Never infer email addresses or seek private personal contact data.",
         "Prefer official pages, filings, government records, reputable news, and public professional sources; use distinct queries rather than repeating the same result set.",
         'Return JSON only: {"queries":["string"]}.'
       ].join("\n")

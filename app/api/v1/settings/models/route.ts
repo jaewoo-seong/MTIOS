@@ -32,15 +32,19 @@ export const GET = guard(async () => {
       purpose: policy.purpose,
       maxCostMicros: policy.maxCostMicros,
       structuredOutput: policy.structuredOutput,
+      selectionMode: policy.candidates[0]?.gatewayModel.startsWith("auto:") ? "auto" : "manual",
+      activeGatewayModel: resolveGatewayModel(policy.candidates[0]?.gatewayModel ?? route),
       recommendedGatewayModel: resolveGatewayModel(modelRoutePolicies[route as keyof typeof modelRoutePolicies].candidates[0]?.gatewayModel ?? route),
-      candidates: policy.candidates.map((rawCandidate, index) => {
+      // Return the complete route-specific pool, not only the active revision.
+      // Otherwise a route pinned to one model could never restore true Auto.
+      candidates: modelRoutePolicies[route as keyof typeof modelRoutePolicies].candidates.map((rawCandidate, index) => {
         const candidate = rawCandidate as ModelCandidate;
         return ({
         order: index + 1,
         provider: candidate.provider,
         modelEnv: candidate.modelEnv,
         gatewayModel: candidate.gatewayModel,
-        selectionMode: candidate.gatewayModel.startsWith("auto:") ? "auto" : "manual",
+        selectionMode: policy.candidates[0]?.gatewayModel.startsWith("auto:") ? "auto" : "manual",
         model: gatewayModelCatalog.find((item) => item.gatewayModel === resolveGatewayModel(candidate.gatewayModel))?.model ?? process.env[candidate.modelEnv] ?? "not_configured",
         pricingClass: candidate.pricingClass,
         productionApproved: candidate.productionApproved,

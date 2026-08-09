@@ -157,10 +157,20 @@ export const projectStrategyVersions = pgTable("project_strategy_versions", {
     exclusions: string[];
     qualificationRules: string[];
     sourcePlan: string[];
+    evidenceCapabilities: Array<"legal_identity" | "financial_filings" | "business_status" | "government_registration" | "official_website" | "recent_news" | "hiring" | "patents" | "market_context">;
     queryFamilies: string[];
     requiredDossierSections: string[];
+    dossierResearchPlan?: Array<{
+      section: string;
+      purpose: string;
+      evidenceNeeded: string[];
+      priority: "required" | "supporting";
+    }>;
+    informationExclusions?: string[];
     evidenceStandard: string;
     newsFreshnessDays: number;
+    targetCompanyCount: number;
+    targetCompanyCountReason: string;
   }>().notNull(),
   status: text("status").default("proposed").notNull(),
   basedOnVersionId: uuid("based_on_version_id"),
@@ -192,7 +202,8 @@ export const projectResearchSettings = pgTable("project_research_settings", {
   activeStrategyVersionId: uuid("active_strategy_version_id").references(() => projectStrategyVersions.id, { onDelete: "set null" }),
   dossierWorkerLimit: integer("dossier_worker_limit").default(3).notNull(),
   revisionWorkerLimit: integer("revision_worker_limit").default(2).notNull(),
-  queueBufferTarget: integer("queue_buffer_target").default(8).notNull(),
+  queueBufferTarget: integer("queue_buffer_target").default(9).notNull(),
+  queueBufferAutomatic: boolean("queue_buffer_automatic").default(true).notNull(),
   discoveryCursor: integer("discovery_cursor").default(0).notNull(),
   lastDiscoveryAt: timestamp("last_discovery_at", { withTimezone: true }),
   discoveryEnabled: boolean("discovery_enabled").default(true).notNull(),

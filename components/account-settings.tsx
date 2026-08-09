@@ -2,6 +2,15 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  credentialedResearchProviderKeys,
+  credentialedResearchProviderLabels,
+  providerAccountLimits,
+  suggestedCredentialEnvs,
+  suggestedCredentialEnvForSlot,
+  suggestedProviderQuotas,
+  type CredentialedResearchProviderKey
+} from "@/lib/research/provider-keys";
+import {
   BarChart3,
   Download,
   KeyRound,
@@ -179,7 +188,7 @@ type AnalyticsPayload = {
 };
 
 type ProviderAccount = {
-  id: string; provider: "tavily" | "firecrawl"; label: string; ownerLabel: string;
+  id: string; provider: CredentialedResearchProviderKey; label: string; ownerLabel: string;
   credentialEnv: string; priority: number; allowance: number | null; status: string;
   resetAt: string | null; cooldownUntil: string | null; credentialConfigured: boolean;
   authorizationConfirmed: boolean; lastError: string | null;
@@ -188,10 +197,10 @@ type ProviderAccount = {
 export function AiAnalyticsSettings({ onError }: { onError: (message: string) => void }) {
   const [data, setData] = useState<AnalyticsPayload | null>(null);
   const [accounts, setAccounts] = useState<ProviderAccount[]>([]);
-  const [accountProvider, setAccountProvider] = useState<"tavily" | "firecrawl">("tavily");
+  const [accountProvider, setAccountProvider] = useState<CredentialedResearchProviderKey>("tavily");
   const [accountLabel, setAccountLabel] = useState("");
   const [accountOwner, setAccountOwner] = useState("");
-  const [accountEnv, setAccountEnv] = useState("");
+  const [accountEnv, setAccountEnv] = useState(suggestedCredentialEnvs.tavily);
   const [days, setDays] = useState("30");
   const [provider, setProvider] = useState("");
   const [route, setRoute] = useState("");
@@ -231,15 +240,17 @@ export function AiAnalyticsSettings({ onError }: { onError: (message: string) =>
   }
   async function addProviderAccount() {
     try {
+      const quota = suggestedProviderQuotas[accountProvider];
       await request("/api/v1/admin/provider-accounts", {
         method: "POST",
         body: JSON.stringify({
           provider: accountProvider, label: accountLabel, ownerLabel: accountOwner,
           credentialEnv: accountEnv, priority: accounts.filter((item) => item.provider === accountProvider).length + 1,
-          allowance: 1000, quotaPeriod: "monthly", authorizationConfirmed: true
+          allowance: quota.allowance, quotaPeriod: quota.quotaPeriod, authorizationConfirmed: true
         })
       });
-      setAccountLabel(""); setAccountOwner(""); setAccountEnv("");
+      const nextSlot = accounts.filter((item) => item.provider === accountProvider).length + 1;
+      setAccountLabel(""); setAccountOwner(""); setAccountEnv(suggestedCredentialEnvForSlot(accountProvider, nextSlot));
       await load();
     } catch (error) {
       onError(error instanceof Error ? error.message : "Provider account could not be saved.");
@@ -259,6 +270,12 @@ export function AiAnalyticsSettings({ onError }: { onError: (message: string) =>
     }, {})).sort((a, b) => b[1] - a[1]);
     return { projects: group("projectName"), models: group("model"), agents: group("agentType"), providers: group("provider") };
   }, [data]);
+  const accountCount = accounts.filter((item) => item.provider === accountProvider).length;
+  const providerGroups: Array<{ title: string; keys: CredentialedResearchProviderKey[] }> = [
+    { title: "Search & website research", keys: ["tavily", "firecrawl"] },
+    { title: "Korean company data", keys: ["opendart", "korean_public_data", "kosis"] },
+    { title: "U.S. and market data", keys: ["sam_gov", "us_census", "fred"] }
+  ];
   return (
     <section className="surface settings-wide analytics-surface">
       <div className="surface-header">
@@ -298,21 +315,30 @@ export function AiAnalyticsSettings({ onError }: { onError: (message: string) =>
             ))}
           </div>
           <div className="quota-section">
-            <div className="surface-header"><div><h3>Research provider accounts</h3><span>Independent authorized Tavily and Firecrawl quota pools. API keys stay in environment secrets.</span></div></div>
-            <div className="admin-create-row quota-create">
-              <select value={accountProvider} onChange={(event) => setAccountProvider(event.target.value as "tavily" | "firecrawl")}><option value="tavily">Tavily</option><option value="firecrawl">Firecrawl</option></select>
-              <input placeholder="Account label" value={accountLabel} onChange={(event) => setAccountLabel(event.target.value)} />
-              <input placeholder="Owner label" value={accountOwner} onChange={(event) => setAccountOwner(event.target.value)} />
-              <input placeholder="Environment secret name" value={accountEnv} onChange={(event) => setAccountEnv(event.target.value.toUpperCase())} />
-              <button className="secondary" disabled={!accountLabel || !/^[A-Z][A-Z0-9_]{2,99}$/.test(accountEnv)} onClick={() => void addProviderAccount()}><Plus size={14} /> Add account</button>
+            <div className="surface-header"><div><h3>Research API accounts</h3><span>Three rotating personal-account slots are available for both Tavily and Firecrawl. Secret values stay in deployment environment variables.</span></div></div>
+            <div className="provider-account-create">
+              <label><span>Provider</span>
+              <select value={accountProvider} onChange={(event) => {
+                const next = event.target.value as CredentialedResearchProviderKey;
+                setAccountProvider(next);
+                const nextSlot = accounts.filter((item) => item.provider === next).length;
+                setAccountEnv(suggestedCredentialEnvForSlot(next, nextSlot));
+              }}>{credentialedResearchProviderKeys.map((key) => <option key={key} value={key}>{credentialedResearchProviderLabels[key]}</option>)}</select></label>
+              <label><span>Account label</span><input placeholder={`Personal account ${accountCount + 1}`} value={accountLabel} onChange={(event) => setAccountLabel(event.target.value)} /></label>
+              <label><span>Owner</span><input placeholder="Account owner" value={accountOwner} onChange={(event) => setAccountOwner(event.target.value)} /></label>
+              <label className="provider-secret-field"><span>Environment secret</span><input placeholder="Environment secret name" value={accountEnv} onChange={(event) => setAccountEnv(event.target.value.toUpperCase())} /></label>
+              <div className="provider-add-action"><span>{accountCount} / {providerAccountLimits[accountProvider]} slots</span><button className="secondary" disabled={accountCount >= providerAccountLimits[accountProvider] || !accountLabel || !/^[A-Z][A-Z0-9_]{2,99}$/.test(accountEnv)} onClick={() => void addProviderAccount()}><Plus size={14} /> Add account</button></div>
             </div>
-            {accounts.map((account) => <div className="quota-row" key={account.id}>
-              <div><strong>{account.provider} · {account.label}</strong><span>{account.ownerLabel || "Personal account"} · priority {account.priority}</span></div>
-              <div />
-              <strong>{account.credentialConfigured ? "Secret connected" : "Secret missing"}</strong>
-              <span>{account.authorizationConfirmed ? "Authorized" : "Authorization required"}{account.cooldownUntil ? ` · cooldown until ${new Date(account.cooldownUntil).toLocaleString()}` : ""}</span>
-              <button className="secondary" onClick={() => void toggleProviderAccount(account)}>{account.status === "active" ? "Disable" : "Enable"}</button>
-            </div>)}
+            <div className="provider-account-groups">{providerGroups.map((group) => <section key={group.title} className="provider-account-group"><header><h4>{group.title}</h4><span>{accounts.filter((item) => group.keys.includes(item.provider)).length} connected</span></header>{group.keys.map((key) => {
+              const providerAccounts = accounts.filter((item) => item.provider === key);
+              return <div className="provider-account-provider" key={key}><div className="provider-account-provider-head"><strong>{credentialedResearchProviderLabels[key]}</strong><span>{providerAccounts.length} / {providerAccountLimits[key]} slots</span></div>{providerAccounts.length === 0 ? <div className="provider-account-empty">No account registered</div> : providerAccounts.map((account) => <div className="provider-account-row" key={account.id}>
+                <div><strong>{account.label}</strong><span>{account.ownerLabel || "Personal account"} · priority {account.priority}</span></div>
+                <code>{account.credentialEnv}</code>
+                <span className={`pill ${account.credentialConfigured ? "good" : "warn"}`}>{account.credentialConfigured ? "Secret connected" : "Secret missing"}</span>
+                <span>{account.authorizationConfirmed ? "Authorized" : "Authorization required"}{account.cooldownUntil ? ` · cooldown until ${new Date(account.cooldownUntil).toLocaleString()}` : ""}</span>
+                <button className="secondary" onClick={() => void toggleProviderAccount(account)}>{account.status === "active" ? "Disable" : "Enable"}</button>
+              </div>)}</div>;
+            })}</section>)}</div>
             {accounts.length === 0 && <div className="empty-inline">No provider accounts registered. Legacy environment keys remain available until accounts are added.</div>}
           </div>
           <div className="quota-section">

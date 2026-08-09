@@ -190,6 +190,20 @@
       "when": 1786161600000,
       "tag": "0026_research_context_provider_accounts",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1786248000000,
+      "tag": "0027_automatic_queue_target",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1786334400000,
+      "tag": "0028_census_provider_key",
+      "breakpoints": true
     }
   ]
 }

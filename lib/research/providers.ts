@@ -52,7 +52,7 @@ export const researchProviderCatalog: ResearchProviderDefinition[] = [
     costCents: 1
   },
   // Brave was removed deliberately. Tavily is the only general web-search
-  // provider: two Tavily keys (see fallbackCredentialEnvs above) give
+  // provider: three Tavily keys (see fallbackCredentialEnvs above) give
   // redundancy within one service whose result shape and coverage the
   // normalizer already handles, rather than silently switching to a provider
   // with different ranking and different licensing.
@@ -83,14 +83,14 @@ export const researchProviderCatalog: ResearchProviderDefinition[] = [
     category: ["company", "government", "economic"],
     baseUrl: "https://api.census.gov/data",
     credentialEnv: "CENSUS_API_KEY",
-    requiresCredential: false,
+    requiresCredential: true,
     priority: 20,
     requestsPerSecond: 2,
     concurrency: 1,
     dailyQueryLimit: null,
     cacheTtlSeconds: 604800,
     policyUrl: "https://www.census.gov/data/developers/about/terms-of-service.html",
-    policy: { optionalCredential: true },
+    policy: { credentialRequired: true },
     qualityScore: 96,
     costCents: 0
   },

@@ -5,6 +5,7 @@ import { Database, FileText, Loader2, Upload } from "lucide-react";
 import { DOSSIER_DOCUMENT_COLUMN } from "@/lib/collection-columns";
 import type { ClientDatabase, ClientRecord, Project } from "@/lib/domain";
 import { ResearchImportDialog } from "@/components/research-import-dialog";
+import { HelpLink } from "@/components/help-provider";
 import { useI18n } from "@/lib/i18n";
 
 export function ClientDataView({
@@ -54,6 +55,7 @@ export function ClientDataView({
         <div className="empty-icon"><Database size={22} aria-hidden /></div>
         <h2>{t("No client databases")}</h2>
         <p>{t("Create a research project first. Its linked company database is created automatically.")}</p>
+        <HelpLink article="client-databases" label={t("How this works")} />
       </div>
     );
   }

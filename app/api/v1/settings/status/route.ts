@@ -89,6 +89,15 @@ export const GET = guard(async () => {
         role: typeof provider.policy.role === "string" ? provider.policy.role : null
       };
     });
+  const firecrawlKeys = ["FIRECRAWL_API_KEY", "FIRECRAWL_API_KEY_2", "FIRECRAWL_API_KEY_3"];
+  providers.splice(1, 0, {
+    key: "firecrawl",
+    name: "Firecrawl",
+    categories: ["web", "company"],
+    state: (firecrawlKeys.some((name) => Boolean(process.env[name])) ? "configured" : "not_configured") as State,
+    keys: firecrawlKeys.map((name) => ({ name, present: Boolean(process.env[name]) })),
+    role: "focused extraction from verified official company websites"
+  });
 
   const models = modelRoutes.map((route) => {
     const policy = modelRoutePolicies[route];

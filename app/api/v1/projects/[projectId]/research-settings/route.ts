@@ -8,6 +8,7 @@ const schema = z.object({
   dossierWorkerLimit: z.number().int().min(1).max(10).optional(),
   revisionWorkerLimit: z.number().int().min(1).max(5).optional(),
   queueBufferTarget: z.number().int().min(1).max(100).optional(),
+  queueBufferAutomatic: z.boolean().optional(),
   discoveryEnabled: z.boolean().optional(),
   researchPaused: z.boolean().optional()
 }).refine((value) => Object.keys(value).length > 0, "At least one setting is required.");

@@ -496,20 +496,20 @@ async function executeAdapter(
   } else if (provider.key === "sec_edgar") {
     url += `?q=${encodeURIComponent(query)}&dateRange=all`;
   } else if (provider.key === "us_census") {
-    const key = process.env.CENSUS_API_KEY ? `&key=${encodeURIComponent(process.env.CENSUS_API_KEY)}` : "";
+    const key = credential ? `&key=${encodeURIComponent(credential)}` : "";
     url += `/2022/cbp?get=NAME,NAICS2017_LABEL,ESTAB&for=state:*${key}`;
   } else if (provider.key === "world_bank") {
     url += `/country/all/indicator/${encodeURIComponent(query)}?format=json&per_page=20`;
   } else if (provider.key === "fred") {
-    url += `/series/search?api_key=${encodeURIComponent(process.env.FRED_API_KEY ?? "")}&file_type=json&search_text=${encodeURIComponent(query)}`;
+    url += `/series/search?api_key=${encodeURIComponent(credential ?? "")}&file_type=json&search_text=${encodeURIComponent(query)}`;
   } else if (provider.key === "korean_public_data") {
     const endpoint = process.env.KOREAN_PUBLIC_DATA_ENDPOINT;
     if (!endpoint) throw new Error("KOREAN_PUBLIC_DATA_ENDPOINT is not configured for a selected dataset.");
-    url = `${endpoint}${endpoint.includes("?") ? "&" : "?"}serviceKey=${encodeURIComponent(process.env.KOREAN_PUBLIC_DATA_SERVICE_KEY ?? "")}&type=json&query=${encodeURIComponent(query)}`;
+    url = `${endpoint}${endpoint.includes("?") ? "&" : "?"}serviceKey=${encodeURIComponent(credential ?? "")}&type=json&query=${encodeURIComponent(query)}`;
   } else if (provider.key === "kosis") {
     const endpoint = process.env.KOSIS_API_ENDPOINT;
     if (!endpoint) throw new Error("KOSIS_API_ENDPOINT is not configured for a selected statistic.");
-    url = `${endpoint}${endpoint.includes("?") ? "&" : "?"}apiKey=${encodeURIComponent(process.env.KOSIS_API_KEY ?? "")}&format=json&searchNm=${encodeURIComponent(query)}`;
+    url = `${endpoint}${endpoint.includes("?") ? "&" : "?"}apiKey=${encodeURIComponent(credential ?? "")}&format=json&searchNm=${encodeURIComponent(query)}`;
   } else if (provider.key === "openalex") {
     const apiKey = process.env.OPENALEX_API_KEY ? `&api_key=${encodeURIComponent(process.env.OPENALEX_API_KEY)}` : "";
     url += `/works?search=${encodeURIComponent(query)}&per-page=10${apiKey}`;

@@ -83,7 +83,9 @@ export async function runDossierRevision(requestId: string) {
           "Revise one master company dossier in Markdown.",
           "Return the complete revised document, not a patch or commentary.",
           "Preserve supported content unless the operator asks to change it.",
-          "Use supplied evidence for new factual claims and retain source URLs.",
+          "Use supplied evidence for new factual claims and retain citations.",
+          "Cite every material factual claim with an adjacent descriptive Markdown hyperlink. Never print a bare full URL, and make every source-index entry a hyperlink with its date.",
+          "Prioritize verified public contact information for relevant decision-makers, but never infer email addresses or include private personal data.",
           "Clearly label inference, sales hypotheses, unknowns, and conflicting evidence.",
           "Never invent people, contact information, company facts, or citations."
         ].join("\n")
