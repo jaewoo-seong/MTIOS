@@ -54,12 +54,14 @@ type DocumentIntelligenceSummary = {
 };
 
 export function DocumentsView({
-  onError, projects, focusDocumentId, onFocusHandled
+  onError, projects, focusDocumentId, onFocusHandled, focusProjectId, onClearProjectFocus
 }: {
   onError: (message: string) => void;
   projects: Project[];
   focusDocumentId?: string | null;
   onFocusHandled?: () => void;
+  focusProjectId?: string | null;
+  onClearProjectFocus?: () => void;
 }) {
   const { formatNumber, t } = useI18n();
   const [folders, setFolders] = useState<DocumentFolder[]>([]);
@@ -90,8 +92,10 @@ export function DocumentsView({
   }, [refresh, onError]);
 
   const visible = useMemo(
-    () => documents.filter((document) => document.folderId === activeFolderId),
-    [documents, activeFolderId]
+    () => focusProjectId
+      ? documents.filter((document) => document.projectId === focusProjectId)
+      : documents.filter((document) => document.folderId === activeFolderId),
+    [documents, activeFolderId, focusProjectId]
   );
 
   // A search result can point at a document in a folder that is not open; switch
@@ -284,7 +288,7 @@ export function DocumentsView({
               dropTarget === folder.id ? "drop-target" : ""
             ].filter(Boolean).join(" ")}
             aria-current={folder.id === activeFolderId ? "true" : undefined}
-            onClick={() => setActiveFolderId(folder.id)}
+            onClick={() => { onClearProjectFocus?.(); setActiveFolderId(folder.id); }}
             onDragOver={(event) => {
               event.preventDefault();
               event.dataTransfer.dropEffect = draggingId ? "move" : "copy";
@@ -325,8 +329,9 @@ export function DocumentsView({
         }}
       >
         <div className="surface-header">
-          <h2>{activeFolder ? t(activeFolder.name) : t("Documents")}</h2>
+          <h2>{focusProjectId ? t("Project documents") : activeFolder ? t(activeFolder.name) : t("Documents")}</h2>
           <div className="surface-tools">
+            {focusProjectId && <button className="quiet" onClick={onClearProjectFocus}>{t("Show all folders")}</button>}
             <span>{t(visible.length === 1 ? "{count} file" : "{count} files", { count: formatNumber(visible.length) })}</span>
             <button className="secondary" onClick={() => fileInputRef.current?.click()} disabled={!activeFolderId}>
               <Upload size={14} aria-hidden /> {t("Import")}

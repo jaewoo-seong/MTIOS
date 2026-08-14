@@ -9,11 +9,12 @@ import { HelpLink } from "@/components/help-provider";
 import { useI18n } from "@/lib/i18n";
 
 export function ClientDataView({
-  onError, onOpenDocument, projects = []
+  onError, onOpenDocument, projects = [], focusDatabaseId
 }: {
   onError: (message: string) => void;
   onOpenDocument?: (documentId: string) => void;
   projects?: Project[];
+  focusDatabaseId?: string | null;
 }) {
   const { formatNumber, t } = useI18n();
   const [databases, setDatabases] = useState<ClientDatabase[]>([]);
@@ -33,6 +34,10 @@ export function ClientDataView({
   useEffect(() => {
     loadDatabases().catch((reason: Error) => onError(reason.message)).finally(() => setLoading(false));
   }, [loadDatabases, onError]);
+
+  useEffect(() => {
+    if (focusDatabaseId && databases.some((database) => database.id === focusDatabaseId)) setActiveId(focusDatabaseId);
+  }, [focusDatabaseId, databases]);
 
   useEffect(() => {
     if (!activeId) {

@@ -111,6 +111,8 @@ export function BusinessOS() {
   const [errors, setErrors] = useState<Array<{ id: number; message: string }>>([]);
   const [searchOpen, setSearchOpen] = useState(false);
   const [focusDocumentId, setFocusDocumentId] = useState<string | null>(null);
+  const [focusDatabaseId, setFocusDatabaseId] = useState<string | null>(null);
+  const [focusProjectDocumentsId, setFocusProjectDocumentsId] = useState<string | null>(null);
   const [session, setSession] = useState<AppSession | null>(null);
   const { openHelp, registerNavigator } = useHelp();
 
@@ -125,15 +127,25 @@ export function BusinessOS() {
       setFocusDocumentId(documentId);
       setPage("documents");
     }
+    const databaseId = params.get("database");
+    if (databaseId) { setFocusDatabaseId(databaseId); setPage("data"); }
+    const projectDocumentsId = params.get("projectDocuments");
+    if (projectDocumentsId) { setFocusProjectDocumentsId(projectDocumentsId); setPage("documents"); }
   }, []);
 
-  const navigatePage = useCallback((next: PageId, options: { documentId?: string | null } = {}) => {
+  const navigatePage = useCallback((next: PageId, options: { documentId?: string | null; databaseId?: string | null; projectDocumentsId?: string | null } = {}) => {
     setPage(next);
     if (options.documentId) setFocusDocumentId(options.documentId);
+    setFocusDatabaseId(options.databaseId ?? null);
+    setFocusProjectDocumentsId(options.projectDocumentsId ?? null);
     const url = new URL(window.location.href);
     url.searchParams.set("view", next);
     if (options.documentId) url.searchParams.set("document", options.documentId);
     else url.searchParams.delete("document");
+    if (options.databaseId) url.searchParams.set("database", options.databaseId);
+    else url.searchParams.delete("database");
+    if (options.projectDocumentsId) url.searchParams.set("projectDocuments", options.projectDocumentsId);
+    else url.searchParams.delete("projectDocuments");
     window.history.pushState({}, "", url);
   }, []);
 
@@ -322,6 +334,8 @@ export function BusinessOS() {
                   onOpenDocument={(documentId) => {
                     navigatePage("documents", { documentId });
                   }}
+                  onOpenDatabase={(databaseId) => navigatePage("data", { databaseId })}
+                  onOpenProjectDocuments={(projectId) => navigatePage("documents", { projectDocumentsId: projectId })}
                 />
               )}
               {page === "documents" && (
@@ -330,12 +344,15 @@ export function BusinessOS() {
                   projects={projects}
                   focusDocumentId={focusDocumentId}
                   onFocusHandled={() => setFocusDocumentId(null)}
+                  focusProjectId={focusProjectDocumentsId}
+                  onClearProjectFocus={() => setFocusProjectDocumentsId(null)}
                 />
               )}
               {page === "data" && (
                 <ClientDataView
                   onError={pushError}
                   projects={projects}
+                  focusDatabaseId={focusDatabaseId}
                   onOpenDocument={(documentId) => {
                     navigatePage("documents", { documentId });
                   }}
@@ -388,7 +405,7 @@ function LoadingState() {
   return <div className="loading-state"><Loader2 size={20} className="spin" /><span>{t("Loading workspace")}</span></div>;
 }
 
-function ProjectsView({ projects, project, selectedId, onSelect, onCreate, onError, onProjectsChanged, onOpenDocument }: {
+function ProjectsView({ projects, project, selectedId, onSelect, onCreate, onError, onProjectsChanged, onOpenDocument, onOpenDatabase, onOpenProjectDocuments }: {
   projects: Project[];
   project: ProjectDetail | null;
   selectedId: string | null;
@@ -397,6 +414,8 @@ function ProjectsView({ projects, project, selectedId, onSelect, onCreate, onErr
   onError: (message: string) => void;
   onProjectsChanged: () => Promise<void>;
   onOpenDocument: (documentId: string) => void;
+  onOpenDatabase: (databaseId: string) => void;
+  onOpenProjectDocuments: (projectId: string) => void;
 }) {
   const { t } = useI18n();
   const [showArchived, setShowArchived] = useState(false);
@@ -463,6 +482,8 @@ function ProjectsView({ projects, project, selectedId, onSelect, onCreate, onErr
             project={project}
             onError={onError}
             onOpenDocument={onOpenDocument}
+            onOpenDatabase={onOpenDatabase}
+            onOpenProjectDocuments={onOpenProjectDocuments}
           />
         </div>
       )}
@@ -1086,7 +1107,7 @@ function CreateProjectDialog({ onClose, onCreated }: { onClose: () => void; onCr
   }
 
   return (
-    <Modal labelledBy="create-project-title" onClose={onClose} className="dialog project-create-dialog" dismissOnBackdrop={false}>
+    <Modal labelledBy="create-project-title" onClose={onClose} className="dialog project-create-dialog" backdropClassName="dialog-backdrop fullscreen-dialog-backdrop" dismissOnBackdrop={false}>
       <form onSubmit={submit} className="project-create-form">
         <div className="dialog-head">
           <div>

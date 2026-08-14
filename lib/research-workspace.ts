@@ -1,10 +1,11 @@
-import { and, asc, desc, eq, max, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, max, sql } from "drizzle-orm";
 import { z } from "zod";
 import { requestModel } from "@/lib/ai/litellm";
 import { parseModelJson } from "@/lib/ai/model-json";
 import { db, requireDatabase } from "@/lib/db/client";
 import {
   clientDatabases,
+  clientRecords,
   agendas,
   collectionCampaigns,
   collectionCandidates,
@@ -146,14 +147,15 @@ export async function getResearchWorkspace(projectId: string) {
       settings,
       strategies: memory.strategies.filter((item) => item.projectId === projectId),
       messages: memory.messages.filter((item) => item.projectId === projectId),
-      campaigns: [], candidates: [], documents: [], projectDocuments: [], revisionRequests: [], contextSnapshots: []
+      campaigns: [], candidates: [], documents: [], projectDocuments: [], revisionRequests: [], contextSnapshots: [],
+      clientDatabase: null
     };
   }
   const database = requireDatabase();
   const campaigns = await database.select().from(collectionCampaigns)
     .where(eq(collectionCampaigns.projectId, projectId)).orderBy(desc(collectionCampaigns.createdAt));
   const campaignIds = new Set(campaigns.map((item) => item.id));
-  const [strategies, messages, allCandidates, projectDocuments, revisions, contextSnapshots] = await Promise.all([
+  const [strategies, messages, allCandidates, projectDocuments, revisions, contextSnapshots, linkedDatabases] = await Promise.all([
     database.select().from(projectStrategyVersions).where(eq(projectStrategyVersions.projectId, projectId))
       .orderBy(desc(projectStrategyVersions.version)),
     database.select().from(projectStrategyMessages).where(eq(projectStrategyMessages.projectId, projectId))
@@ -176,7 +178,14 @@ export async function getResearchWorkspace(projectId: string) {
       contentHash: dossierContextSnapshots.contentHash,
       createdAt: dossierContextSnapshots.createdAt
     }).from(dossierContextSnapshots).where(eq(dossierContextSnapshots.projectId, projectId))
-      .orderBy(desc(dossierContextSnapshots.createdAt))
+      .orderBy(desc(dossierContextSnapshots.createdAt)),
+    database.select({
+      id: clientDatabases.id,
+      name: clientDatabases.name,
+      recordCount: count(clientRecords.id)
+    }).from(clientDatabases).leftJoin(clientRecords, eq(clientRecords.databaseId, clientDatabases.id)).where(and(
+      eq(clientDatabases.projectId, projectId), eq(clientDatabases.organizationId, MTI_ORGANIZATION_ID)
+    )).groupBy(clientDatabases.id, clientDatabases.name).limit(1)
   ]);
   const summarized = projectDocuments.map(({ summarySource, ...document }) => ({
     ...document,
@@ -190,7 +199,8 @@ export async function getResearchWorkspace(projectId: string) {
     )),
     projectDocuments: summarized,
     revisionRequests: revisions,
-    contextSnapshots
+    contextSnapshots,
+    clientDatabase: linkedDatabases[0] ?? null
   };
 }
 
@@ -242,6 +252,11 @@ function uiAuditResearchWorkspace(projectId: string, settings: Record<string, un
       { id: "72000000-0000-4000-8000-000000000004", campaignId, data: { legalName: "Unverified Industrial Directory Entry", location: "Unknown" }, priority: 1, qualificationScore: 21, queueStatus: "held", dossierStatus: "failed", dossierReason: "Official operating identity could not be verified.", disposition: "declined", strategyVersionId: strategyId, linkedDocumentId: null, updatedAt }
     ],
     documents: [dossier], projectDocuments: [dossier],
+    clientDatabase: {
+      id: "20000000-0000-4000-8000-000000000001", projectId,
+      name: "Korea manufacturing companies",
+      description: "Companies researched for this project.", recordCount: 2, createdAt: updatedAt
+    },
     revisionRequests: [{ id: "73000000-0000-4000-8000-000000000001", documentId: dossierId, status: "queued", instruction: "Verify the latest hiring activity and expand the workforce section.", createdAt: updatedAt }],
     contextSnapshots: [{ id: "74000000-0000-4000-8000-000000000001", candidateId: "72000000-0000-4000-8000-000000000001", strategyVersionId: strategyId, contentHash: "ui-audit-context", createdAt: updatedAt }]
   };

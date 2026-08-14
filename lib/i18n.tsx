@@ -355,6 +355,8 @@ const ko: Record<string, string> = {
   ,"Search & data providers": "검색 및 데이터 제공자"
   ,"Keys are checked for presence only, never displayed": "키는 존재 여부만 확인하며 표시되지 않습니다"
   ,"Keys are validated and credit balances refresh at most once per hour": "키 유효성과 크레딧 잔액은 최대 한 시간에 한 번 새로 확인됩니다"
+  ,"Project documents": "프로젝트 문서"
+  ,"Show all folders": "모든 폴더 보기"
   ,"Loading status…": "상태 불러오는 중…"
   ,"Pending route changes": "대기 중인 경로 변경"
   ,"Most recent successful call": "최근 성공한 호출"

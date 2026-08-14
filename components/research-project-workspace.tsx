@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  ArrowDown, ArrowUp, Bot, Check, CirclePause, FileText, GalleryHorizontal, LayoutList, Loader2,
+  ArrowDown, ArrowUp, Bot, Check, CirclePause, Database, FileText, GalleryHorizontal, LayoutList, Loader2,
   MessageSquareText, Pause, Play, RefreshCw, RotateCcw, Search, Send, SlidersHorizontal, X
 } from "lucide-react";
 import type { Project } from "@/lib/domain";
@@ -39,6 +39,7 @@ type Dossier = { id: string; title: string; filename: string; sourceKind: string
 type Workspace = {
   settings: Settings; strategies: Strategy[]; messages: Message[]; candidates: Candidate[];
   documents: Dossier[]; projectDocuments: Dossier[]; campaigns: Array<{ id: string; name: string; status: string; targetCount: number | null }>;
+  clientDatabase: { id: string; name: string; recordCount: number } | null;
   revisionRequests: Array<{ id: string; documentId: string; status: string; instruction: string; createdAt: string }>;
   contextSnapshots: Array<{ id: string; candidateId: string; strategyVersionId: string | null; contentHash: string; createdAt: string }>;
 };
@@ -55,11 +56,13 @@ async function json<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 export function ResearchProjectWorkspace({
-  project, onError, onOpenDocument
+  project, onError, onOpenDocument, onOpenDatabase, onOpenProjectDocuments
 }: {
   project: Project;
   onError: (message: string) => void;
   onOpenDocument: (documentId: string) => void;
+  onOpenDatabase: (databaseId: string) => void;
+  onOpenProjectDocuments: (projectId: string) => void;
 }) {
   const [tab, setTab] = useState<Tab>("strategy");
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
@@ -130,6 +133,17 @@ export function ResearchProjectWorkspace({
           </button>
         </div>
       </header>
+
+      <nav className="project-resource-links" aria-label="Linked project resources">
+        <button onClick={() => workspace.clientDatabase && onOpenDatabase(workspace.clientDatabase.id)} disabled={!workspace.clientDatabase}>
+          <Database size={18} />
+          <span><strong>Client database</strong><small>{workspace.clientDatabase ? `${workspace.clientDatabase.name} · ${workspace.clientDatabase.recordCount} records` : "Database unavailable"}</small></span>
+        </button>
+        <button onClick={() => onOpenProjectDocuments(project.id)}>
+          <FileText size={18} />
+          <span><strong>Project documents</strong><small>{workspace.projectDocuments.length} linked documents</small></span>
+        </button>
+      </nav>
 
       <div className="research-summary" aria-label="Research project summary" data-help-anchor="research-summary">
         <Summary label="Active dossiers" value={`${activeCount} / ${workspace.settings.dossierWorkerLimit}`} />
