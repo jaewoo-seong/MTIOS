@@ -61,7 +61,7 @@ export function PasswordSettings({ onError }: { onError: (message: string) => vo
         <label>Current password<input type="password" autoComplete="current-password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} /></label>
         <label>New password<input type="password" autoComplete="new-password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} /></label>
         <label>Confirm password<input type="password" autoComplete="new-password" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} /></label>
-        <button className="primary" disabled={busy || newPassword.length < 12} onClick={() => void save()}>
+        <button className="primary" disabled={busy} onClick={() => void save()}>
           {busy && <Loader2 size={14} className="spin" />} Change password
         </button>
       </div>
@@ -142,9 +142,9 @@ export function AdminUsersSettings({ onError }: { onError: (message: string) => 
       <div className="admin-create-row">
         <input placeholder="Full name" value={name} onChange={(event) => setName(event.target.value)} />
         <input placeholder="Username" autoComplete="off" value={username} onChange={(event) => setUsername(event.target.value)} />
-        <input type="password" placeholder="Password" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} />
+        <input type="password" placeholder="Password (optional)" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} />
         <select value={role} onChange={(event) => setRole(event.target.value as "admin" | "member")}><option value="member">Member</option><option value="admin">Admin</option></select>
-        <button className="primary" disabled={busy || !name || username.length < 3 || password.length < 12} onClick={() => void create()}><Plus size={14} /> Create user</button>
+        <button className="primary" disabled={busy || !name || username.length < 3} onClick={() => void create()}><Plus size={14} /> Create user</button>
       </div>
       <div className="admin-table">
         {users.map((user) => (
@@ -153,7 +153,7 @@ export function AdminUsersSettings({ onError }: { onError: (message: string) => 
             {user.id !== "00000000-0000-4000-8000-000000000002" && <><input value={usernames[user.id] ?? user.username} onChange={(event) => setUsernames((current) => ({ ...current, [user.id]: event.target.value }))} /><button className="secondary" disabled={(usernames[user.id] ?? user.username) === user.username} onClick={() => void update(user, { username: usernames[user.id] })}>Save username</button></>}
             <select value={user.role} onChange={(event) => void update(user, { role: event.target.value as "admin" | "member" })}><option value="member">Member</option><option value="admin">Admin</option></select>
             <span className={user.status === "active" ? "pill good" : "pill warn"}>{user.status}</span>
-            {user.id !== "00000000-0000-4000-8000-000000000002" && <><input type="password" autoComplete="new-password" placeholder="Set new password" value={passwords[user.id] ?? ""} onChange={(event) => setPasswords((current) => ({ ...current, [user.id]: event.target.value }))} /><button className="secondary" disabled={(passwords[user.id] ?? "").length < 12} onClick={() => void reset(user)}><RefreshCw size={13} /> Set password</button></>}
+            {user.id !== "00000000-0000-4000-8000-000000000002" && <><input type="password" autoComplete="new-password" placeholder="Set new password (optional)" value={passwords[user.id] ?? ""} onChange={(event) => setPasswords((current) => ({ ...current, [user.id]: event.target.value }))} /><button className="secondary" onClick={() => void reset(user)}><RefreshCw size={13} /> Set password</button></>}
             <button className="secondary" onClick={() => void update(user, { status: user.status === "active" ? "disabled" : "active" })}>{user.status === "active" ? "Disable" : "Enable"}</button>
           </div>
         ))}

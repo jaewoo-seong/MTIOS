@@ -11,7 +11,7 @@ import { logger } from "@/lib/observability/logger";
 const schema = z.object({
   name: z.string().trim().min(1).max(120),
   username: z.string().trim().min(3).max(64).regex(/^[a-zA-Z0-9._-]+$/),
-  password: z.string().min(12).max(128),
+  password: z.string(),
   role: z.enum(["admin", "member"]).default("member")
 });
 

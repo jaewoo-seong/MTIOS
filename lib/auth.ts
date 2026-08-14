@@ -79,15 +79,6 @@ export async function hashPassword(password: string) {
   });
 }
 
-export function validatePassword(password: string) {
-  if (password.length < 12 || password.length > 128) {
-    throw new Error("Password must contain between 12 and 128 characters.");
-  }
-  if (!/[A-Za-z]/.test(password) || !/\d/.test(password)) {
-    throw new Error("Password must contain at least one letter and one number.");
-  }
-}
-
 type RequestMetadata = { ipAddress?: string | null; userAgent?: string | null };
 
 export async function authenticate(
@@ -110,17 +101,19 @@ export async function authenticate(
     account?.user.id === "00000000-0000-4000-8000-000000000002";
   const railwayAdminPassword = isRailwayAdmin
     ? process.env.ADMIN_PASSWORD
-    : null;
+    : undefined;
   // The Railway break-glass admin authenticates against an env-var password
   // instead of the stored hash, but it is still the account.user row above
   // and must be subject to the exact same lockout as every other account —
   // otherwise it is the one account with unlimited password guesses.
+  const passwordMatches = railwayAdminPassword !== undefined
+    ? safeEqual(password, railwayAdminPassword)
+    : account?.user.passwordHash
+      ? await verify(String(account.user.passwordHash), password).catch(() => false)
+      : password === "";
   const accepted = account?.user.status === "active" &&
     (!account.user.lockedUntil || account.user.lockedUntil <= now) &&
-    (railwayAdminPassword
-      ? safeEqual(password, railwayAdminPassword)
-      : Boolean(account.user.passwordHash) &&
-        await verify(String(account.user.passwordHash), password).catch(() => false));
+    passwordMatches;
   if (!accepted) {
     if (account?.user) {
       const attempts = account.user.failedLoginAttempts + 1;
@@ -286,7 +279,6 @@ export async function changePassword(
   newPassword: string,
   existing?: SessionClaims
 ) {
-  validatePassword(newPassword);
   const session = existing ?? await currentSession({ allowPasswordChange: true });
   if (session.role === "admin" && session.userId === "00000000-0000-4000-8000-000000000002") {
     throw new AuthError("Admin credentials are managed in Railway.", 400);

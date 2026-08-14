@@ -5,7 +5,7 @@ import { guard } from "@/lib/api/guard";
 import { parseJson } from "@/lib/http";
 import { logger } from "@/lib/observability/logger";
 
-const schema = z.object({ password: z.string().min(12).max(128) });
+const schema = z.object({ password: z.string() });
 
 /**
  * `auth` tier rather than `standard`: this mints a credential for another

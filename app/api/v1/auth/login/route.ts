@@ -13,7 +13,7 @@ import { logger } from "@/lib/observability/logger";
 
 const schema = z.object({
   username: z.string().trim().min(1).max(64),
-  password: z.string().min(1).max(128)
+  password: z.string()
 });
 
 /**

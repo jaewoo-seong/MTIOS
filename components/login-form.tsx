@@ -38,7 +38,7 @@ export function LoginForm() {
         <p>Sign in with your company account.</p>
       </div>
       <label>Username<input autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} required autoFocus /></label>
-      <label>Password<input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>
+      <label>Password<input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} /></label>
       {error && <div className="auth-error" role="alert">{error}</div>}
       <button className="primary auth-submit" disabled={busy}>
         {busy ? <Loader2 className="spin" size={16} /> : <ArrowRight size={16} />}

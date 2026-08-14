@@ -8,8 +8,7 @@ import {
 import {
   hashPassword,
   recordAuthEvent,
-  revokeUserSessions,
-  validatePassword
+  revokeUserSessions
 } from "@/lib/auth";
 import { requireDatabase } from "@/lib/db/client";
 import { MTI_OPERATOR_ID, MTI_ORGANIZATION_ID } from "@/lib/repository";
@@ -54,7 +53,6 @@ export async function createOrganizationUser(input: {
   actorId: string;
 }) {
   const database = requireDatabase();
-  validatePassword(input.password);
   const [created] = await database.transaction(async (tx) => {
     const [user] = await tx.insert(users).values({
       name: input.name.trim(),
@@ -138,7 +136,6 @@ export async function updateOrganizationUser(input: {
 
 export async function resetOrganizationUserPassword(userId: string, actorId: string, password: string) {
   const database = requireDatabase();
-  validatePassword(password);
   if (userId === MTI_OPERATOR_ID) throw new Error("Admin credentials are managed in Railway.");
   const [account] = await database.update(users).set({
     passwordHash: await hashPassword(password),

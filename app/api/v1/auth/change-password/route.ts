@@ -10,8 +10,8 @@ import { parseJson } from "@/lib/http";
 import { logger } from "@/lib/observability/logger";
 
 const schema = z.object({
-  currentPassword: z.string().min(1).max(128),
-  newPassword: z.string().min(12).max(128)
+  currentPassword: z.string(),
+  newPassword: z.string()
 });
 
 /**

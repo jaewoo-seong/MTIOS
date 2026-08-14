@@ -7,7 +7,6 @@ import {
   SESSION_IDLE_MS,
   SESSION_ROTATE_AFTER_MS,
   shouldRotateSession,
-  validatePassword,
   verifySessionToken
 } from "@/lib/auth";
 import { quotaWindow } from "@/lib/ai/usage";
@@ -29,10 +28,11 @@ describe("authentication and quota windows", () => {
     expect(await verify(encoded, password)).toBe(true);
   });
 
-  it("enforces password policy", () => {
-    expect(() => validatePassword("short")).toThrow();
-    expect(() => validatePassword("letters-only-password")).toThrow();
-    expect(() => validatePassword("Strong-password-42")).not.toThrow();
+  it("supports empty and arbitrary passwords", async () => {
+    for (const password of ["", "x", "anything without a number", "🙂"]) {
+      const encoded = await hashPassword(password);
+      expect(await verify(encoded, password)).toBe(true);
+    }
   });
 
   it("signs session claims and rejects tampering or expiry", () => {
