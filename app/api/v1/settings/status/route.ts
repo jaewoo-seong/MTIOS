@@ -6,6 +6,7 @@ import { sql } from "@/lib/db/client";
 import { pingRedis } from "@/lib/redis";
 import { configuredCredentials } from "@/lib/research/engine";
 import { researchProviderCatalog } from "@/lib/research/providers";
+import { checkProviderKeys, type ProviderKeyStatus } from "@/lib/research/provider-status";
 import { checkStorage } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
@@ -74,7 +75,10 @@ export const GET = guard(async () => {
 
   // Only providers that need a key are worth surfacing — the rest are always
   // available and would pad the list with rows nobody has to act on.
-  const providers = researchProviderCatalog
+  const providers: Array<{
+    key: string; name: string; categories: string[]; state: State | "invalid" | "exhausted";
+    keys: Array<{ name: string; present: boolean } | ProviderKeyStatus>; role: string | null;
+  }> = researchProviderCatalog
     .filter((provider) => provider.requiresCredential)
     .map((provider) => {
       const keys = [provider.credentialEnv, ...(provider.fallbackCredentialEnvs ?? [])]
@@ -98,6 +102,17 @@ export const GET = guard(async () => {
     keys: firecrawlKeys.map((name) => ({ name, present: Boolean(process.env[name]) })),
     role: "focused extraction from verified official company websites"
   });
+
+  for (const provider of providers) {
+    if (provider.key !== "tavily" && provider.key !== "firecrawl") continue;
+    const checked = await checkProviderKeys(provider.key, provider.keys.map((key) => key.name));
+    provider.keys = checked;
+    provider.state = checked.some((key) => key.state === "ok") ? "ok"
+      : checked.some((key) => key.state === "exhausted") ? "exhausted"
+      : checked.some((key) => key.state === "invalid" || key.state === "example") ? "invalid"
+      : checked.some((key) => key.state === "unavailable") ? "unavailable"
+      : "not_configured";
+  }
 
   const models = modelRoutes.map((route) => {
     const policy = modelRoutePolicies[route];

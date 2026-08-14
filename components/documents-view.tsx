@@ -634,6 +634,7 @@ function DocumentModal({
       labelledBy="document-modal-title"
       onClose={close}
       className={editing ? "doc-modal editing" : "doc-modal"}
+      backdropClassName="dialog-backdrop doc-modal-backdrop"
       dismissOnBackdrop={!editing && !dirty}
     >
       <header className="doc-modal-head">

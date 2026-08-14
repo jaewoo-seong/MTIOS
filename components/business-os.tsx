@@ -18,12 +18,11 @@ import {
   MicOff,
   Plus,
   Search,
-  Send,
   Settings,
   Sparkles,
   X
 } from "lucide-react";
-import type { Agenda, AgendaWorkType, Deliverable, ExecutiveCommand, Milestone, Project, ProjectRecord, WorkspaceDocument } from "@/lib/domain";
+import type { Agenda, Deliverable, Milestone, Project, ProjectRecord, WorkspaceDocument } from "@/lib/domain";
 import { ResearchProjectWorkspace } from "@/components/research-project-workspace";
 import { SearchPalette } from "@/components/search-palette";
 import { HelpLink, useHelp } from "@/components/help-provider";
@@ -61,30 +60,22 @@ const navItems: Array<{ id: PageId; label: string; icon: typeof Bot }> = [
   { id: "settings", label: "Settings", icon: Settings }
 ];
 
-const pageCopy: Record<PageId, { title: string; subtitle: string; command: string; actions: string[] }> = {
+const pageCopy: Record<PageId, { title: string; subtitle: string }> = {
   projects: {
     title: "Research Projects",
-    subtitle: "Strategy, continuous company research, and master dossiers",
-    command: "",
-    actions: []
+    subtitle: "Strategy, continuous company research, and master dossiers"
   },
   documents: {
     title: "Documents",
-    subtitle: "Working project outputs and saved reports",
-    command: "Draft, revise, save, export, or share a document.",
-    actions: ["Draft report", "Save report", "Export"]
+    subtitle: "Working project outputs and saved reports"
   },
   data: {
     title: "Client Databases",
-    subtitle: "One company database per research project",
-    command: "Enrich records, validate sources, create a view, or link data to a project.",
-    actions: ["Create database", "Import CSV", "Validate records"]
+    subtitle: "One company database per research project"
   },
   settings: {
     title: "Settings",
-    subtitle: "Workspace governance, models, tools, and approval policy",
-    command: "Adjust agent policy, model routing, tool access, or review gates.",
-    actions: ["Adjust policy", "Review access", "Run audit"]
+    subtitle: "Workspace governance, models, tools, and approval policy"
   }
 };
 
@@ -120,10 +111,6 @@ export function BusinessOS() {
   const [errors, setErrors] = useState<Array<{ id: number; message: string }>>([]);
   const [searchOpen, setSearchOpen] = useState(false);
   const [focusDocumentId, setFocusDocumentId] = useState<string | null>(null);
-  const [command, setCommand] = useState("");
-  const [pendingCommand, setPendingCommand] = useState<ExecutiveCommand | null>(null);
-  const [commandBusy, setCommandBusy] = useState(false);
-  const [agendaWorkType, setAgendaWorkType] = useState<AgendaWorkType>("custom");
   const [session, setSession] = useState<AppSession | null>(null);
   const { openHelp, registerNavigator } = useHelp();
 
@@ -227,21 +214,6 @@ export function BusinessOS() {
       .catch((reason: Error) => pushError(reason.message));
   }, [selectedProjectId, projects, pushError]);
 
-  useEffect(() => {
-    const storedDraft = window.localStorage.getItem(`executive-command:draft:${page}`);
-    setCommand(storedDraft ?? "");
-    const pendingId = window.localStorage.getItem("executive-command:pending");
-    if (pendingId) {
-      api<{ data: ExecutiveCommand }>(`/api/v1/commands/${pendingId}`)
-        .then((payload) => setPendingCommand(payload.data))
-        .catch(() => window.localStorage.removeItem("executive-command:pending"));
-    }
-  }, [page]);
-
-  useEffect(() => {
-    window.localStorage.setItem(`executive-command:draft:${page}`, command);
-  }, [command, page]);
-
   const navCounts: Partial<Record<PageId, number>> = {
     projects: projects.filter((project) => project.status === "active").length,
     documents: documentCount
@@ -259,62 +231,6 @@ export function BusinessOS() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
-
-  async function submitCommand() {
-    if (!command.trim()) return;
-    setCommandBusy(true);
-    try {
-      const payload = await api<{ data: ExecutiveCommand }>("/api/v1/commands", {
-        method: "POST",
-        body: JSON.stringify({
-          page,
-          projectId: page === "projects" ? selectedProjectId : null,
-          instruction: command,
-          context: {
-            page,
-            projectId: page === "projects" ? selectedProjectId : null,
-            documentId: page === "documents" ? focusDocumentId : null
-          }
-        })
-      });
-      setPendingCommand(payload.data);
-      window.localStorage.setItem("executive-command:pending", payload.data.id);
-    } catch (reason) {
-      pushError(reason instanceof Error ? reason.message : "Command failed");
-    } finally {
-      setCommandBusy(false);
-    }
-  }
-
-  async function confirmCommand() {
-    if (!pendingCommand) return;
-    setCommandBusy(true);
-    try {
-      await api(`/api/v1/commands/${pendingCommand.id}/confirm`, { method: "POST" });
-      if (page === "projects" && selectedProjectId) {
-        await api(`/api/v1/projects/${selectedProjectId}/agendas`, {
-          method: "POST",
-          body: JSON.stringify({
-            title: agendaTitle(command),
-            instruction: command,
-            workType: agendaWorkType
-          })
-        });
-        const projectPayload = await api<{ data: ProjectDetail }>(
-          `/api/v1/projects/${selectedProjectId}`
-        );
-        setSelectedProject(projectPayload.data);
-      }
-      setPendingCommand(null);
-      setCommand("");
-      window.localStorage.removeItem("executive-command:pending");
-      window.localStorage.removeItem(`executive-command:draft:${page}`);
-    } catch (reason) {
-      pushError(reason instanceof Error ? reason.message : "Confirmation failed");
-    } finally {
-      setCommandBusy(false);
-    }
-  }
 
   return (
     <div className="app-shell">
@@ -430,22 +346,6 @@ export function BusinessOS() {
           )}
         </section>
 
-        {page === "projects" && <ExecutiveCommand
-          page={page}
-          value={command}
-          pending={pendingCommand}
-          busy={commandBusy}
-          disabled={!selectedProjectId}
-          onChange={setCommand}
-          onSubmit={submitCommand}
-          onConfirm={confirmCommand}
-          workType={agendaWorkType}
-          onWorkTypeChange={setAgendaWorkType}
-          onAdjust={() => {
-            setPendingCommand(null);
-            window.localStorage.removeItem("executive-command:pending");
-          }}
-        />}
       </main>
 
       {searchOpen && (
@@ -647,7 +547,7 @@ type SystemStatus = {
   services: Array<{ key: string; name: string; state: string; detail: string }>;
   providers: Array<{
     key: string; name: string; categories: string[]; state: string;
-    keys: Array<{ name: string; present: boolean }>; role: string | null;
+    keys: Array<{ name: string; present: boolean; state?: string; checkedAt?: string | null; usage?: { remaining?: number | null; limit?: number | null; used?: number | null; plan?: string | null; periodEnd?: string | null } }>; role: string | null;
   }>;
   models: Array<{
     route: string; purpose: string; modelEnv: string | null; model: string | null;
@@ -707,7 +607,7 @@ function SystemStatusSettings({ onError }: { onError: (message: string) => void 
       <section className="surface settings-wide">
         <div className="surface-header">
           <h2>{t("Search & data providers")}</h2>
-          <span>{t("Keys are checked for presence only, never displayed")}</span>
+          <span>{t("Keys are validated and credit balances refresh at most once per hour")}</span>
         </div>
         <div className="status-cards">
           {status.providers.map((provider) => (
@@ -720,9 +620,9 @@ function SystemStatusSettings({ onError }: { onError: (message: string) => void 
               <ul className="status-keys">
                 {provider.keys.map((key) => (
                   <li key={key.name}>
-                    <span className={key.present ? "dot on" : "dot off"} aria-hidden />
+                    <span className={key.state === "ok" ? "dot on" : "dot off"} aria-hidden />
                     <code>{key.name}</code>
-                    <span>{key.present ? t("set") : t("missing")}</span>
+                    <span>{t(key.state ?? (key.present ? "set" : "missing"))}{key.usage && typeof key.usage.remaining === "number" ? ` · ${key.usage.remaining.toLocaleString()} credits left` : ""}</span>
                   </li>
                 ))}
               </ul>
@@ -1114,78 +1014,6 @@ function EmptyModule({ icon: Icon, title, text, action, onAction, help }: {
   );
 }
 
-function ExecutiveCommand({
-  page, value, pending, busy, disabled, workType,
-  onChange, onSubmit, onConfirm, onAdjust, onWorkTypeChange
-}: {
-  page: PageId;
-  value: string;
-  pending: ExecutiveCommand | null;
-  busy: boolean;
-  disabled: boolean;
-  workType: AgendaWorkType;
-  onChange: (value: string) => void;
-  onSubmit: () => void;
-  onConfirm: () => void;
-  onAdjust: () => void;
-  onWorkTypeChange: (value: AgendaWorkType) => void;
-}) {
-  const { t } = useI18n();
-  const config = pageCopy[page];
-  return (
-    <div className="command-wrap">
-      {pending && (
-        <div className="clarification">
-          <div><Sparkles size={15} /><strong>{t("Clarify before execution")}</strong></div>
-          <p>{pending.clarification}</p>
-          <div className="clarification-actions">
-            <button className="primary" onClick={onConfirm} disabled={busy}>{t("Confirm")}</button>
-            <button className="secondary" onClick={onAdjust}>{t("Adjust instruction")}</button>
-          </div>
-        </div>
-      )}
-      <div className="command">
-        <div className="command-head"><span className="live-dot" /><strong>{t("Executive Command")}</strong><span>{t(config.title)}</span></div>
-        <textarea
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          placeholder={disabled ? t("Select a project before adding an instruction.") : t(config.command)}
-          rows={value.split("\n").length > 2 ? 5 : 2}
-          disabled={disabled}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) onSubmit();
-          }}
-        />
-        <div className="command-actions">
-          {page === "projects" && (
-            <select
-              className="command-select"
-              aria-label={t("Agenda work type")}
-              value={workType}
-              onChange={(event) => onWorkTypeChange(event.target.value as AgendaWorkType)}
-            >
-              {AGENDA_TYPES.map((type) => (
-                <option key={type} value={type}>{t(type.replace("_", " "))}</option>
-              ))}
-            </select>
-          )}
-          {config.actions.map((action) => <button key={action} className="command-chip" onClick={() => onChange(action)}>{t(action)}</button>)}
-          <div className="spacer" />
-          <button
-            className="send"
-            onClick={onSubmit}
-            disabled={disabled || busy || !value.trim()}
-            aria-label={busy ? t("Sending instruction") : t("Send instruction")}
-            title={`${t("Send instruction")} (⌘↵)`}
-          >
-            {busy ? <Loader2 size={15} className="spin" aria-hidden /> : <Send size={15} aria-hidden />}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function CreateProjectDialog({ onClose, onCreated }: { onClose: () => void; onCreated: (project: Project) => void }) {
   const { preferences, t } = useI18n();
   const [form, setForm] = useState({
@@ -1330,19 +1158,3 @@ type SpeechRecognitionLike = {
   onerror: (() => void) | null; onend: (() => void) | null;
   start: () => void; stop: () => void;
 };
-
-const AGENDA_TYPES: AgendaWorkType[] = [
-  "custom", "research", "marketing", "brainstorming", "content",
-  "data_enrichment", "document", "communication", "analysis", "operations"
-];
-
-/** Derives a readable agenda title: first sentence, trimmed on a word boundary. */
-function agendaTitle(instruction: string) {
-  const clean = instruction.trim().replace(/\s+/g, " ");
-  const sentence = clean.split(/(?<=[.!?])\s/)[0] ?? clean;
-  const candidate = sentence.replace(/[.!?]+$/, "");
-  if (candidate.length <= 80) return candidate;
-  const cut = candidate.slice(0, 80);
-  const boundary = cut.lastIndexOf(" ");
-  return `${(boundary > 40 ? cut.slice(0, boundary) : cut).trimEnd()}…`;
-}

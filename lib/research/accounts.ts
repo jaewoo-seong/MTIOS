@@ -2,6 +2,7 @@ import { and, asc, eq, gte, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { researchProviderAccounts, researchProviderAccountUsage } from "@/lib/db/schema";
 import { MTI_ORGANIZATION_ID } from "@/lib/repository";
+import { hasUsableCredential } from "@/lib/research/provider-status";
 
 export type ProviderAccountRef = {
   id: string | null;
@@ -22,7 +23,7 @@ export async function availableProviderAccounts(provider: string, legacyCredenti
       eq(researchProviderAccounts.status, "active")
     )).orderBy(asc(researchProviderAccounts.priority));
     const configured = rows.filter((row) =>
-      Boolean(process.env[row.credentialEnv]) &&
+      hasUsableCredential(row.credentialEnv) &&
       Boolean(row.authorizationConfirmedAt) &&
       (!row.cooldownUntil || row.cooldownUntil <= now)
     );
@@ -45,7 +46,7 @@ export async function availableProviderAccounts(provider: string, legacyCredenti
       return accounts;
     }
   }
-  return legacyCredentialEnvs.filter((credentialEnv) => Boolean(process.env[credentialEnv])).map(
+  return legacyCredentialEnvs.filter(hasUsableCredential).map(
     (credentialEnv, index): ProviderAccountRef => ({
       id: null, provider, label: `Legacy account ${index + 1}`, credentialEnv,
       allowance: null, used: 0, resetAt: null

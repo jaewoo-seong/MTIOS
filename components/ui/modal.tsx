@@ -16,6 +16,7 @@ interface ModalProps {
   onClose: () => void;
   children: React.ReactNode;
   className?: string;
+  backdropClassName?: string;
   /** Set false for flows where a stray click must not discard entered data. */
   dismissOnBackdrop?: boolean;
 }
@@ -30,6 +31,7 @@ export function Modal({
   onClose,
   children,
   className,
+  backdropClassName,
   dismissOnBackdrop = true
 }: ModalProps) {
   const panelRef = useRef<HTMLDivElement>(null);
@@ -80,7 +82,7 @@ export function Modal({
 
   return (
     <div
-      className="dialog-backdrop"
+      className={backdropClassName ?? "dialog-backdrop"}
       onMouseDown={(event) => {
         if (dismissOnBackdrop && event.target === event.currentTarget) onClose();
       }}

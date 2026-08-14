@@ -28,6 +28,7 @@ import {
   updateProviderAccountHealth,
   type ProviderAccountRef
 } from "@/lib/research/accounts";
+import { hasUsableCredential } from "@/lib/research/provider-status";
 
 export type NormalizedEvidence = {
   id: string;
@@ -292,7 +293,7 @@ export async function runResearchQuery(input: {
 export function configuredCredentials(provider: ResearchProviderDefinition) {
   return [provider.credentialEnv, ...(provider.fallbackCredentialEnvs ?? [])]
     .filter((name): name is string => Boolean(name))
-    .filter((name) => Boolean(process.env[name]));
+    .filter(hasUsableCredential);
 }
 
 async function queryProvider(

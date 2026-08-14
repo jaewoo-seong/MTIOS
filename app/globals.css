@@ -642,6 +642,7 @@ button:disabled { cursor: not-allowed; opacity: .45; }
   height: 100vh; max-height: 100vh; padding: 0; border-radius: 0;
   background: var(--surface); box-shadow: var(--lift); overflow: hidden;
 }
+.dialog-backdrop.doc-modal-backdrop { padding: 0; }
 .doc-modal.editing { width: 100vw; height: 100vh; max-height: 100vh; border-radius: 0; }
 .doc-modal-head {
   flex: 0 0 auto; display: grid; grid-template-columns: minmax(260px, 1fr) auto; align-items: center; gap: var(--sp-4);
@@ -942,60 +943,6 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .conversion-status strong { margin-left: auto; color: var(--ink-soft); font-weight: 550; }
 .document-original { display: block; width: min(100%, 1040px); min-height: calc(100vh - 190px); margin: 0 auto; border: 1px solid var(--line); background: white; }
 .original-download { display: grid; justify-items: center; gap: var(--sp-3); margin: 12vh auto; }
-
-/* ── Executive command (docked in the main column) ────────────────────── */
-.command-wrap {
-  position: sticky; bottom: 0; z-index: 15; flex: 0 0 auto;
-  padding: 0 var(--sp-5) var(--sp-4);
-  background: linear-gradient(to bottom, transparent, var(--paper) 28%);
-}
-.command {
-  padding: var(--sp-3); border: 1px solid var(--line-strong); border-radius: var(--r-lg);
-  background: var(--surface); box-shadow: 0 12px 32px rgba(16, 23, 26, .08);
-}
-.command-head {
-  display: flex; align-items: center; gap: var(--sp-2); margin-bottom: var(--sp-2);
-  font-family: var(--mono); font-size: var(--t-label); letter-spacing: .07em; text-transform: uppercase; color: var(--ink-faint);
-}
-.command-head strong { color: var(--ink-soft); font-weight: 600; }
-.command-head > span:last-child { margin-left: auto; }
-.command textarea {
-  width: 100%; min-height: 46px; max-height: 180px; resize: vertical;
-  padding: var(--sp-2) var(--sp-3); border: 1px solid var(--line-strong); border-radius: var(--r-md);
-  outline: none; background: var(--surface); color: var(--ink); font-size: var(--t-body); line-height: 1.55;
-}
-.command textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-wash); }
-.command textarea::placeholder { color: var(--ink-faint); }
-.command-actions { display: flex; align-items: center; gap: var(--sp-2); margin-top: var(--sp-2); }
-.command-select {
-  max-width: 150px;
-  height: 30px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--surface);
-  color: var(--ink-soft);
-  padding: 0 var(--sp-2);
-  font-size: var(--t-meta);
-  text-transform: capitalize;
-}
-.command-chip {
-  height: 28px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: var(--r-md);
-  background: var(--surface); color: var(--ink-mute); font-size: var(--t-meta);
-}
-.command-chip:hover { background: var(--sunk); color: var(--ink); }
-.send {
-  display: grid; place-items: center; width: var(--ctl-h); height: var(--ctl-h);
-  border: 1px solid var(--accent); border-radius: var(--r-md); background: var(--accent); color: var(--accent-ink);
-}
-.send:hover:not(:disabled) { background: var(--accent-lift); }
-.clarification {
-  display: flex; flex-direction: column; gap: var(--sp-2); margin-bottom: var(--sp-2);
-  padding: var(--sp-3) var(--sp-4); border: 1px solid var(--warn); border-left: 3px solid var(--warn);
-  border-radius: var(--r-md); background: var(--warn-wash);
-}
-.clarification > div:first-child { display: flex; align-items: center; gap: var(--sp-2); color: var(--warn); font-family: var(--mono); font-size: var(--t-label); letter-spacing: .07em; text-transform: uppercase; }
-.clarification p { margin: 0; color: var(--ink-soft); font-size: var(--t-meta); line-height: 1.55; }
-.clarification-actions { display: flex; gap: var(--sp-2); }
 
 /* ── Dialogs ──────────────────────────────────────────────────────────── */
 .dialog-backdrop {
@@ -1335,8 +1282,6 @@ h2 > .help-link.icon { position: relative; top: -1px; margin-left: 4px; }
      the full index, so the second global trigger is redundant on a phone. */
   .topbar p, .search-trigger, .help-trigger { display: none; }
   .workspace { padding: var(--sp-4); }
-  .command-wrap { position: static; padding: var(--sp-3) var(--sp-4); background: var(--paper); }
-  .command { box-shadow: none; }
   .project-layout, .documents-layout, .settings-grid, .surface-grid, .knowledge-list { grid-template-columns: 1fr; }
   .project-list, .document-folders { flex-direction: row; overflow-x: auto; }
   .project-row, .document-folders button { min-width: 168px; flex: 0 0 auto; }
@@ -1345,7 +1290,6 @@ h2 > .help-link.icon { position: relative; top: -1px; margin-left: 4px; }
   .activity-line .activity-type { display: none; }
   .form-grid { grid-template-columns: 1fr; }
   .span-2 { grid-column: auto; }
-  .command-chip { display: none; }
   .auth-form { padding: var(--sp-5); }
   .admin-create-row, .quota-create, .admin-user-row, .quota-row, .approval-row { grid-template-columns: 1fr; }
   .credential-once { align-items: stretch; flex-direction: column; }

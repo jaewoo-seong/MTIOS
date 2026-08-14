@@ -8,6 +8,7 @@ import { parseJson } from "@/lib/http";
 import { MTI_ORGANIZATION_ID } from "@/lib/repository";
 import { credentialedResearchProviderKeys, providerAccountLimits } from "@/lib/research/provider-keys";
 import { isUiAuditMode } from "@/lib/ui-audit-mode";
+import { credentialState } from "@/lib/research/provider-status";
 
 const createSchema = z.object({
   provider: z.enum(credentialedResearchProviderKeys),
@@ -38,7 +39,8 @@ export const GET = guard(async () => {
   ).orderBy(asc(researchProviderAccounts.provider), asc(researchProviderAccounts.priority));
   return NextResponse.json({ data: rows.map((row) => ({
     ...row,
-    credentialConfigured: Boolean(process.env[row.credentialEnv]),
+    credentialConfigured: credentialState(process.env[row.credentialEnv]) === "configured",
+    credentialState: credentialState(process.env[row.credentialEnv]),
     authorizationConfirmed: Boolean(row.authorizationConfirmedAt)
   })) });
 }, { admin: true });
