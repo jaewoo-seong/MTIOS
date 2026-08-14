@@ -1,0 +1,2 @@
+ALTER TABLE "mcp_external_invocations" ADD COLUMN "output_truncated" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE "mcp_external_invocations" ADD COLUMN "model_cost_micros" bigint DEFAULT 0 NOT NULL;

@@ -100,6 +100,7 @@ const emptyStore = (): Store => ({
       id: "00000000-0000-4000-8000-000000000010",
       organizationId: MTI_ORGANIZATION_ID,
       name: "Executive Agent",
+      description: "Plans and reviews governed Business OS work, proposes research strategy, delegates bounded tasks, and pauses at approval gates.",
       role: "executive",
       modelRoute: "executive_reasoning",
       capabilities: [
@@ -123,6 +124,7 @@ const emptyStore = (): Store => ({
       id: "00000000-0000-4000-8000-000000000011",
       organizationId: MTI_ORGANIZATION_ID,
       name: "General Worker",
+      description: "Executes bounded research, analysis, document, and data tasks under the active project strategy without expanding its own authority.",
       role: "worker",
       modelRoute: "worker_fast",
       capabilities: [
@@ -317,6 +319,7 @@ const agentRow = (row: typeof agentDefinitions.$inferSelect): AgentDefinition =>
   id: row.id,
   organizationId: row.organizationId,
   name: row.name,
+  description: row.description,
   role: row.role as AgentDefinition["role"],
   modelRoute: row.modelRoute,
   capabilities: row.capabilities as AgentDefinition["capabilities"],
@@ -373,8 +376,8 @@ export const repository = {
   },
   async createProject(input:
     Omit<Project, "id" | "organizationId" | "status" | "createdAt" | "updatedAt" | "permissions" | "reviewGates" | "outputRequirements" | "outputLanguage" | "budgetCurrency">
-    & Partial<Pick<Project, "permissions" | "reviewGates" | "outputRequirements" | "outputLanguage" | "budgetCurrency">>
-  , actorId = MTI_OPERATOR_ID) {
+    & Partial<Pick<Project, "status" | "permissions" | "reviewGates" | "outputRequirements" | "outputLanguage" | "budgetCurrency">>
+  , actorId = MTI_OPERATOR_ID, organizationId = MTI_ORGANIZATION_ID, id?: string) {
     const governance = {
       permissions: input.permissions ?? {
         externalSend: "review_required" as const,
@@ -388,8 +391,8 @@ export const repository = {
     };
     if (!db) {
       const project: Project = {
-        id: crypto.randomUUID(),
-        organizationId: MTI_ORGANIZATION_ID,
+        id: id ?? crypto.randomUUID(),
+        organizationId,
         status: "active",
         createdAt: now(),
         updatedAt: now(),
@@ -406,18 +409,19 @@ export const repository = {
     }
     return db.transaction(async (tx) => {
       const [row] = await tx.insert(projects).values({
-        organizationId: MTI_ORGANIZATION_ID,
+        ...(id ? { id } : {}),
+        organizationId,
         ownerId: actorId,
         ...governance,
         ...input
       }).returning();
       await Promise.all([
         tx.insert(projectResearchSettings).values({
-          organizationId: MTI_ORGANIZATION_ID,
+          organizationId,
           projectId: row.id
         }),
         tx.insert(clientDatabases).values({
-          organizationId: MTI_ORGANIZATION_ID,
+          organizationId,
           projectId: row.id,
           name: `${row.name} companies`,
           description: `Companies researched for ${row.name}.`

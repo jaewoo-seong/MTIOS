@@ -1,0 +1,7 @@
+# Add to ~/.codex/config.toml. Keep the token in the environment, not here.
+[mcp_servers.mti_business_os]
+url = "https://mcp.example.com/mcp"
+bearer_token_env_var = "MTI_MCP_TOKEN"
+required = true
+default_tools_approval_mode = "writes"
+tool_timeout_sec = 60

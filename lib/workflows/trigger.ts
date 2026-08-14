@@ -55,18 +55,18 @@ export async function dispatchDossierRevision(requestId: string): Promise<Trigge
   return { workflowRunId: handle.id, mode: "managed" };
 }
 
-export async function dispatchResearchProject(projectId: string): Promise<TriggerDispatch> {
+export async function dispatchResearchProject(projectId: string, idempotencyKey?: string): Promise<TriggerDispatch> {
   if (!process.env.TRIGGER_SECRET_KEY) return { workflowRunId: null, mode: "local" };
   const handle = await tasks.trigger("research-project-dispatcher", { projectId }, {
-    idempotencyKey: `research-dispatch:${projectId}:${Date.now()}`
+    idempotencyKey: idempotencyKey ?? `research-dispatch:${projectId}:${Date.now()}`
   });
   return { workflowRunId: handle.id, mode: "managed" };
 }
 
-export async function dispatchResearchDiscovery(projectId: string): Promise<TriggerDispatch> {
+export async function dispatchResearchDiscovery(projectId: string, idempotencyKey?: string): Promise<TriggerDispatch> {
   if (!process.env.TRIGGER_SECRET_KEY) return { workflowRunId: null, mode: "local" };
   const handle = await tasks.trigger("research-discovery-worker", { projectId, cyclesRemaining: 3 }, {
-    idempotencyKey: `research-discovery:${projectId}:${Date.now()}`
+    idempotencyKey: idempotencyKey ?? `research-discovery:${projectId}:${Date.now()}`
   });
   return { workflowRunId: handle.id, mode: "managed" };
 }

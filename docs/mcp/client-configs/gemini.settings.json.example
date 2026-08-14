@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "mti-business-os": {
+      "httpUrl": "https://mcp.example.com/mcp",
+      "headers": {
+        "Authorization": "Bearer REPLACE_FROM_YOUR_SECRET_MANAGER"
+      },
+      "timeout": 60000,
+      "trust": false
+    }
+  }
+}

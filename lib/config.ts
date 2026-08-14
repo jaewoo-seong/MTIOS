@@ -89,6 +89,10 @@ export const optionalWithConsequence: ConfigRequirement[] = [
     reason: "Governed tool calls are unauthenticated against the MCP service."
   },
   {
+    key: "EXTERNAL_MCP_GATEWAY_SECRET",
+    reason: "The external conversational MCP gateway cannot authenticate to the private application API."
+  },
+  {
     key: "TAVILY_API_KEY",
     reason: "No general web search provider, so research falls back to reference sources only."
   },

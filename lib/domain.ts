@@ -10,7 +10,7 @@ export type CommandStatus =
   | "failed"
   | "cancelled";
 
-export type ProjectStatus = "active" | "paused" | "completed" | "archived";
+export type ProjectStatus = "draft" | "active" | "paused" | "completed" | "archived";
 export type AgendaStatus = "queued" | "working" | "blocked" | "review" | "completed";
 export type AgendaWorkType =
   | "research"
@@ -134,6 +134,7 @@ export interface AgentDefinition {
   id: string;
   organizationId: string;
   name: string;
+  description: string;
   role: "executive" | "worker" | "reviewer";
   modelRoute: string;
   capabilities: AgendaWorkType[];

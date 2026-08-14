@@ -12,12 +12,18 @@ import {
 } from "@/lib/research/provider-keys";
 import {
   BarChart3,
+  Building2,
+  CheckCircle2,
+  Copy,
   Download,
   KeyRound,
   Loader2,
   Plus,
   RefreshCw,
+  RotateCcw,
+  Save,
   ShieldCheck,
+  Trash2,
   UserRoundCog
 } from "lucide-react";
 
@@ -29,6 +35,307 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const payload = await response.json().catch(() => null);
   if (!response.ok) throw new Error(payload?.error ?? "Request failed.");
   return payload;
+}
+
+type OrganizationProfile = {
+  id: string;
+  revision: number;
+  status: "draft" | "approved" | "superseded";
+  companyName: string;
+  description: string;
+  services: string[];
+  industries: string[];
+  geographies: string[];
+  idealClients: string[];
+  clientProblems: string[];
+  valuePropositions: string[];
+  differentiators: string[];
+  engagementModels: string[];
+  qualificationCriteria: string[];
+  exclusions: string[];
+  terminology: Record<string, string>;
+  publicContacts: Array<{ label: string; value: string }>;
+  forbiddenClaims: string[];
+  sourceUrls: string[];
+  approvedAt: string | null;
+  updatedAt: string;
+};
+
+const profileListFields = [
+  ["services", "Services"],
+  ["industries", "Industries"],
+  ["geographies", "Geographies served"],
+  ["idealClients", "Ideal clients"],
+  ["clientProblems", "Client problems"],
+  ["valuePropositions", "Value propositions"],
+  ["differentiators", "Differentiators"],
+  ["engagementModels", "Engagement models"],
+  ["qualificationCriteria", "Qualification criteria"],
+  ["exclusions", "Out of scope / exclusions"],
+  ["forbiddenClaims", "Claims external agents must not make"],
+  ["sourceUrls", "Public source URLs"]
+] as const;
+
+/** Admin-only editor for the official, externally shareable company context. */
+export function OrganizationProfileSettings({ onError }: { onError: (message: string) => void }) {
+  const [profile, setProfile] = useState<OrganizationProfile | null>(null);
+  const [active, setActive] = useState<OrganizationProfile | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [terminology, setTerminology] = useState("");
+  const [contacts, setContacts] = useState("");
+  const load = useCallback(async () => {
+    const payload = await request<{ data: { active: OrganizationProfile | null; draft: OrganizationProfile | null } }>(
+      "/api/v1/admin/organization-profile"
+    );
+    setActive(payload.data.active);
+    setProfile(payload.data.draft);
+    setTerminology(formatPairs(payload.data.draft?.terminology ?? {}));
+    setContacts((payload.data.draft?.publicContacts ?? []).map((item) => `${item.label}: ${item.value}`).join("\n"));
+  }, []);
+  useEffect(() => { load().catch((error: Error) => onError(error.message)); }, [load, onError]);
+
+  async function startDraft() {
+    setBusy(true);
+    try {
+      await request("/api/v1/admin/organization-profile", { method: "POST" });
+      await load();
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "Profile draft could not be created.");
+    } finally { setBusy(false); }
+  }
+
+  async function persistProfile() {
+    if (!profile) return;
+    const next = await request<{ data: OrganizationProfile }>(`/api/v1/admin/organization-profile/${profile.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        companyName: profile.companyName,
+        description: profile.description,
+        services: profile.services,
+        industries: profile.industries,
+        geographies: profile.geographies,
+        idealClients: profile.idealClients,
+        clientProblems: profile.clientProblems,
+        valuePropositions: profile.valuePropositions,
+        differentiators: profile.differentiators,
+        engagementModels: profile.engagementModels,
+        qualificationCriteria: profile.qualificationCriteria,
+        exclusions: profile.exclusions,
+        terminology: parsePairRecord(terminology),
+        publicContacts: parseContactPairs(contacts),
+        forbiddenClaims: profile.forbiddenClaims,
+        sourceUrls: profile.sourceUrls
+      })
+    });
+    setProfile(next.data);
+  }
+
+  async function save() {
+    setBusy(true);
+    try {
+      await persistProfile();
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "Company profile could not be saved.");
+    } finally { setBusy(false); }
+  }
+
+  async function approve() {
+    if (!profile || !window.confirm("Approve this version as the official MTI context? External MCP clients with organization:read will immediately use it.")) return;
+    setBusy(true);
+    try {
+      await persistProfile();
+      await request(`/api/v1/admin/organization-profile/${profile.id}/approve`, { method: "POST" });
+      await load();
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "Company profile could not be approved.");
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <section className="surface settings-wide">
+      <div className="surface-header">
+        <div>
+          <h2><Building2 size={16} /> MTI Company Profile</h2>
+          <span>Official context for Business OS and external MCP assistants</span>
+        </div>
+        {active && <span className="pill good"><CheckCircle2 size={13} /> Approved v{active.revision}</span>}
+      </div>
+      {!profile ? (
+        <div className="settings-form">
+          <p>{active ? `Version ${active.revision} is active. Create a draft to propose changes without affecting MCP clients.` : "No approved company profile exists. MCP clients will not infer MTI services until an admin approves one."}</p>
+          <button className="primary" disabled={busy} onClick={() => void startDraft()}><Plus size={14} /> {active ? "Create new version" : "Create company profile"}</button>
+        </div>
+      ) : (
+        <div className="settings-form organization-profile-form">
+          <div className="settings-inline-note">Editing draft v{profile.revision}. Saving does not publish it.</div>
+          <label>Company name<input value={profile.companyName} onChange={(event) => setProfile({ ...profile, companyName: event.target.value })} /></label>
+          <label>Company description<textarea rows={5} value={profile.description} onChange={(event) => setProfile({ ...profile, description: event.target.value })} /></label>
+          <div className="organization-profile-fields">
+            {profileListFields.map(([field, label]) => (
+              <label key={field}>{label}<textarea rows={4} placeholder="One item per line" value={profile[field].join("\n")} onChange={(event) => setProfile({ ...profile, [field]: lines(event.target.value) })} /></label>
+            ))}
+            <label>Terminology<textarea rows={4} placeholder="Term: approved meaning" value={terminology} onChange={(event) => setTerminology(event.target.value)} /></label>
+            <label>Public contacts<textarea rows={4} placeholder="Email: hello@example.com" value={contacts} onChange={(event) => setContacts(event.target.value)} /></label>
+          </div>
+          <div className="settings-actions">
+            <button className="secondary" disabled={busy || !profile.companyName.trim()} onClick={() => void save()}><Save size={14} /> Save draft</button>
+            <button className="primary" disabled={busy || !profile.companyName.trim()} onClick={() => void approve()}><CheckCircle2 size={14} /> Save and approve</button>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function lines(value: string) {
+  return value.split("\n").map((item) => item.trim()).filter(Boolean);
+}
+
+function formatPairs(value: Record<string, string>) {
+  return Object.entries(value).map(([key, item]) => `${key}: ${item}`).join("\n");
+}
+
+function parsedPairs(value: string) {
+  return lines(value).map((line) => {
+    const separator = line.indexOf(":");
+    return separator < 1 ? [line, ""] as const : [line.slice(0, separator).trim(), line.slice(separator + 1).trim()] as const;
+  }).filter(([, item]) => item);
+}
+
+function parsePairRecord(value: string): Record<string, string> {
+  return Object.fromEntries(parsedPairs(value));
+}
+
+function parseContactPairs(value: string): Array<{ label: string; value: string }> {
+  return parsedPairs(value).map(([label, item]) => ({ label, value: item }));
+}
+
+const externalScopes = [
+  "organization:read", "projects:read", "companies:read", "documents:read", "evidence:read",
+  "projects:draft", "research:execute", "reports:create"
+] as const;
+
+type ExternalCredential = {
+  id: string;
+  label: string;
+  clientName: string;
+  publicPrefix: string;
+  scopes: string[];
+  accessMode: "selected_projects" | "organization";
+  status: string;
+  projectIds: string[];
+  expiresAt: string | null;
+  lastUsedAt: string | null;
+};
+
+type McpMetrics = {
+  totals: {
+    calls: number; completed: number; failures: number; failureRate: number;
+    averageLatencyMs: number; p95LatencyMs: number; truncatedResponses: number; modelCostMicros: number;
+  };
+};
+
+export function ExternalMcpSettings({ onError }: { onError: (message: string) => void }) {
+  const [credentials, setCredentials] = useState<ExternalCredential[]>([]);
+  const [projects, setProjects] = useState<Array<{ id: string; name: string }>>([]);
+  const [metrics, setMetrics] = useState<McpMetrics | null>(null);
+  const [label, setLabel] = useState("");
+  const [clientName, setClientName] = useState("Codex");
+  const [scopes, setScopes] = useState<string[]>(["projects:read", "companies:read", "documents:read", "evidence:read"]);
+  const [accessMode, setAccessMode] = useState<"selected_projects" | "organization">("selected_projects");
+  const [projectIds, setProjectIds] = useState<string[]>([]);
+  const [expiresInDays, setExpiresInDays] = useState("30");
+  const [token, setToken] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const load = useCallback(async () => {
+    const [credentialPayload, projectPayload, metricPayload] = await Promise.all([
+      request<{ data: ExternalCredential[] }>("/api/v1/admin/mcp-credentials"),
+      request<{ data: Array<{ id: string; name: string }> }>("/api/v1/projects"),
+      request<{ data: McpMetrics }>("/api/v1/admin/mcp-metrics?days=30")
+    ]);
+    setCredentials(credentialPayload.data);
+    setProjects(projectPayload.data);
+    setMetrics(metricPayload.data);
+  }, []);
+  useEffect(() => { load().catch((error: Error) => onError(error.message)); }, [load, onError]);
+
+  async function createCredential() {
+    if (accessMode === "organization" && !window.confirm("Create a credential that can access every current and future project in this organization? Selected-project access is safer.")) return;
+    setBusy(true);
+    try {
+      const days = Number(expiresInDays);
+      const payload = await request<{ data: { credential: ExternalCredential; token: string } }>("/api/v1/admin/mcp-credentials", {
+        method: "POST",
+        body: JSON.stringify({
+          label,
+          clientName,
+          scopes,
+          accessMode,
+          projectIds: accessMode === "selected_projects" ? projectIds : [],
+          expiresAt: Number.isFinite(days) && days > 0 ? new Date(Date.now() + days * 86_400_000).toISOString() : null
+        })
+      });
+      setToken(payload.data.token);
+      setLabel("");
+      await load();
+    } catch (error) {
+      onError(error instanceof Error ? error.message : "External MCP credential could not be created.");
+    } finally { setBusy(false); }
+  }
+
+  async function rotateCredential(credentialId: string) {
+    if (!window.confirm("Rotate this credential? The old token will stop working immediately.")) return;
+    try {
+      const payload = await request<{ data: { token: string } }>(`/api/v1/admin/mcp-credentials/${credentialId}/rotate`, { method: "POST" });
+      setToken(payload.data.token);
+      await load();
+    } catch (error) { onError(error instanceof Error ? error.message : "Credential could not be rotated."); }
+  }
+
+  async function revokeCredential(credentialId: string) {
+    if (!window.confirm("Revoke this credential immediately?")) return;
+    try {
+      await request(`/api/v1/admin/mcp-credentials/${credentialId}`, { method: "DELETE" });
+      await load();
+    } catch (error) { onError(error instanceof Error ? error.message : "Credential could not be revoked."); }
+  }
+
+  return (
+    <section className="surface settings-wide">
+      <div className="surface-header"><div><h2><KeyRound size={16} /> External MCP access</h2><span>Credentials for Codex, Claude, Gemini, and other MCP clients</span></div></div>
+      {metrics && <div className="metric-strip">
+        <div><span>Calls · 30d</span><strong>{metrics.totals.calls}</strong></div>
+        <div><span>Failures</span><strong>{metrics.totals.failures}</strong></div>
+        <div><span>P95 latency</span><strong>{metrics.totals.p95LatencyMs} ms</strong></div>
+        <div><span>Truncated</span><strong>{metrics.totals.truncatedResponses}</strong></div>
+        <div><span>Model cost</span><strong>${(metrics.totals.modelCostMicros / 1_000_000).toFixed(4)}</strong></div>
+      </div>}
+      {token && <div className="credential-token-reveal">
+        <strong>Copy this token now. It will not be shown again.</strong>
+        <code>{token}</code>
+        <button className="secondary" onClick={() => void navigator.clipboard.writeText(token)}><Copy size={13} /> Copy token</button>
+        <button className="secondary" onClick={() => setToken(null)}>Dismiss</button>
+      </div>}
+      <div className="settings-form">
+        <div className="admin-create-row">
+          <input placeholder="Credential label" value={label} onChange={(event) => setLabel(event.target.value)} />
+          <select value={clientName} onChange={(event) => setClientName(event.target.value)}><option>Codex</option><option>Claude</option><option>Gemini</option><option>Other</option></select>
+          <select value={accessMode} onChange={(event) => setAccessMode(event.target.value as typeof accessMode)}><option value="selected_projects">Selected projects</option><option value="organization">All organization projects</option></select>
+          <input type="number" min="1" max="365" aria-label="Expires in days" value={expiresInDays} onChange={(event) => setExpiresInDays(event.target.value)} />
+        </div>
+        <div className="mcp-scope-grid">{externalScopes.map((scope) => <label key={scope}><input type="checkbox" checked={scopes.includes(scope)} onChange={(event) => setScopes((current) => event.target.checked ? [...current, scope] : current.filter((item) => item !== scope))} /> {scope}</label>)}</div>
+        {accessMode === "selected_projects" && <div className="mcp-project-grid">{projects.map((project) => <label key={project.id}><input type="checkbox" checked={projectIds.includes(project.id)} onChange={(event) => setProjectIds((current) => event.target.checked ? [...current, project.id] : current.filter((item) => item !== project.id))} /> {project.name}</label>)}</div>}
+        <button className="primary" disabled={busy || !label.trim() || !scopes.length || (accessMode === "selected_projects" && !projectIds.length)} onClick={() => void createCredential()}><Plus size={14} /> Create credential</button>
+      </div>
+      <div className="admin-table">{credentials.map((credential) => <div className="external-credential-row" key={credential.id}>
+        <div><strong>{credential.label}</strong><span>{credential.clientName} · …{credential.publicPrefix} · {credential.accessMode.replace("_", " ")}</span></div>
+        <span className={credential.status === "active" ? "pill good" : "pill warn"}>{credential.status}</span>
+        <span>{credential.scopes.join(", ")}</span>
+        <span>{credential.lastUsedAt ? `Used ${new Date(credential.lastUsedAt).toLocaleString()}` : "Never used"}</span>
+        {credential.status === "active" && <><button className="secondary" onClick={() => void rotateCredential(credential.id)}><RotateCcw size={13} /> Rotate</button><button className="secondary danger" onClick={() => void revokeCredential(credential.id)}><Trash2 size={13} /> Revoke</button></>}
+      </div>)}</div>
+    </section>
+  );
 }
 
 export function PasswordSettings({ onError }: { onError: (message: string) => void }) {

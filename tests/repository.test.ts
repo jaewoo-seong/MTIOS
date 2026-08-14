@@ -3,6 +3,19 @@ import { describe, expect, it } from "vitest";
 import { repository } from "@/lib/repository";
 
 describe("development repository lifecycle", () => {
+  it("can persist an external project as a non-running draft", async () => {
+    const project = await repository.createProject({
+      name: "Conversational draft",
+      objective: "Prepare a strategy proposal without starting research.",
+      context: "Bounded conversation context",
+      scope: "South Korea",
+      constraints: [],
+      budgetCents: null,
+      status: "draft"
+    });
+    expect(project.status).toBe("draft");
+  });
+
   it("converts legacy task assignments before adding the agent UUID foreign key", async () => {
     const migration = await readFile(
       new URL("../drizzle/0002_lyrical_pete_wisdom.sql", import.meta.url),

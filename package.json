@@ -10,6 +10,7 @@
     "build": "next build",
     "start": "next start",
     "start:mcp": "tsx services/mcp-tools/server.ts",
+    "start:mcp:external": "tsx services/mcp-external/server.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
@@ -17,7 +18,8 @@
     "db:seed": "tsx lib/db/run-seed.ts",
     "db:repair": "tsx lib/db/ensure-schema.ts",
     "db:deploy": "npm run db:repair && npm run db:migrate && npm run db:seed",
-    "test:production": "node scripts/smoke-production.mjs"
+    "test:production": "node scripts/smoke-production.mjs",
+    "test:mcp:external": "node scripts/smoke-external-mcp.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1097.0",

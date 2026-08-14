@@ -18,7 +18,7 @@ const timestamps = {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull()
 };
 
-export const projectStatus = pgEnum("project_status", ["active", "paused", "completed", "archived"]);
+export const projectStatus = pgEnum("project_status", ["draft", "active", "paused", "completed", "archived"]);
 export const agendaStatus = pgEnum("agenda_status", ["queued", "working", "blocked", "review", "completed"]);
 export const agendaWorkType = pgEnum("agenda_work_type", [
   "research", "marketing", "brainstorming", "content", "data_enrichment",
@@ -104,6 +104,41 @@ export const userPreferences = pgTable("user_preferences", {
   currency: text("currency").default("USD").notNull(),
   ...timestamps
 }, (table) => [uniqueIndex("user_preference_org_user").on(table.organizationId, table.userId)]);
+
+/**
+ * The official organization briefing is versioned separately from general
+ * knowledge. Drafts are editable; approved versions are immutable and are the
+ * only versions external assistants may receive.
+ */
+export const organizationProfileVersions = pgTable("organization_profile_versions", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  revision: integer("revision").notNull(),
+  status: text("status").default("draft").notNull(),
+  companyName: text("company_name").notNull(),
+  description: text("description").default("").notNull(),
+  services: jsonb("services").$type<string[]>().default([]).notNull(),
+  industries: jsonb("industries").$type<string[]>().default([]).notNull(),
+  geographies: jsonb("geographies").$type<string[]>().default([]).notNull(),
+  idealClients: jsonb("ideal_clients").$type<string[]>().default([]).notNull(),
+  clientProblems: jsonb("client_problems").$type<string[]>().default([]).notNull(),
+  valuePropositions: jsonb("value_propositions").$type<string[]>().default([]).notNull(),
+  differentiators: jsonb("differentiators").$type<string[]>().default([]).notNull(),
+  engagementModels: jsonb("engagement_models").$type<string[]>().default([]).notNull(),
+  qualificationCriteria: jsonb("qualification_criteria").$type<string[]>().default([]).notNull(),
+  exclusions: jsonb("exclusions").$type<string[]>().default([]).notNull(),
+  terminology: jsonb("terminology").$type<Record<string, string>>().default({}).notNull(),
+  publicContacts: jsonb("public_contacts").$type<Array<{ label: string; value: string }>>().default([]).notNull(),
+  forbiddenClaims: jsonb("forbidden_claims").$type<string[]>().default([]).notNull(),
+  sourceUrls: jsonb("source_urls").$type<string[]>().default([]).notNull(),
+  createdBy: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+  approvedBy: uuid("approved_by").references(() => users.id, { onDelete: "set null" }),
+  approvedAt: timestamp("approved_at", { withTimezone: true }),
+  ...timestamps
+}, (table) => [
+  uniqueIndex("organization_profile_revision_idx").on(table.organizationId, table.revision),
+  index("organization_profile_status_idx").on(table.organizationId, table.status, table.revision)
+]);
 
 export const projects = pgTable("projects", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -447,6 +482,7 @@ export const reports = pgTable("reports", {
   id: uuid("id").defaultRandom().primaryKey(),
   organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
   projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }),
+  documentId: uuid("document_id").references(() => documents.id, { onDelete: "set null" }),
   title: text("title").notNull(),
   summary: text("summary").default("").notNull(),
   content: text("content").default("").notNull(),
@@ -474,6 +510,7 @@ export const agentDefinitions = pgTable("agent_definitions", {
   id: uuid("id").defaultRandom().primaryKey(),
   organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
   name: text("name").notNull(),
+  description: text("description").default("").notNull(),
   role: text("role").notNull(),
   modelRoute: text("model_route").notNull(),
   capabilities: jsonb("capabilities").$type<string[]>().default([]).notNull(),
@@ -607,6 +644,34 @@ export const documentRevisions = pgTable("document_revisions", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
 }, (table) => [
   uniqueIndex("document_revision_document_number_idx").on(table.documentId, table.revision)
+]);
+
+/** Projects and exact approved revisions used by a generated cross-project report. */
+export const reportProjects = pgTable("report_projects", {
+  reportId: uuid("report_id").references(() => reports.id, { onDelete: "cascade" }).notNull(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "restrict" }).notNull(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
+}, (table) => [
+  uniqueIndex("report_project_unique_idx").on(table.reportId, table.projectId),
+  index("report_project_project_idx").on(table.organizationId, table.projectId)
+]);
+
+export const reportSources = pgTable("report_sources", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  reportId: uuid("report_id").references(() => reports.id, { onDelete: "cascade" }).notNull(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "restrict" }).notNull(),
+  documentId: uuid("document_id").references(() => documents.id, { onDelete: "restrict" }).notNull(),
+  documentRevisionId: uuid("document_revision_id").references(() => documentRevisions.id, { onDelete: "restrict" }).notNull(),
+  citationKey: text("citation_key").notNull(),
+  title: text("title").notNull(),
+  sourceUrl: text("source_url"),
+  includedCharacters: integer("included_characters").default(0).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
+}, (table) => [
+  uniqueIndex("report_source_revision_unique_idx").on(table.reportId, table.documentRevisionId),
+  index("report_source_report_idx").on(table.organizationId, table.reportId)
 ]);
 
 /** Agent rework is intentionally independent of the primary dossier queue. */
@@ -1035,6 +1100,67 @@ export const mcpInvocations = pgTable("mcp_invocations", {
   ...timestamps
 });
 
+/** Credentials presented by external MCP clients such as Codex or Claude. */
+export const mcpExternalCredentials = pgTable("mcp_external_credentials", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  createdByUserId: uuid("created_by_user_id").references(() => users.id, { onDelete: "restrict" }).notNull(),
+  label: text("label").notNull(),
+  clientName: text("client_name").notNull(),
+  publicPrefix: text("public_prefix").notNull(),
+  secretHash: text("secret_hash").notNull(),
+  scopes: jsonb("scopes").$type<string[]>().default([]).notNull(),
+  accessMode: text("access_mode").default("selected_projects").notNull(),
+  status: text("status").default("active").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }),
+  lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+  rotatedAt: timestamp("rotated_at", { withTimezone: true }),
+  rotatedFromId: uuid("rotated_from_id"),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  ...timestamps
+}, (table) => [
+  uniqueIndex("mcp_external_credential_prefix_idx").on(table.publicPrefix),
+  index("mcp_external_credential_org_status_idx").on(table.organizationId, table.status),
+  index("mcp_external_credential_creator_idx").on(table.createdByUserId)
+]);
+
+/** Explicit project allowlist. An empty list never implies organization-wide access. */
+export const mcpExternalCredentialProjects = pgTable("mcp_external_credential_projects", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  credentialId: uuid("credential_id").references(() => mcpExternalCredentials.id, { onDelete: "cascade" }).notNull(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
+}, (table) => [
+  uniqueIndex("mcp_external_credential_project_idx").on(table.credentialId, table.projectId),
+  index("mcp_external_credential_project_project_idx").on(table.projectId)
+]);
+
+/** Redacted audit and idempotency ledger for calls coming into Business OS. */
+export const mcpExternalInvocations = pgTable("mcp_external_invocations", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  credentialId: uuid("credential_id").references(() => mcpExternalCredentials.id, { onDelete: "restrict" }).notNull(),
+  toolName: text("tool_name").notNull(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }),
+  idempotencyKey: text("idempotency_key"),
+  requestHash: text("request_hash").notNull(),
+  requestSummary: jsonb("request_summary").$type<Record<string, unknown>>().default({}).notNull(),
+  resultSummary: jsonb("result_summary").$type<Record<string, unknown>>(),
+  response: jsonb("response").$type<Record<string, unknown>>(),
+  status: text("status").notNull(),
+  durationMs: integer("duration_ms").default(0).notNull(),
+  outputTruncated: boolean("output_truncated").default(false).notNull(),
+  modelCostMicros: bigint("model_cost_micros", { mode: "number" }).default(0).notNull(),
+  errorCode: text("error_code"),
+  startedAt: timestamp("started_at", { withTimezone: true }).defaultNow().notNull(),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  ...timestamps
+}, (table) => [
+  uniqueIndex("mcp_external_invocation_idempotency_idx").on(table.credentialId, table.toolName, table.idempotencyKey),
+  index("mcp_external_invocation_org_time_idx").on(table.organizationId, table.startedAt),
+  index("mcp_external_invocation_credential_time_idx").on(table.credentialId, table.startedAt)
+]);
+
 export const contextSources = pgTable("context_sources", {
   id: uuid("id").defaultRandom().primaryKey(),
   organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
@@ -1084,6 +1210,21 @@ export const contextPacks = pgTable("context_packs", {
   contentHash: text("content_hash").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
 });
+
+/** Bounded conversation provenance kept separate from the approved strategy. */
+export const mcpProjectOrigins = pgTable("mcp_project_origins", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
+  credentialId: uuid("credential_id").references(() => mcpExternalCredentials.id, { onDelete: "restrict" }).notNull(),
+  invocationId: uuid("invocation_id").references(() => mcpExternalInvocations.id, { onDelete: "restrict" }).notNull(),
+  externalClientName: text("external_client_name").notNull(),
+  conversationSummary: text("conversation_summary").default("").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull()
+}, (table) => [
+  uniqueIndex("mcp_project_origin_project_idx").on(table.projectId),
+  index("mcp_project_origin_credential_idx").on(table.credentialId, table.createdAt)
+]);
 
 export const contextPackItems = pgTable("context_pack_items", {
   id: uuid("id").defaultRandom().primaryKey(),

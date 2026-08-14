@@ -71,6 +71,7 @@ export async function seedDefaultWorkspace() {
       {
         organizationId: MTI_ORGANIZATION_ID,
         name: "Executive Agent",
+        description: "Plans and reviews governed Business OS work, proposes research strategy, delegates bounded tasks, and pauses at approval gates.",
         role: "executive",
         modelRoute: "executive_reasoning",
         capabilities: ["research", "marketing", "brainstorming", "content", "data_enrichment", "document", "communication", "analysis", "operations", "custom"],
@@ -80,6 +81,7 @@ export async function seedDefaultWorkspace() {
       {
         organizationId: MTI_ORGANIZATION_ID,
         name: "General Worker",
+        description: "Executes bounded research, analysis, document, and data tasks under the active project strategy without expanding its own authority.",
         role: "worker",
         modelRoute: "worker_fast",
         capabilities: ["research", "marketing", "brainstorming", "content", "data_enrichment", "document", "analysis", "operations"],
@@ -90,6 +92,7 @@ export async function seedDefaultWorkspace() {
   }
   await database.update(agentDefinitions).set({
     toolScopes: executiveToolScopes,
+    description: "Plans and reviews governed Business OS work, proposes research strategy, delegates bounded tasks, and pauses at approval gates.",
     updatedAt: new Date()
   }).where(and(
     eq(agentDefinitions.organizationId, MTI_ORGANIZATION_ID),
@@ -97,6 +100,7 @@ export async function seedDefaultWorkspace() {
   ));
   await database.update(agentDefinitions).set({
     toolScopes: workerToolScopes,
+    description: "Executes bounded research, analysis, document, and data tasks under the active project strategy without expanding its own authority.",
     updatedAt: new Date()
   }).where(and(
     eq(agentDefinitions.organizationId, MTI_ORGANIZATION_ID),

@@ -265,16 +265,18 @@ function uiAuditResearchWorkspace(projectId: string, settings: Record<string, un
 export async function proposeResearchStrategy(input: {
   projectId: string;
   userId: string;
+  organizationId?: string;
   instruction: string;
   attachmentDocumentIds?: string[];
 }, model: typeof requestModel = requestModel) {
   const database = requireDatabase();
+  const organizationId = input.organizationId ?? MTI_ORGANIZATION_ID;
   const [project] = await database.select().from(projects).where(and(
-    eq(projects.id, input.projectId), eq(projects.organizationId, MTI_ORGANIZATION_ID)
+    eq(projects.id, input.projectId), eq(projects.organizationId, organizationId)
   )).limit(1);
   if (!project) throw new Error("Project not found.");
   await database.insert(projectStrategyMessages).values({
-    organizationId: MTI_ORGANIZATION_ID, projectId: input.projectId, role: "user",
+    organizationId, projectId: input.projectId, role: "user",
     content: input.instruction, attachmentDocumentIds: input.attachmentDocumentIds ?? [], createdBy: input.userId
   });
   const [active] = await database.select().from(projectStrategyVersions).where(and(
@@ -320,24 +322,25 @@ export async function proposeResearchStrategy(input: {
     const [{ value }] = await tx.select({ value: max(projectStrategyVersions.version) })
       .from(projectStrategyVersions).where(eq(projectStrategyVersions.projectId, input.projectId));
     const [version] = await tx.insert(projectStrategyVersions).values({
-      organizationId: MTI_ORGANIZATION_ID, projectId: input.projectId,
+      organizationId, projectId: input.projectId,
       version: (value ?? 0) + 1, title: proposal.title, summary: proposal.summary,
       strategy: proposal.strategy, basedOnVersionId: active?.id ?? null, proposedBy: input.userId
     }).returning();
     const [message] = await tx.insert(projectStrategyMessages).values({
-      organizationId: MTI_ORGANIZATION_ID, projectId: input.projectId, role: "assistant",
+      organizationId, projectId: input.projectId, role: "assistant",
       content: proposal.response, strategyVersionId: version.id
     }).returning();
     return { message, version };
   });
 }
 
-export async function activateResearchStrategy(projectId: string, strategyVersionId: string, userId: string) {
+export async function activateResearchStrategy(projectId: string, strategyVersionId: string, userId: string, organizationId = MTI_ORGANIZATION_ID) {
   const database = requireDatabase();
   return database.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`research-strategy:${projectId}`}))`);
     const [target] = await tx.select().from(projectStrategyVersions).where(and(
-      eq(projectStrategyVersions.id, strategyVersionId), eq(projectStrategyVersions.projectId, projectId)
+      eq(projectStrategyVersions.id, strategyVersionId), eq(projectStrategyVersions.projectId, projectId),
+      eq(projectStrategyVersions.organizationId, organizationId)
     )).limit(1);
     if (!target) return null;
     await tx.update(projectStrategyVersions).set({ status: "superseded", updatedAt: new Date() })
@@ -346,11 +349,14 @@ export async function activateResearchStrategy(projectId: string, strategyVersio
       status: "active", approvedBy: userId, approvedAt: new Date(), updatedAt: new Date()
     }).where(eq(projectStrategyVersions.id, strategyVersionId)).returning();
     await tx.insert(projectResearchSettings).values({
-      organizationId: MTI_ORGANIZATION_ID, projectId, activeStrategyVersionId: strategyVersionId
+      organizationId, projectId, activeStrategyVersionId: strategyVersionId
     }).onConflictDoUpdate({
       target: projectResearchSettings.projectId,
       set: { activeStrategyVersionId: strategyVersionId, updatedAt: new Date() }
     });
+    await tx.update(projects).set({ status: "active", updatedAt: new Date() }).where(and(
+      eq(projects.id, projectId), eq(projects.organizationId, organizationId)
+    ));
     const campaigns = await tx.select({ id: collectionCampaigns.id }).from(collectionCampaigns)
       .where(eq(collectionCampaigns.projectId, projectId));
     // Strategies created before target recommendations were introduced remain
@@ -362,7 +368,7 @@ export async function activateResearchStrategy(projectId: string, strategyVersio
         instruction: target.summary || target.title, workType: "research", createdBy: userId
       }).returning();
       await tx.insert(collectionCampaigns).values({
-        organizationId: MTI_ORGANIZATION_ID, projectId, agendaId: agenda.id,
+        organizationId, projectId, agendaId: agenda.id,
         name: "Continuous client company research",
         entitySchema: [
           { name: "legalName", description: "Verified legal or primary operating name" },

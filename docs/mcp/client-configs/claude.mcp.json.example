@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "mti-business-os": {
+      "type": "http",
+      "url": "${MTI_MCP_ENDPOINT}",
+      "headers": {
+        "Authorization": "Bearer ${MTI_MCP_TOKEN}"
+      },
+      "timeout": 60000
+    }
+  }
+}

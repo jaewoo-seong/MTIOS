@@ -1,5 +1,7 @@
 # MCP Conversational Access — Implementation Handoff
 
+> Phase 0 has been audited. The organized implementation index and current architecture decision are in [`docs/mcp/README.md`](./mcp/README.md). Executable tool contracts live in `lib/mcp/external-contracts.ts`.
+
 ## Purpose
 
 Build a secure external MCP interface for MTI Business OS so ChatGPT, Claude, Gemini, and other MCP-capable clients can use Business OS from an existing conversation without requiring the operator to open the website.
@@ -477,6 +479,10 @@ Exit criteria: one request can create a traceable report from several authorized
 
 ### Phase 5 — Client setup and production hardening
 
+Status: implemented in code on `codex/mcp-conversational-access`. See
+[`docs/mcp/phase-5-production.md`](./mcp/phase-5-production.md). Production
+deployment and real-client account verification remain release gates.
+
 - Document ChatGPT, Claude, and Gemini MCP connection examples based on their currently supported configuration formats.
 - Add conformance tests against at least two MCP clients.
 - Add load, timeout, rate-limit, revocation, and malformed-payload tests.
@@ -598,4 +604,3 @@ Start the new conversation with:
 3. Should draft projects appear in the main Projects list immediately or in a separate Drafts view?
 4. Which approved material may cross-project reports use: approved dossiers only, or approved dossiers plus raw evidence?
 5. What is the maximum conversation-summary size the product should retain?
-

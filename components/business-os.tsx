@@ -32,6 +32,8 @@ import { useI18n, type RegionalPreferences } from "@/lib/i18n";
 import {
   AdminUsersSettings,
   AiAnalyticsSettings,
+  ExternalMcpSettings,
+  OrganizationProfileSettings,
   PasswordSettings
 } from "@/components/account-settings";
 
@@ -543,6 +545,8 @@ function SettingsView({ onError, role }: {
         {tab === "intelligence" && <AiAnalyticsSettings onError={onError} />}
         {tab === "access" && (
           <>
+            <OrganizationProfileSettings onError={onError} />
+            <ExternalMcpSettings onError={onError} />
             <McpSettings onError={onError} />
             <section className="surface settings-wide">
               <div className="surface-header"><h2>{t("Review policy")}</h2></div>

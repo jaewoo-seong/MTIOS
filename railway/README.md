@@ -7,6 +7,8 @@ Create services for:
 - `redis`: cache, rate limiting, and transient coordination only.
 - `litellm`: deploy `railway/litellm/Dockerfile` and expose it only over Railway private networking.
 - `mcp-tools`: internal scoped tool adapters. Do not expose this service publicly.
+- `mcp-external`: public authenticated conversational access for Codex, Claude,
+  Gemini, and other MCP clients. It exposes only the external tool catalog.
 - `document-conversion`: optional advanced PDF/DOCX export service. Document
   importing itself accepts UTF-8 text, Markdown, and preflighted simple DOCX
   locally; PDF/OCR import is intentionally disabled.
@@ -27,6 +29,36 @@ Build `mcp-tools` from `railway/mcp-tools/Dockerfile`. Set
 and set `MCP_SERVICE_URL` on `app` to
 `http://mcp-tools.railway.internal:3002/mcp`. Keep the service private; only
 its `/health` endpoint is used by Railway health checks.
+
+Build `mcp-external` from `railway/mcp-external/Dockerfile` and give it a public
+Railway domain. Generate a distinct `EXTERNAL_MCP_GATEWAY_SECRET` of at least
+32 characters and set the same value on `app` and `mcp-external`. Configure the
+gateway with `BUSINESS_OS_INTERNAL_URL=http://app.railway.internal:3000` and set
+`EXTERNAL_MCP_ALLOWED_HOSTS` to its public hostname. Configure
+`EXTERNAL_MCP_ALLOWED_ORIGINS` only for browser-based MCP clients; native clients
+normally send no Origin header. Set `EXTERNAL_MCP_INTERNAL_TIMEOUT_MS=15000`
+(or a lower value than the public platform timeout). Do not reuse
+`MCP_SERVICE_SECRET`.
+
+Apply migrations through `0033_clammy_boomerang.sql`, then create an external MCP
+credential through the admin API. The client endpoint is:
+
+```text
+https://<mcp-external-domain>/mcp
+Authorization: Bearer mti_mcp_<prefix>_<secret>
+```
+
+The public catalog is credential-filtered. Read access includes
+`list_research_projects`, `get_research_project`, `get_project_briefing`,
+`search_business_os`, `get_company_research`, and `get_document`. Phase 3 adds
+`draft_research_project` and `activate_research_project` only when their separate
+scopes are granted. Compatible clients also discover the
+`mti://external-assistant-role` resource and `brainstorm_project` prompt. Health
+checks use `/health` and reveal no credential state.
+
+After deployment, follow `docs/mcp/phase-5-production.md` and run
+`npm run test:mcp:external` with a disposable, read-only, selected-project
+credential before enabling any write scopes.
 
 Gmail uses server-side Google OAuth on the public `app` service. Configure
 `GOOGLE_GMAIL_CLIENT_ID`, `GOOGLE_GMAIL_CLIENT_SECRET`, and a generated
