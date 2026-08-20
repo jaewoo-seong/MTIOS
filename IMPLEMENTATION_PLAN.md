@@ -326,25 +326,23 @@ Let agents propose useful database changes without permitting automatic writes.
 
 ---
 
-## Phase 9 - Gmail and Communications
+## Phase 9 - Automated Email Notifications
 
 ### Objective
 
-Add project-aware email context and drafting without autonomous sending.
+Send transactional system notifications without mailbox-content access.
 
 ### Implementation
 
-- Use Google server-side OAuth with offline access.
+- Use Google server-side OAuth with offline access and only the `gmail.send`
+  Gmail permission.
+- Use standard OpenID `email` identity only to identify the connected sender.
 - Encrypt refresh tokens and keep Google credentials separate from MCP service
   authentication.
-- Initially request only `gmail.readonly` and `gmail.compose`.
-- Add MCP tools for thread search, selected-message retrieval, summarization,
-  attachment import, project/client/company linking, draft creation, and draft
-  revision.
-- Do not expose sending, permanent deletion, forwarding, delegation, or mailbox
-  administration in the first release.
-- Add a later send workflow requiring final-message review and a fresh approval
-  immediately before execution.
+- Send only application-generated transactional notifications through the
+  durable notification outbox.
+- Do not expose Gmail reading, search, drafts, attachments, forwarding,
+  deletion, delegation, mailbox administration, or Gmail MCP tools.
 
 ### Credentials Required When Approved
 
@@ -664,11 +662,11 @@ API key). No new provider.
    and stop when the defined market is exhausted.
 3. Review sourced company proposals and approve only selected client-database
    additions or updates.
-4. Import a scanned Korean PDF and a Gmail attachment, convert both into
-   editable documents, and retrieve cited passages in later work.
+4. Import a scanned Korean PDF, convert it into an editable document, and
+   retrieve cited passages in later work.
 5. Produce English, Korean, and bilingual reports with source provenance.
-6. Create an email draft linked to the project without permitting autonomous
-   sending.
+6. Complete a report and deliver one automated notification through the
+   administrator-designated send-only account.
 7. Verify every model, tool, workflow, approval, database write, document
    revision, source, cost, and output in the audit history.
 
@@ -1059,48 +1057,30 @@ versions, test results, credentials still required, and unresolved risks.
   - Bulk proposals should be load-tested against realistic record counts
     before raising the current 1,000-item API limit.
 
-### 2026-07-29 - Phase 9 Completed
+### 2026-08-19 - Phase 9 Replaced with send-only notifications
 
-- Status: completed and verified locally with mocked Google APIs.
-- Implementation commit: `8114feb`.
-- Migration: `drizzle/0010_strange_lionheart.sql`.
+- Status: the former mailbox and drafting integration was retired and replaced
+  with notification-only sending.
 - Delivered:
   - Google server-side authorization-code flow with offline access, one-time
-    hashed state, ten-minute expiration, consent prompt, and exact
-    `gmail.readonly` plus `gmail.compose` scopes.
+    hashed state, ten-minute expiration, consent prompt, and `gmail.send` as the
+    only Gmail permission.
   - AES-256-GCM token encryption using a dedicated
     `GMAIL_TOKEN_ENCRYPTION_KEY`; refresh/access tokens never enter public API
     responses and Gmail credentials remain separate from MCP transport
     authentication.
-  - Organization-scoped Gmail connections, mirrored threads, messages,
-    attachment metadata, project/client/company links, drafts, and immutable
-    draft revisions.
-  - Bounded selected-thread search/retrieval and deterministic thread digests
-    for Executive Agent context.
-  - Attachment import that stores the immutable original in Railway Storage,
-    records a content hash and Gmail provenance, converts supported content,
-    and creates a project document.
-  - Project-linked Gmail draft creation and revision through Gmail's draft
-    endpoints with retained local revision history.
-  - Governed MCP tools for thread search/retrieval/digest, linking,
-    attachment import, draft creation, and draft revision.
-  - Explicit approval gates for attachment imports and project links.
-  - Gmail Settings surface for connection status, OAuth start, and token
-    revocation/disconnect.
-  - No API route or MCP tool for sending, forwarding, permanent deletion,
-    delegation, or mailbox administration.
-- Validation:
-  - `npm run typecheck` passed.
-  - `npm test` passed with 66 tests across 12 files.
-  - `npm run build` passed.
+  - One administrator-designated service sender and a durable, deduplicated
+    notification outbox with retry and recovery workers.
+  - Report-ready notifications to users who opted into email notifications.
+  - No API route or MCP tool for mailbox reading, search, drafts, attachments,
+    forwarding, permanent deletion, delegation, or mailbox administration.
   - Drizzle migration generation passed.
   - OAuth scope/offline behavior, state replay prevention, authenticated token
-    encryption/tamper rejection, selected-thread retrieval, message and
-    attachment mirroring, project linking, attachment provenance, draft
-    revision history, and absence of send/delete tools tested.
+    encryption/tamper rejection, send-only enforcement, and absence of mailbox
+    or Gmail MCP tools tested.
 - Deployment: not deployed in this phase. Register the production redirect
-  URL, set Gmail credentials on the Railway app and private MCP service, run
-  migration, and complete a real Google consent/search/draft smoke test.
+  URL, set Gmail credentials on the Railway app and notification worker, run
+  migration, and complete a real Google consent/send smoke test.
 - Credentials required:
   - `GOOGLE_GMAIL_CLIENT_ID`
   - `GOOGLE_GMAIL_CLIENT_SECRET`
@@ -1317,7 +1297,8 @@ versions, test results, credentials still required, and unresolved risks.
     attribution.
   - Exercise live LiteLLM primary/fallback, embedding, and reranking routes.
   - Run authenticated MCP invocation, Korean scanned-PDF conversion and
-    export, Gmail OAuth/read/draft, backup restore, and alert-delivery tests.
+    export, Gmail OAuth send-only notification, backup restore, and
+    alert-delivery tests.
   - Review and rotate production secrets, and replace any provider key ever
     exposed in chat or logs.
 

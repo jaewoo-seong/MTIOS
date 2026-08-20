@@ -1049,7 +1049,7 @@ function GmailSettings({ onError }: { onError: (message: string) => void }) {
         <div className="integration-row" key={connection.id}>
           <div>
             <strong>{connection.email}</strong>
-            <span>{t(connection.status)} · Gmail read, draft, and send{connection.isServiceSender ? " · Service sender" : ""}</span>
+            <span>{t(connection.status)} · Automated notification sending only{connection.isServiceSender ? " · Service sender" : ""}</span>
           </div>
           {!connection.isServiceSender && connection.status === "active" && <button className="secondary" onClick={() => void makeServiceSender(connection.id)} disabled={busy}>Use for notifications</button>}
           <button

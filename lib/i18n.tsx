@@ -195,11 +195,9 @@ const ko: Record<string, string> = {
   "High-cost actions": "고비용 작업",
   "Approval required": "승인 필요",
   "Gmail": "Gmail",
-  "Read selected threads and create drafts": "선택한 스레드를 읽고 초안 생성",
   "Connect": "연결",
   "Disconnect": "연결 해제",
   "No Gmail account connected.": "연결된 Gmail 계정이 없습니다.",
-  "Sending and mailbox deletion are unavailable.": "메일 전송 및 사서함 삭제는 사용할 수 없습니다.",
   "New project": "새 프로젝트",
   "Create durable project context": "지속 가능한 프로젝트 맥락 만들기",
   "Project name": "프로젝트 이름",
@@ -485,7 +483,6 @@ const ko: Record<string, string> = {
   ,"conditional": "조건부"
   ,"connected": "연결됨"
   ,"revoked": "취소됨"
-  ,"Gmail read and compose": "Gmail 읽기 및 초안 작성"
   ,"testing mode": "테스트 모드"
   ,"production policy": "프로덕션 정책"
   ,"Campaigns": "캠페인"

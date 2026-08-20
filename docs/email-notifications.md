@@ -29,14 +29,26 @@ existing connections unreadable.
 
 ## Google OAuth scope and verification
 
-The same administrator connection supports the existing selected-thread and
-draft features, so it requests `gmail.readonly`, `gmail.compose`, and
-`gmail.send`. Gmail permits message sending with either `gmail.compose` or
-`gmail.send`; the explicit send scope makes the service-sender permission
-visible. Google recommends requesting the least privilege needed. If mailbox
-reading and drafting are not required in a future deployment, introduce a
-separate send-only authorization purpose rather than silently broadening a
-notification-only connection.
+The administrator connection requests only `gmail.send`. MTI Business OS does
+not read mailbox content, search threads, import Gmail attachments, create
+drafts, or expose those capabilities through MCP. This keeps authorization
+limited to the one feature the integration provides: automated notifications.
+The standard OpenID `email` identity permission is requested only to identify
+and display the Google account that authorized sending.
+
+### Personal Gmail and alternative delivery providers
+
+A personal `@gmail.com` account can be the service sender without an owned
+domain. Use the send-only OAuth connection; do not store the Google account
+password in Business OS. Standard Gmail accounts are intended for low-volume
+sending and are subject to Google's daily limits.
+
+Gmail SMTP with a Google app password is technically supported, but OAuth is
+preferred because the grant is narrowly scoped and independently revocable.
+Resend can replace the Gmail delivery adapter later, through its API or SMTP,
+without changing the notification outbox. General Resend delivery requires a
+verified domain owned by MTI; its shared test domain is not a substitute for a
+production sender address.
 
 Gmail scopes can require Google's OAuth verification and, depending on scope
 classification and data handling, an additional security assessment for a

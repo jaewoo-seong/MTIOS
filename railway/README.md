@@ -64,10 +64,11 @@ Gmail uses server-side Google OAuth on the public `app` service. Configure
 `GOOGLE_GMAIL_CLIENT_ID`, `GOOGLE_GMAIL_CLIENT_SECRET`, and a generated
 base64-encoded 32-byte `GMAIL_TOKEN_ENCRYPTION_KEY`. Register
 `https://<app-domain>/api/v1/integrations/gmail/callback` in Google Cloud.
-The app requests `gmail.readonly`, `gmail.compose`, and `gmail.send`; refresh tokens are
-encrypted in PostgreSQL. Set the same three Gmail variables on the private
-`mcp-tools` service and Trigger.dev environment so Gmail adapters and email
-delivery workers can refresh and decrypt tokens.
+The app requests only `gmail.send`; refresh tokens are
+encrypted in PostgreSQL. Set the same three Gmail variables on the app and
+Trigger.dev environment so notification-delivery workers can refresh and
+decrypt tokens. The private `mcp-tools` service does not receive Gmail
+credentials or expose Gmail tools.
 These credentials are separate from `MCP_SERVICE_SECRET` and must not be used
 as MCP transport authentication. Connect the administrator-owned mailbox and
 mark it as the service sender in Settings before enabling automated notifications.
@@ -244,7 +245,7 @@ Deployment order:
 5. Deploy the app, require `/api/health` status `ok`, then run
    `npm run test:production`.
 6. Test one Executive call, worker fallback, embedding, reranking, MCP read,
-   Korean PDF conversion, Gmail OAuth/read/draft, report export, SSE reconnect,
+   Korean PDF conversion, Gmail OAuth notification sending, report export, SSE reconnect,
    approval, and rollback.
 7. Confirm budgets, audit logs, signed object URLs, backup/restore, alerts, and
    secret rotation before admitting business data.

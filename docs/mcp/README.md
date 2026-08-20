@@ -6,7 +6,7 @@ This folder is the design and implementation index for Model Context Protocol su
 
 | Boundary | Business OS role | Network exposure | Purpose | Code |
 | --- | --- | --- | --- | --- |
-| Internal tool bridge | MCP host/client | Private only | Lets Business OS agents call governed adapters such as research, storage, and Gmail | `services/mcp-tools/server.ts`, `lib/mcp/catalog.ts`, `lib/mcp/platform.ts` |
+| Internal tool bridge | MCP host/client | Private only | Lets Business OS agents call governed adapters such as research and storage | `services/mcp-tools/server.ts`, `lib/mcp/catalog.ts`, `lib/mcp/platform.ts` |
 | External conversational gateway | MCP server | Public authenticated HTTPS | Lets Codex, Claude, Gemini, and other MCP clients retrieve or initiate Business OS work | `services/mcp-external/server.ts`, `lib/mcp/external-contracts.ts` |
 
 They should remain distinct at the transport, credential, catalog, and deployment layers. They should share domain functions, authorization primitives, audit conventions, budgets, and entity IDs. The external gateway must not proxy arbitrary internal tools.

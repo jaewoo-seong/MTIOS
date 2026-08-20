@@ -2,22 +2,16 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   completeGmailAuthorization,
   createGmailAuthorization,
-  createGmailDraft,
   decryptSecret,
   encryptSecret,
   getGmailTestState,
-  importGmailAttachment,
-  linkGmailToProject,
-  retrieveGmailThread,
-  reviseGmailDraft,
-  searchGmailThreads,
   sendServiceEmail,
   setGmailServiceSender
 } from "@/lib/gmail";
 import { internalToolCatalog } from "@/lib/mcp/catalog";
-import { repository } from "@/lib/repository";
 
 const key = Buffer.alloc(32, 7).toString("base64");
+const sendScope = "https://www.googleapis.com/auth/gmail.send";
 
 beforeEach(() => {
   process.env.GOOGLE_GMAIL_CLIENT_ID = "gmail-client.test";
@@ -27,41 +21,88 @@ beforeEach(() => {
   for (const list of Object.values(getGmailTestState())) list.splice(0);
 });
 
-describe("Gmail OAuth custody", () => {
-  it("requests offline read, draft, and send access and consumes state once", async () => {
+async function connectSender(scopes = `openid email ${sendScope}`) {
+  const authorization = await createGmailAuthorization({});
+  const state = new URL(authorization.url).searchParams.get("state")!;
+  const requests: string[] = [];
+  const fetcher = async (input: RequestInfo | URL) => {
+    const target = String(input);
+    requests.push(target);
+    if (target.includes("oauth2.googleapis.com/token")) {
+      return Response.json({
+        access_token: "cached-access",
+        refresh_token: "cached-refresh",
+        expires_in: 3600,
+        scope: scopes
+      });
+    }
+    if (target === "https://openidconnect.googleapis.com/v1/userinfo") {
+      return Response.json({
+        sub: "google-account-123",
+        email: "mailbox@example.com",
+        email_verified: true
+      });
+    }
+    throw new Error(`Unexpected request: ${target}`);
+  };
+  const connection = await completeGmailAuthorization({
+    code: "code",
+    state,
+    fetcher: fetcher as typeof fetch
+  });
+  return { connection, requests };
+}
+
+describe("Gmail send-only OAuth custody", () => {
+  it("requests send plus identity only and never carries forward old mailbox grants", async () => {
     const authorization = await createGmailAuthorization({});
     const url = new URL(authorization.url);
+
     expect(url.searchParams.get("access_type")).toBe("offline");
     expect(url.searchParams.get("prompt")).toBe("consent");
+    expect(url.searchParams.has("include_granted_scopes")).toBe(false);
     expect(url.searchParams.get("scope")?.split(" ").sort()).toEqual([
-      "https://www.googleapis.com/auth/gmail.compose",
-      "https://www.googleapis.com/auth/gmail.readonly",
-      "https://www.googleapis.com/auth/gmail.send"
+      "email",
+      sendScope,
+      "openid"
+    ].sort());
+    expect(url.searchParams.get("scope")).not.toMatch(/gmail\.(readonly|compose|modify|metadata)/);
+  });
+
+  it("uses OIDC identity instead of a Gmail mailbox profile endpoint", async () => {
+    const { connection, requests } = await connectSender();
+
+    expect(connection).toMatchObject({
+      googleAccountId: "google-account-123",
+      email: "mailbox@example.com",
+      status: "active"
+    });
+    expect(requests).toEqual([
+      "https://oauth2.googleapis.com/token",
+      "https://openidconnect.googleapis.com/v1/userinfo"
     ]);
-    const state = url.searchParams.get("state")!;
-    const fetcher = async (input: RequestInfo | URL) => {
-      const target = String(input);
-      if (target.includes("oauth2.googleapis.com/token")) {
-        return Response.json({
-          access_token: "access-token",
-          refresh_token: "refresh-token",
-          expires_in: 3600,
-          scope: "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.compose https://www.googleapis.com/auth/gmail.send"
-        });
-      }
-      return Response.json({ emailAddress: "operator@example.com" });
-    };
-    const connection = await completeGmailAuthorization({
+    expect(requests.some((url) => url.includes("gmail.googleapis.com"))).toBe(false);
+    expect(JSON.stringify(connection)).not.toContain("cached-access");
+    expect(JSON.stringify(connection)).not.toContain("cached-refresh");
+    expect(decryptSecret(String(getGmailTestState().connections[0].encryptedRefreshToken)))
+      .toBe("cached-refresh");
+  });
+
+  it("requires gmail.send and consumes each OAuth state once", async () => {
+    const authorization = await createGmailAuthorization({});
+    const state = new URL(authorization.url).searchParams.get("state")!;
+    const fetcher = async () => Response.json({
+      access_token: "access-token",
+      refresh_token: "refresh-token",
+      expires_in: 3600,
+      scope: "openid email"
+    });
+
+    await expect(completeGmailAuthorization({
       code: "authorization-code",
       state,
       fetcher: fetcher as typeof fetch
-    });
-    expect(connection).toMatchObject({ email: "operator@example.com", status: "active" });
-    expect(JSON.stringify(connection)).not.toContain("access-token");
-    expect(JSON.stringify(connection)).not.toContain("refresh-token");
-    const stored = getGmailTestState().connections[0];
-    expect(stored.encryptedRefreshToken).not.toBe("refresh-token");
-    expect(decryptSecret(String(stored.encryptedRefreshToken))).toBe("refresh-token");
+    })).rejects.toThrow(/required scopes/i);
     await expect(completeGmailAuthorization({
       code: "authorization-code",
       state,
@@ -77,210 +118,45 @@ describe("Gmail OAuth custody", () => {
   });
 });
 
-describe("Gmail project workflow", () => {
-  async function connected() {
-    const authorization = await createGmailAuthorization({});
-    const state = new URL(authorization.url).searchParams.get("state")!;
-    const fetcher = async (input: RequestInfo | URL) => {
-      if (String(input).includes("token")) {
-        return Response.json({
-          access_token: "cached-access",
-          refresh_token: "cached-refresh",
-          expires_in: 3600,
-          scope: "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.compose https://www.googleapis.com/auth/gmail.send"
-        });
-      }
-      return Response.json({ emailAddress: "mailbox@example.com" });
-    };
-    return completeGmailAuthorization({ code: "code", state, fetcher: fetcher as typeof fetch });
-  }
-
-  it("mirrors selected threads, links them, imports attachments, and preserves provenance", async () => {
-    const connection = await connected();
-    const project = await repository.createProject({
-      name: `Gmail project ${crypto.randomUUID()}`,
-      objective: "Use selected communication context.",
-      context: "",
-      scope: "",
-      constraints: [],
-      budgetCents: 1000
-    });
-    const threadPayload = {
-      id: "thread-1",
-      historyId: "91",
-      messages: [{
-        id: "message-1",
-        threadId: "thread-1",
-        internalDate: "1785299000000",
-        labelIds: ["INBOX"],
-        snippet: "Attached scope",
-        payload: {
-          mimeType: "multipart/mixed",
-          headers: [
-            { name: "From", value: "client@example.com" },
-            { name: "To", value: "mailbox@example.com" },
-            { name: "Subject", value: "Project scope" },
-            { name: "Message-ID", value: "<message-1@example.com>" }
-          ],
-          parts: [
-            {
-              mimeType: "text/plain",
-              body: { data: Buffer.from("Please review attached scope.").toString("base64url") }
-            },
-            {
-              mimeType: "text/plain",
-              filename: "scope.txt",
-              body: { attachmentId: "attachment-1", size: 18 }
-            }
-          ]
-        }
-      }]
-    };
-    const gmailFetch = async (input: RequestInfo | URL) => {
-      const target = String(input);
-      if (target.endsWith("/threads?q=scope&maxResults=10")) {
-        return Response.json({ threads: [{ id: "thread-1" }] });
-      }
-      if (target.includes("/attachments/attachment-1")) {
-        return Response.json({ data: Buffer.from("Approved scope text").toString("base64url"), size: 19 });
-      }
-      if (target.includes("/threads/thread-1")) return Response.json(threadPayload);
-      throw new Error(`Unexpected URL ${target}`);
-    };
-    const results = await searchGmailThreads({
-      connectionId: String(connection.id),
-      query: "scope",
-      maxResults: 10,
-      fetcher: gmailFetch as typeof fetch
-    });
-    expect(results).toHaveLength(1);
-    const thread = results[0] as Record<string, unknown> & {
-      messages: Array<Record<string, unknown> & { attachments: Array<Record<string, unknown>> }>;
-    };
-    expect(thread.subject).toBe("Project scope");
-    expect(thread.messages[0].bodyText).toContain("review attached scope");
-    const attachment = thread.messages[0].attachments[0];
-    expect(attachment.filename).toBe("scope.txt");
-
-    const link = await linkGmailToProject({
-      projectId: project.id,
-      threadId: String(thread.id)
-    });
-    expect(link).toMatchObject({ projectId: project.id, threadId: thread.id });
-
-    const imported = await importGmailAttachment({
-      attachmentId: String(attachment.id),
-      projectId: project.id,
-      fetcher: gmailFetch as typeof fetch,
-      storeObject: async (storageKey, contentType, body) => ({
-        key: storageKey, contentType, size: body.byteLength
-      })
-    });
-    if (!imported.document) throw new Error("Expected a newly imported document.");
-    expect(imported.document.projectId).toBe(project.id);
-    expect(imported.document.markdown).toContain("Approved scope text");
-    expect(imported.provenance).toMatchObject({
-      gmailMessageId: "message-1",
-      gmailAttachmentId: "attachment-1"
-    });
-  });
-
-  it("creates and revises Gmail drafts without exposing send or delete tools", async () => {
-    const connection = await connected();
-    const project = await repository.createProject({
-      name: `Draft project ${crypto.randomUUID()}`,
-      objective: "Prepare controlled client communication.",
-      context: "",
-      scope: "",
-      constraints: [],
-      budgetCents: 1000
-    });
-    let calls = 0;
-    const draftFetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
-      calls += 1;
-      const body = JSON.parse(String(init?.body)) as { message: { raw: string } };
-      const decoded = Buffer.from(body.message.raw, "base64url").toString("utf8");
-      expect(decoded).toContain("To: client@example.com");
-      return Response.json({ id: "gmail-draft-1", message: { id: `draft-message-${calls}` } });
-    };
-    const draft = await createGmailDraft({
-      connectionId: String(connection.id),
-      projectId: project.id,
-      to: ["client@example.com"],
-      subject: "First draft",
-      bodyText: "Draft only.",
-      fetcher: draftFetch as typeof fetch
-    });
-    const revised = await reviseGmailDraft({
-      draftId: String(draft.id),
-      to: ["client@example.com"],
-      subject: "Revised draft",
-      bodyText: "Still draft only.",
-      fetcher: draftFetch as typeof fetch
-    });
-    expect(revised).toMatchObject({ revision: 2, subject: "Revised draft", status: "draft" });
-    expect(getGmailTestState().revisions).toHaveLength(2);
-
-    const toolNames = internalToolCatalog.map((tool) => tool.name);
-    expect(toolNames).toContain("create_gmail_draft");
-    expect(toolNames).toContain("revise_gmail_draft");
-    expect(toolNames.some((name) => /gmail.*(send|delete|forward|delegate)/i.test(name))).toBe(false);
-
-    await expect(createGmailDraft({
-      connectionId: String(connection.id),
-      projectId: project.id,
-      to: ["client@example.com"],
-      subject: "Safe subject\r\nBcc: injected@example.com",
-      bodyText: "Blocked.",
-      fetcher: draftFetch as typeof fetch
-    })).rejects.toThrow(/headers/i);
-  });
-
-  it("sends automated email only through the administrator-designated service sender", async () => {
-    const connection = await connected();
-    await expect(sendServiceEmail({
-      to: "recipient@example.com",
-      subject: "Not configured",
-      bodyText: "This must not send."
-    })).rejects.toThrow(/service sender/i);
-
+describe("Gmail automated notification sender", () => {
+  it("sends through messages.send and exposes no Gmail MCP tools", async () => {
+    const { connection } = await connectSender();
     await setGmailServiceSender(String(connection.id), crypto.randomUUID());
-    let authorization = "";
-    const sendFetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
-      authorization = new Headers(init?.headers).get("authorization") ?? "";
-      const payload = JSON.parse(String(init?.body)) as { raw: string };
-      const decoded = Buffer.from(payload.raw, "base64url").toString("utf8");
-      expect(decoded).toContain("To: recipient@example.com");
-      expect(decoded).toContain("Subject: Report ready");
-      expect(decoded).toContain("The report is ready.");
-      expect(decoded).not.toContain("cached-refresh");
-      return Response.json({ id: "sent-message-1", threadId: "sent-thread-1" });
-    };
-    await expect(sendServiceEmail({
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const result = await sendServiceEmail({
       to: "recipient@example.com",
       subject: "Report ready",
-      bodyText: "The report is ready.",
-      fetcher: sendFetch as typeof fetch
-    })).resolves.toMatchObject({
+      bodyText: "Your report is ready for review.",
+      fetcher: (async (input: RequestInfo | URL, init?: RequestInit) => {
+        calls.push({ url: String(input), init });
+        return Response.json({ id: "sent-message-1", threadId: "sent-thread-1" });
+      }) as typeof fetch
+    });
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].url).toBe("https://gmail.googleapis.com/gmail/v1/users/me/messages/send");
+    expect(calls[0].init?.method).toBe("POST");
+    expect(result).toMatchObject({
       gmailMessageId: "sent-message-1",
       sender: "mailbox@example.com"
     });
-    expect(authorization).toBe("Bearer cached-access");
+
+    const raw = JSON.parse(String(calls[0].init?.body)).raw as string;
+    expect(Buffer.from(raw, "base64url").toString("utf8")).toContain("To: recipient@example.com");
+    expect(internalToolCatalog.some((tool) =>
+      tool.name.includes("gmail") || tool.permissions.some((permission) => permission.startsWith("gmail:"))
+    )).toBe(false);
   });
 
-  it("retrieves only explicitly selected thread IDs", async () => {
-    const connection = await connected();
-    const called: string[] = [];
-    const fetcher = async (input: RequestInfo | URL) => {
-      called.push(String(input));
-      return Response.json({ id: "selected-thread", messages: [] });
-    };
-    await retrieveGmailThread({
-      connectionId: String(connection.id),
-      gmailThreadId: "selected-thread",
-      fetcher: fetcher as typeof fetch
-    });
-    expect(called).toHaveLength(1);
-    expect(called[0]).toContain("/threads/selected-thread");
+  it("refuses legacy authorization or stored connections with mailbox grants", async () => {
+    await expect(connectSender(
+      `openid email ${sendScope} https://www.googleapis.com/auth/gmail.readonly`
+    )).rejects.toThrow(/mailbox scopes/i);
+
+    const { connection } = await connectSender();
+    const stored = getGmailTestState().connections[0];
+    stored.scopes = [sendScope, "https://www.googleapis.com/auth/gmail.compose"];
+    await expect(setGmailServiceSender(String(connection.id), crypto.randomUUID()))
+      .rejects.toThrow(/send-only permission/i);
   });
 });
