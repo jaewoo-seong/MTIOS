@@ -44,8 +44,8 @@ export const GET = guard(async () => {
         process.env.GOOGLE_GMAIL_CLIENT_SECRET &&
         process.env.GMAIL_TOKEN_ENCRYPTION_KEY
       ),
-      scopes: ["gmail.readonly", "gmail.compose"],
-      sendEnabled: false
+      scopes: ["gmail.readonly", "gmail.compose", "gmail.send"],
+      sendEnabled: true
     }
   });
 }, { admin: true });

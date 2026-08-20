@@ -10,13 +10,13 @@ import { logger } from "@/lib/observability/logger";
 
 const schema = z.object({
   name: z.string().trim().min(1).max(120),
-  username: z.string().trim().min(3).max(64).regex(/^[a-zA-Z0-9._-]+$/),
-  password: z.string(),
+  email: z.string().trim().email().max(254),
+  password: z.string().min(1),
   role: z.enum(["admin", "member"]).default("member")
 });
 
-export const GET = guard(async () => {
-  return NextResponse.json({ data: await listOrganizationUsers() });
+export const GET = guard(async (_request, { session }) => {
+  return NextResponse.json({ data: await listOrganizationUsers(session.organizationId) });
 }, { admin: true });
 
 /** `auth` tier: this creates a credential, so it belongs with the other ones. */
@@ -26,7 +26,8 @@ export const POST = guard(async (request, { session }) => {
   const result = await createOrganizationUser({
     ...parsed.data,
     role: parsed.data.role ?? "member",
-    actorId: session.userId
+    actorId: session.userId,
+    organizationId: session.organizationId
   });
   logger.info("admin.user_created", {
     actorId: session.userId,

@@ -15,8 +15,6 @@ import { isUiAuditMode, uiAuditClaims } from "@/lib/ui-audit-mode";
 export const SESSION_COOKIE = "mti_session";
 export const SESSION_IDLE_MS = 12 * 60 * 60 * 1000;
 export const SESSION_ABSOLUTE_MS = 7 * 24 * 60 * 60 * 1000;
-const LOCK_ATTEMPTS = 5;
-const LOCK_MS = 15 * 60 * 1000;
 
 export type SessionRole = "admin" | "member";
 export type SessionClaims = {
@@ -82,50 +80,45 @@ export async function hashPassword(password: string) {
 type RequestMetadata = { ipAddress?: string | null; userAgent?: string | null };
 
 export async function authenticate(
-  username: string,
+  identifier: string,
   password: string,
   metadata: RequestMetadata = {}
 ) {
   const database = requireDatabase();
-  const normalizedUsername = normalizeUsername(username);
+  const normalizedIdentifier = normalizeLoginIdentifier(identifier);
+  const operatorUsername = normalizeLoginIdentifier(process.env.ADMIN_USERNAME ?? "");
+  const isOperatorIdentifier = normalizedIdentifier === operatorUsername;
   const [account] = await database.select({
     user: users,
     role: memberships.role
   }).from(users).innerJoin(memberships, and(
     eq(memberships.userId, users.id),
     eq(memberships.organizationId, MTI_ORGANIZATION_ID)
-  )).where(eq(users.username, normalizedUsername)).limit(1);
+  )).where(isOperatorIdentifier
+    ? and(eq(users.id, "00000000-0000-4000-8000-000000000002"), eq(users.username, normalizedIdentifier))
+    : eq(users.email, normalizedIdentifier)
+  ).limit(1);
 
   const now = new Date();
-  const isRailwayAdmin = normalizedUsername === normalizeUsername(process.env.ADMIN_USERNAME ?? "") &&
+  const isRailwayAdmin = isOperatorIdentifier &&
     account?.user.id === "00000000-0000-4000-8000-000000000002";
   const railwayAdminPassword = isRailwayAdmin
     ? process.env.ADMIN_PASSWORD
     : undefined;
-  // The Railway break-glass admin authenticates against an env-var password
-  // instead of the stored hash, but it is still the account.user row above
-  // and must be subject to the exact same lockout as every other account —
-  // otherwise it is the one account with unlimited password guesses.
+  // The Railway break-glass operator remains the sole username-based login.
+  // Every normal account is found by its normalized email address and verifies
+  // the password hash stored for that user.
   const passwordMatches = railwayAdminPassword !== undefined
     ? safeEqual(password, railwayAdminPassword)
     : account?.user.passwordHash
       ? await verify(String(account.user.passwordHash), password).catch(() => false)
-      : password === "";
-  const accepted = account?.user.status === "active" &&
-    (!account.user.lockedUntil || account.user.lockedUntil <= now) &&
-    passwordMatches;
+      : false;
+  const accepted = account?.user.status === "active" && passwordMatches;
   if (!accepted) {
-    if (account?.user) {
-      const attempts = account.user.failedLoginAttempts + 1;
-      await database.update(users).set({
-        failedLoginAttempts: attempts,
-        lockedUntil: attempts >= LOCK_ATTEMPTS ? new Date(Date.now() + LOCK_MS) : account.user.lockedUntil,
-        updatedAt: now
-      }).where(eq(users.id, account.user.id));
-    }
     await recordAuthEvent({
       userId: account?.user.id ?? null,
-      username: normalizedUsername,
+      username: normalizedIdentifier,
+      email: isOperatorIdentifier ? null : normalizedIdentifier,
       event: "login",
       success: false,
       ...metadata
@@ -158,14 +151,13 @@ export async function authenticate(
       userAgent: metadata.userAgent ?? null
     });
     await tx.update(users).set({
-      failedLoginAttempts: 0,
-      lockedUntil: null,
       lastLoginAt: now,
       updatedAt: now
     }).where(eq(users.id, account.user.id));
   });
   await recordAuthEvent({
-    userId: account.user.id, username: normalizedUsername, event: "login",
+    userId: account.user.id, username: normalizedIdentifier,
+    email: account.user.email, event: "login",
     success: true, ...metadata
   });
   return { token, claims };
@@ -319,6 +311,7 @@ export async function revokeUserSessions(userId: string) {
 }
 
 export async function recordAuthEvent(input: {
+  organizationId?: string | null;
   userId?: string | null;
   username?: string | null;
   email?: string | null;
@@ -330,7 +323,7 @@ export async function recordAuthEvent(input: {
 }) {
   if (!db) return;
   await db.insert(authenticationEvents).values({
-    organizationId: input.userId ? MTI_ORGANIZATION_ID : null,
+    organizationId: input.organizationId ?? (input.userId ? MTI_ORGANIZATION_ID : null),
     userId: input.userId ?? null,
     username: input.username ?? null,
     email: input.email ?? null,
@@ -342,9 +335,12 @@ export async function recordAuthEvent(input: {
   });
 }
 
-export function normalizeUsername(value: string) {
+export function normalizeLoginIdentifier(value: string) {
   return value.trim().toLowerCase();
 }
+
+/** Backwards-compatible name for callers that normalize the operator username. */
+export const normalizeUsername = normalizeLoginIdentifier;
 
 function safeEqual(left: string, right: string) {
   const leftBuffer = Buffer.from(left);

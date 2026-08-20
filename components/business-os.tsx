@@ -25,6 +25,7 @@ import {
 import type { Agenda, Deliverable, Milestone, Project, ProjectRecord, WorkspaceDocument } from "@/lib/domain";
 import { ResearchProjectWorkspace } from "@/components/research-project-workspace";
 import { SearchPalette } from "@/components/search-palette";
+import { BrandLogo } from "@/components/brand-logo";
 import { HelpLink, useHelp } from "@/components/help-provider";
 import type { HelpArticleId } from "@/lib/help/content";
 import { Modal } from "@/components/ui/modal";
@@ -253,7 +254,7 @@ export function BusinessOS() {
       )}
       <aside className="sidebar" data-help-anchor="sidebar-nav">
         <div className="brand">
-          <div className="brand-mark">MTI</div>
+          <div className="brand-mark"><BrandLogo alt="" priority /></div>
           <div>
             <strong>MTI Korea</strong>
             <span>{t("Business Operating System")}</span>
@@ -548,6 +549,7 @@ function SettingsView({ onError, role }: {
             <OrganizationProfileSettings onError={onError} />
             <ExternalMcpSettings onError={onError} />
             <McpSettings onError={onError} />
+            <GmailSettings onError={onError} />
             <section className="surface settings-wide">
               <div className="surface-header"><h2>{t("Review policy")}</h2></div>
               <Setting label={t("External sends")} value={t("Approval required")} />
@@ -931,6 +933,8 @@ type GmailConnection = {
   status: string;
   scopes: string[];
   lastSyncAt: string | null;
+  isServiceSender: boolean;
+  serviceSenderSetAt: string | null;
 };
 
 function GmailSettings({ onError }: { onError: (message: string) => void }) {
@@ -938,12 +942,24 @@ function GmailSettings({ onError }: { onError: (message: string) => void }) {
   const [connections, setConnections] = useState<GmailConnection[]>([]);
   const [oauthConfigured, setOauthConfigured] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
+  const [testEmail, setTestEmail] = useState("");
+  const [notifications, setNotifications] = useState<Array<{
+    id: string; toAddress: string; subject: string; status: string; attempts: number;
+    lastError: string | null; sentAt: string | null; createdAt: string;
+  }>>([]);
 
   const load = useCallback(async () => {
-    const response = await fetch("/api/v1/integrations/gmail");
+    const [response, notificationResponse] = await Promise.all([
+      fetch("/api/v1/integrations/gmail"),
+      fetch("/api/v1/admin/notifications")
+    ]);
     if (!response.ok) throw new Error("Could not load Gmail connections.");
     const payload = (await response.json()) as { data: GmailConnection[] };
     setConnections(payload.data);
+    if (notificationResponse.ok) {
+      const notificationPayload = (await notificationResponse.json()) as { data: typeof notifications };
+      setNotifications(notificationPayload.data);
+    }
   }, []);
 
   useEffect(() => {
@@ -981,12 +997,46 @@ function GmailSettings({ onError }: { onError: (message: string) => void }) {
     }
   }
 
+  async function makeServiceSender(connectionId: string) {
+    setBusy(true);
+    try {
+      await api("/api/v1/admin/gmail-service-sender", {
+        method: "POST", body: JSON.stringify({ connectionId })
+      });
+      await load();
+    } catch (reason) {
+      onError(reason instanceof Error ? reason.message : "Service sender could not be configured.");
+    } finally { setBusy(false); }
+  }
+
+  async function sendTest() {
+    setBusy(true);
+    try {
+      await api("/api/v1/admin/notifications/test", {
+        method: "POST", body: JSON.stringify({ email: testEmail })
+      });
+      await load();
+    } catch (reason) {
+      onError(reason instanceof Error ? reason.message : "Test notification could not be sent.");
+    } finally { setBusy(false); }
+  }
+
+  async function retryNotification(notificationId: string) {
+    setBusy(true);
+    try {
+      await api(`/api/v1/admin/notifications/${notificationId}/retry`, { method: "POST" });
+      await load();
+    } catch (reason) {
+      onError(reason instanceof Error ? reason.message : "Notification retry could not start.");
+    } finally { setBusy(false); }
+  }
+
   return (
     <section className="surface integration-settings">
       <div className="surface-header">
         <div>
           <h2>{t("Gmail")}</h2>
-          <span>{t("Read selected threads and create drafts")} · {t(oauthConfigured ? "OAuth configured" : "OAuth not configured")}</span>
+          <span>Connect the administrator mailbox once, then designate it as the Business OS service sender · {t(oauthConfigured ? "OAuth configured" : "OAuth not configured")}</span>
         </div>
         <button className="secondary" onClick={() => void connect()} disabled={busy}>
           {busy ? <Loader2 size={14} className="spin" aria-hidden /> : <Mail size={14} aria-hidden />}
@@ -999,8 +1049,9 @@ function GmailSettings({ onError }: { onError: (message: string) => void }) {
         <div className="integration-row" key={connection.id}>
           <div>
             <strong>{connection.email}</strong>
-            <span>{t(connection.status)} · {t("Gmail read and compose")}</span>
+            <span>{t(connection.status)} · Gmail read, draft, and send{connection.isServiceSender ? " · Service sender" : ""}</span>
           </div>
+          {!connection.isServiceSender && connection.status === "active" && <button className="secondary" onClick={() => void makeServiceSender(connection.id)} disabled={busy}>Use for notifications</button>}
           <button
             className="secondary"
             onClick={() => void disconnect(connection.id)}
@@ -1010,7 +1061,18 @@ function GmailSettings({ onError }: { onError: (message: string) => void }) {
           </button>
         </div>
       ))}
-      <p className="integration-policy">{t("Sending and mailbox deletion are unavailable.")}</p>
+      <div className="settings-form">
+        <label>Send test notification<input type="email" placeholder="recipient@example.com" value={testEmail} onChange={(event) => setTestEmail(event.target.value)} /></label>
+        <button className="secondary" disabled={busy || !testEmail.includes("@") || !connections.some((item) => item.isServiceSender && item.status === "active")} onClick={() => void sendTest()}><Mail size={14} /> Send test</button>
+      </div>
+      <div className="admin-table">
+        {notifications.slice(0, 20).map((item) => <div className="integration-row" key={item.id}>
+          <div><strong>{item.subject}</strong><span>{item.toAddress} · {item.status} · {item.attempts} attempt(s){item.lastError ? ` · ${item.lastError}` : ""}</span></div>
+          <time>{new Date(item.sentAt ?? item.createdAt).toLocaleString()}</time>
+          {item.status === "failed" && item.attempts < 5 && <button className="secondary" disabled={busy} onClick={() => void retryNotification(item.id)}>Retry</button>}
+        </div>)}
+      </div>
+      <p className="integration-policy">Only the designated service sender may send automated messages. Mailbox deletion remains unavailable.</p>
     </section>
   );
 }

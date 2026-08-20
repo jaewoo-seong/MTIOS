@@ -145,27 +145,22 @@ export function guard<Params = Record<string, never>>(
  */
 export function publicRoute<Params = Record<string, never>>(
   handler: (request: Request, context: { params: Params }) => Promise<Response> | Response,
-  options: { rateLimit?: RateLimitTier } = {}
+  options: { rateLimit?: RateLimitTier | false } = {}
 ) {
   return async function open(request: Request, args: NextRouteArgs<Params>) {
-    const tier = options.rateLimit ?? "standard";
-    const limit = await consumeRateLimit(requestSubject(request), tier);
-    if (!limit.allowed) {
-      logger.warn("ratelimit.rejected", {
-        tier,
-        path: new URL(request.url).pathname,
-        method: request.method
+    const tier = options.rateLimit === false ? null : options.rateLimit ?? "standard";
+    const limit = tier ? await consumeRateLimit(requestSubject(request), tier) : null;
+    if (tier && limit && !limit.allowed) {
+      logger.warn("ratelimit.rejected", { tier, path: new URL(request.url).pathname, method: request.method });
+      return NextResponse.json({ error: "rate_limited", detail: rateLimitTiers[tier].reason }, {
+        status: 429, headers: rateLimitHeaders(limit)
       });
-      return NextResponse.json(
-        { error: "rate_limited", detail: rateLimitTiers[tier].reason },
-        { status: 429, headers: rateLimitHeaders(limit) }
-      );
     }
     try {
       const params = (args?.params ? await args.params : {}) as Params;
       const response = await handler(request, { params });
-      for (const [key, value] of Object.entries(rateLimitHeaders(limit))) {
-        response.headers.set(key, value);
+      if (limit) {
+        for (const [key, value] of Object.entries(rateLimitHeaders(limit))) response.headers.set(key, value);
       }
       return response;
     } catch (error) {

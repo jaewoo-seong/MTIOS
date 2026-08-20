@@ -20,4 +20,4 @@ export const GET = guard(async (request) => {
     const message = error instanceof Error ? error.message : "Gmail connection failed.";
     return NextResponse.redirect(new URL(`/?integration=gmail&status=error&detail=${encodeURIComponent(message)}`, request.url));
   }
-});
+}, { admin: true });

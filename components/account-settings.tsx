@@ -380,39 +380,46 @@ type OrganizationUser = {
   id: string;
   name: string;
   username: string;
+  email: string | null;
   role: "admin" | "member";
   status: "active" | "disabled";
   lastLoginAt: string | null;
-  lockedUntil: string | null;
+  emailNotificationsEnabled: boolean;
 };
 
 export function AdminUsersSettings({ onError }: { onError: (message: string) => void }) {
   const [users, setUsers] = useState<OrganizationUser[]>([]);
   const [history, setHistory] = useState<Array<{ id: string; username: string | null; event: string; success: boolean; createdAt: string }>>([]);
   const [name, setName] = useState("");
-  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [passwordConfirmation, setPasswordConfirmation] = useState("");
   const [role, setRole] = useState<"admin" | "member">("member");
   const [passwords, setPasswords] = useState<Record<string, string>>({});
-  const [usernames, setUsernames] = useState<Record<string, string>>({});
+  const [emails, setEmails] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const load = useCallback(() => request<{ data: { users: OrganizationUser[]; history: typeof history } }>("/api/v1/admin/users")
     .then((payload) => {
       setUsers(payload.data.users);
       setHistory(payload.data.history);
-      setUsernames(Object.fromEntries(payload.data.users.map((user) => [user.id, user.username])));
+      setEmails(Object.fromEntries(payload.data.users.map((user) => [user.id, user.email ?? user.username])));
     }), []);
   useEffect(() => { load().catch((error: Error) => onError(error.message)); }, [load, onError]);
   async function create() {
+    if (password !== passwordConfirmation) {
+      onError("Passwords do not match.");
+      return;
+    }
     setBusy(true);
     try {
       await request<{ data: { user: OrganizationUser } }>("/api/v1/admin/users", {
         method: "POST",
-        body: JSON.stringify({ name, username, password, role })
+        body: JSON.stringify({ name, email, password, role })
       });
       setName("");
-      setUsername("");
+      setEmail("");
       setPassword("");
+      setPasswordConfirmation("");
       await load();
     } catch (error) {
       onError(error instanceof Error ? error.message : "User could not be created.");
@@ -420,7 +427,7 @@ export function AdminUsersSettings({ onError }: { onError: (message: string) => 
       setBusy(false);
     }
   }
-  async function update(user: OrganizationUser, changes: Partial<Pick<OrganizationUser, "name" | "username" | "role" | "status">>) {
+  async function update(user: OrganizationUser, changes: Partial<Pick<OrganizationUser, "name" | "email" | "role" | "status" | "emailNotificationsEnabled">>) {
     try {
       await request(`/api/v1/admin/users/${user.id}`, {
         method: "PATCH", body: JSON.stringify(changes)
@@ -448,19 +455,21 @@ export function AdminUsersSettings({ onError }: { onError: (message: string) => 
       <div className="surface-header"><div><h2><UserRoundCog size={16} /> Users</h2><span>{users.length} company accounts</span></div></div>
       <div className="admin-create-row">
         <input placeholder="Full name" value={name} onChange={(event) => setName(event.target.value)} />
-        <input placeholder="Username" autoComplete="off" value={username} onChange={(event) => setUsername(event.target.value)} />
-        <input type="password" placeholder="Password (optional)" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} />
+        <input type="email" placeholder="Email address" autoComplete="off" value={email} onChange={(event) => setEmail(event.target.value)} />
+        <input type="password" placeholder="Initial password" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} />
+        <input type="password" placeholder="Confirm password" autoComplete="new-password" value={passwordConfirmation} onChange={(event) => setPasswordConfirmation(event.target.value)} />
         <select value={role} onChange={(event) => setRole(event.target.value as "admin" | "member")}><option value="member">Member</option><option value="admin">Admin</option></select>
-        <button className="primary" disabled={busy || !name || username.length < 3} onClick={() => void create()}><Plus size={14} /> Create user</button>
+        <button className="primary" disabled={busy || !name.trim() || !email.includes("@") || !password || password !== passwordConfirmation} onClick={() => void create()}><Plus size={14} /> Create user</button>
       </div>
       <div className="admin-table">
         {users.map((user) => (
           <div className="admin-user-row" key={user.id}>
-            <div><strong>{user.name}</strong><span>@{user.username} · {user.lastLoginAt ? `last login ${new Date(user.lastLoginAt).toLocaleString()}` : "never signed in"}</span></div>
-            {user.id !== "00000000-0000-4000-8000-000000000002" && <><input value={usernames[user.id] ?? user.username} onChange={(event) => setUsernames((current) => ({ ...current, [user.id]: event.target.value }))} /><button className="secondary" disabled={(usernames[user.id] ?? user.username) === user.username} onClick={() => void update(user, { username: usernames[user.id] })}>Save username</button></>}
+            <div><strong>{user.name}</strong><span>{user.email ?? user.username} · {user.lastLoginAt ? `last login ${new Date(user.lastLoginAt).toLocaleString()}` : "never signed in"}</span></div>
+            {user.id !== "00000000-0000-4000-8000-000000000002" && <><input type="email" value={emails[user.id] ?? user.email ?? user.username} onChange={(event) => setEmails((current) => ({ ...current, [user.id]: event.target.value }))} /><button className="secondary" disabled={(emails[user.id] ?? user.email ?? user.username) === (user.email ?? user.username)} onClick={() => void update(user, { email: emails[user.id] })}>Save email</button></>}
             <select value={user.role} onChange={(event) => void update(user, { role: event.target.value as "admin" | "member" })}><option value="member">Member</option><option value="admin">Admin</option></select>
             <span className={user.status === "active" ? "pill good" : "pill warn"}>{user.status}</span>
-            {user.id !== "00000000-0000-4000-8000-000000000002" && <><input type="password" autoComplete="new-password" placeholder="Set new password (optional)" value={passwords[user.id] ?? ""} onChange={(event) => setPasswords((current) => ({ ...current, [user.id]: event.target.value }))} /><button className="secondary" onClick={() => void reset(user)}><RefreshCw size={13} /> Set password</button></>}
+            <label><input type="checkbox" checked={user.emailNotificationsEnabled} onChange={(event) => void update(user, { emailNotificationsEnabled: event.target.checked })} /> Email notifications</label>
+            {user.id !== "00000000-0000-4000-8000-000000000002" && <><input type="password" autoComplete="new-password" placeholder="Set new password" value={passwords[user.id] ?? ""} onChange={(event) => setPasswords((current) => ({ ...current, [user.id]: event.target.value }))} /><button className="secondary" disabled={!passwords[user.id]} onClick={() => void reset(user)}><RefreshCw size={13} /> Set password</button></>}
             <button className="secondary" onClick={() => void update(user, { status: user.status === "active" ? "disabled" : "active" })}>{user.status === "active" ? "Disable" : "Enable"}</button>
           </div>
         ))}

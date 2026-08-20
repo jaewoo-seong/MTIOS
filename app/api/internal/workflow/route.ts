@@ -26,13 +26,18 @@ import { createClientChangeSet, submitClientChangeSet } from "@/lib/client-chang
 import { parseJson } from "@/lib/http";
 import { isValidWorkflowRequest } from "@/lib/internal-auth";
 import { invokeMcpTool } from "@/lib/mcp/platform";
-import { logResearchQuery } from "@/lib/observability/logger";
+import { logResearchQuery, reportError } from "@/lib/observability/logger";
 import { getRunResearchCostCents } from "@/lib/research/engine";
 import { createDossierContextSnapshot } from "@/lib/research/context-snapshot";
 import { researchOfficialSite } from "@/lib/research/official-site";
 import { researchOfficialCompanyData } from "@/lib/research/company-enrichment";
 import { evidenceCapabilities } from "@/lib/research/evidence-capabilities";
 import { repository } from "@/lib/repository";
+import { requireDatabase } from "@/lib/db/client";
+import { commands } from "@/lib/db/schema";
+import { eq } from "drizzle-orm";
+import { queueReportReadyNotification } from "@/lib/notifications";
+import { dispatchNotificationDelivery } from "@/lib/workflows/trigger";
 import {
   collectionPlanSchema,
   executionPlanSchema,
@@ -651,13 +656,23 @@ export async function POST(request: Request) {
     return NextResponse.json({ status: input.status });
   }
 
+  const db = requireDatabase();
+  const [commandOwner] = await db.select({ userId: commands.createdBy })
+    .from(commands).where(eq(commands.id, input.commandId)).limit(1);
   const report = await repository.createReport({
     projectId: input.projectId,
     title: input.title,
     summary: input.summary,
     content: input.content
-  });
+  }, commandOwner?.userId ?? undefined);
+  await repository.updateReport(report.id, { status: "review" });
   await repository.updateCommand(input.commandId, { status: "review_required" });
   await repository.updateRun(input.runId, { status: "review_required", progress: 100 });
+  try {
+    const notification = await queueReportReadyNotification(report.id);
+    if (notification.queued) await dispatchNotificationDelivery(notification.id);
+  } catch (error) {
+    reportError("notification.dispatch_failed", error, { reportId: report.id, commandId: input.commandId });
+  }
   return NextResponse.json({ reportId: report.id, status: "review_required" }, { status: 201 });
 }

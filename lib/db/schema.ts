@@ -44,6 +44,7 @@ export const users = pgTable("users", {
   name: text("name").notNull(),
   username: text("username").notNull().unique(),
   email: text("email").unique(),
+  emailNotificationsEnabled: boolean("email_notifications_enabled").default(true).notNull(),
   passwordHash: text("password_hash"),
   status: text("status").default("active").notNull(),
   forcePasswordChange: boolean("force_password_change").default(true).notNull(),
@@ -867,11 +868,39 @@ export const gmailConnections = pgTable("gmail_connections", {
   accessTokenExpiresAt: timestamp("access_token_expires_at", { withTimezone: true }),
   scopes: jsonb("scopes").$type<string[]>().default([]).notNull(),
   status: text("status").default("active").notNull(),
+  isServiceSender: boolean("is_service_sender").default(false).notNull(),
+  serviceSenderSetBy: uuid("service_sender_set_by").references(() => users.id, { onDelete: "set null" }),
+  serviceSenderSetAt: timestamp("service_sender_set_at", { withTimezone: true }),
   lastSyncAt: timestamp("last_sync_at", { withTimezone: true }),
   lastError: text("last_error"),
   ...timestamps
 }, (table) => [
   uniqueIndex("gmail_connection_org_account_idx").on(table.organizationId, table.googleAccountId)
+]);
+
+export const notificationOutbox = pgTable("notification_outbox", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  organizationId: uuid("organization_id").references(() => organizations.id, { onDelete: "cascade" }).notNull(),
+  recipientUserId: uuid("recipient_user_id").references(() => users.id, { onDelete: "set null" }),
+  gmailConnectionId: uuid("gmail_connection_id").references(() => gmailConnections.id, { onDelete: "set null" }),
+  eventType: text("event_type").notNull(),
+  dedupeKey: text("dedupe_key").notNull().unique(),
+  sourceType: text("source_type"),
+  sourceId: uuid("source_id"),
+  toAddress: text("to_address").notNull(),
+  subject: text("subject").notNull(),
+  bodyText: text("body_text").notNull(),
+  status: text("status").default("queued").notNull(),
+  attempts: integer("attempts").default(0).notNull(),
+  maxAttempts: integer("max_attempts").default(5).notNull(),
+  gmailMessageId: text("gmail_message_id"),
+  lastError: text("last_error"),
+  nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }).defaultNow().notNull(),
+  sentAt: timestamp("sent_at", { withTimezone: true }),
+  ...timestamps
+}, (table) => [
+  index("notification_outbox_delivery_idx").on(table.status, table.nextAttemptAt),
+  index("notification_outbox_recipient_idx").on(table.recipientUserId, table.createdAt)
 ]);
 
 export const gmailOauthStates = pgTable("gmail_oauth_states", {

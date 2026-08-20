@@ -5,7 +5,7 @@ import {
   randomBytes,
   randomUUID
 } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import {
   gmailAttachments,
@@ -22,7 +22,8 @@ import { MTI_OPERATOR_ID, MTI_ORGANIZATION_ID, repository } from "@/lib/reposito
 
 export const GMAIL_SCOPES = [
   "https://www.googleapis.com/auth/gmail.readonly",
-  "https://www.googleapis.com/auth/gmail.compose"
+  "https://www.googleapis.com/auth/gmail.compose",
+  "https://www.googleapis.com/auth/gmail.send"
 ] as const;
 
 type Fetcher = typeof fetch;
@@ -164,12 +165,77 @@ export async function listGmailConnections() {
     email: gmailConnections.email,
     scopes: gmailConnections.scopes,
     status: gmailConnections.status,
+    isServiceSender: gmailConnections.isServiceSender,
+    serviceSenderSetAt: gmailConnections.serviceSenderSetAt,
     lastSyncAt: gmailConnections.lastSyncAt,
     lastError: gmailConnections.lastError,
     createdAt: gmailConnections.createdAt,
     updatedAt: gmailConnections.updatedAt
   }).from(gmailConnections).where(eq(gmailConnections.organizationId, MTI_ORGANIZATION_ID));
   return rows;
+}
+
+export async function setGmailServiceSender(connectionId: string, actorId: string) {
+  const connection = await getConnection(connectionId);
+  if (!connection || connection.status !== "active") throw new Error("Active Gmail connection not found.");
+  const scopes = Array.isArray(connection.scopes) ? connection.scopes.map(String) : [];
+  if (!scopes.includes("https://www.googleapis.com/auth/gmail.send") &&
+      !scopes.includes("https://www.googleapis.com/auth/gmail.compose")) {
+    throw new Error("Reconnect Gmail and grant permission to send email.");
+  }
+  const now = new Date();
+  if (!db) {
+    for (const item of memory.connections) Object.assign(item, {
+      isServiceSender: item.id === connectionId,
+      serviceSenderSetBy: item.id === connectionId ? actorId : null,
+      serviceSenderSetAt: item.id === connectionId ? now.toISOString() : null
+    });
+  } else {
+    await db.transaction(async (tx) => {
+      // Serialize service-sender changes per organization so two admin clicks
+      // cannot leave two active senders after interleaved reset/set updates.
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`gmail-service-sender:${MTI_ORGANIZATION_ID}`}))`);
+      await tx.update(gmailConnections).set({
+        isServiceSender: false, serviceSenderSetBy: null, serviceSenderSetAt: null, updatedAt: now
+      }).where(eq(gmailConnections.organizationId, MTI_ORGANIZATION_ID));
+      const [selected] = await tx.update(gmailConnections).set({
+        isServiceSender: true, serviceSenderSetBy: actorId, serviceSenderSetAt: now, updatedAt: now
+      }).where(and(
+        eq(gmailConnections.id, connectionId),
+        eq(gmailConnections.organizationId, MTI_ORGANIZATION_ID),
+        eq(gmailConnections.status, "active")
+      )).returning({ id: gmailConnections.id });
+      if (!selected) throw new Error("Active Gmail connection not found.");
+    });
+  }
+  return { id: connectionId, isServiceSender: true };
+}
+
+export async function sendServiceEmail(input: {
+  to: string;
+  subject: string;
+  bodyText: string;
+  fetcher?: Fetcher;
+}) {
+  const connection = await getServiceSender();
+  if (!connection) throw new Error("Gmail service sender is not configured.");
+  const fetcher = input.fetcher ?? fetch;
+  const token = await accessToken(String(connection.id), fetcher);
+  const raw = encodeMessage({ to: [input.to], subject: input.subject, bodyText: input.bodyText });
+  const result = await jsonResponse<{ id: string; threadId?: string }>(
+    await fetcher("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
+      method: "POST",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: JSON.stringify({ raw })
+    }),
+    "Gmail notification send failed."
+  );
+  return {
+    gmailMessageId: result.id,
+    gmailThreadId: result.threadId ?? null,
+    gmailConnectionId: String(connection.id),
+    sender: String(connection.email)
+  };
 }
 
 export async function disconnectGmail(connectionId: string, fetcher: Fetcher = fetch) {
@@ -487,7 +553,7 @@ async function upsertConnection(input: {
   if (!db) {
     const existing = memory.connections.find((item) => item.googleAccountId === input.googleAccountId);
     if (existing) Object.assign(existing, values, { updatedAt: new Date().toISOString() });
-    else memory.connections.push({ id: randomUUID(), ...values, createdAt: new Date().toISOString() });
+    else memory.connections.push({ id: randomUUID(), ...values, isServiceSender: false, createdAt: new Date().toISOString() });
     return publicConnection(existing ?? memory.connections.at(-1)!);
   }
   const [row] = await db.insert(gmailConnections).values(values).onConflictDoUpdate({
@@ -502,6 +568,16 @@ async function getConnection(id: string) {
   const [row] = await db.select().from(gmailConnections).where(and(
     eq(gmailConnections.id, id),
     eq(gmailConnections.organizationId, MTI_ORGANIZATION_ID)
+  )).limit(1);
+  return row ?? null;
+}
+
+async function getServiceSender() {
+  if (!db) return memory.connections.find((item) => item.isServiceSender === true && item.status === "active") ?? null;
+  const [row] = await db.select().from(gmailConnections).where(and(
+    eq(gmailConnections.organizationId, MTI_ORGANIZATION_ID),
+    eq(gmailConnections.isServiceSender, true),
+    eq(gmailConnections.status, "active")
   )).limit(1);
   return row ?? null;
 }

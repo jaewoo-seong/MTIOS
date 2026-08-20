@@ -7,9 +7,10 @@ import { logger } from "@/lib/observability/logger";
 
 const schema = z.object({
   name: z.string().trim().min(1).max(120).optional(),
-  username: z.string().trim().min(3).max(64).regex(/^[a-zA-Z0-9._-]+$/).optional(),
+  email: z.string().trim().email().max(254).optional(),
   role: z.enum(["admin", "member"]).optional(),
-  status: z.enum(["active", "disabled"]).optional()
+  status: z.enum(["active", "disabled"]).optional(),
+  emailNotificationsEnabled: z.boolean().optional()
 }).refine((value) => Object.keys(value).length > 0);
 
 export const PATCH = guard<{ userId: string }>(async (request, { params, session }) => {
@@ -18,7 +19,12 @@ export const PATCH = guard<{ userId: string }>(async (request, { params, session
   const result = await updateOrganizationUser({
     userId: params.userId,
     actorId: session.userId,
-    ...parsed.data
+    organizationId: session.organizationId,
+    name: parsed.data.name,
+    email: parsed.data.email,
+    role: parsed.data.role,
+    status: parsed.data.status,
+    emailNotificationsEnabled: parsed.data.emailNotificationsEnabled
   });
   // Role and status changes alter what an account can reach, so they are worth a
   // log line independent of the authentication_events audit trail.

@@ -7,6 +7,9 @@ import { guard } from "@/lib/api/guard";
 import { and, eq } from "drizzle-orm";
 import { requireDatabase } from "@/lib/db/client";
 import { reportProjects, reportSources, reports } from "@/lib/db/schema";
+import { queueReportReadyNotification } from "@/lib/notifications";
+import { dispatchNotificationDelivery } from "@/lib/workflows/trigger";
+import { reportError } from "@/lib/observability/logger";
 const schema = z.object({
   title: z.string().trim().min(2).max(180).optional(),
   summary: z.string().max(4000).optional(),
@@ -40,5 +43,13 @@ export const PATCH = guard<{ reportId: string }>(async (request, { params }) => 
   if (parsed.error) return parsed.error;
   const report = await repository.updateReport(reportId, parsed.data);
   if (!report) return notFound("report");
+  if (parsed.data.status === "review") {
+    try {
+      const notification = await queueReportReadyNotification(reportId);
+      if (notification.queued) await dispatchNotificationDelivery(notification.id);
+    } catch (error) {
+      reportError("notification.dispatch_failed", error, { reportId });
+    }
+  }
   return NextResponse.json({ data: report });
 });

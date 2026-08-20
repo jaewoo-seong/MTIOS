@@ -10,7 +10,9 @@ import {
   linkGmailToProject,
   retrieveGmailThread,
   reviseGmailDraft,
-  searchGmailThreads
+  searchGmailThreads,
+  sendServiceEmail,
+  setGmailServiceSender
 } from "@/lib/gmail";
 import { internalToolCatalog } from "@/lib/mcp/catalog";
 import { repository } from "@/lib/repository";
@@ -26,14 +28,15 @@ beforeEach(() => {
 });
 
 describe("Gmail OAuth custody", () => {
-  it("uses only readonly/compose offline scopes and consumes state once", async () => {
+  it("requests offline read, draft, and send access and consumes state once", async () => {
     const authorization = await createGmailAuthorization({});
     const url = new URL(authorization.url);
     expect(url.searchParams.get("access_type")).toBe("offline");
     expect(url.searchParams.get("prompt")).toBe("consent");
     expect(url.searchParams.get("scope")?.split(" ").sort()).toEqual([
       "https://www.googleapis.com/auth/gmail.compose",
-      "https://www.googleapis.com/auth/gmail.readonly"
+      "https://www.googleapis.com/auth/gmail.readonly",
+      "https://www.googleapis.com/auth/gmail.send"
     ]);
     const state = url.searchParams.get("state")!;
     const fetcher = async (input: RequestInfo | URL) => {
@@ -43,7 +46,7 @@ describe("Gmail OAuth custody", () => {
           access_token: "access-token",
           refresh_token: "refresh-token",
           expires_in: 3600,
-          scope: "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.compose"
+          scope: "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.compose https://www.googleapis.com/auth/gmail.send"
         });
       }
       return Response.json({ emailAddress: "operator@example.com" });
@@ -84,7 +87,7 @@ describe("Gmail project workflow", () => {
           access_token: "cached-access",
           refresh_token: "cached-refresh",
           expires_in: 3600,
-          scope: "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.compose"
+          scope: "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.compose https://www.googleapis.com/auth/gmail.send"
         });
       }
       return Response.json({ emailAddress: "mailbox@example.com" });
@@ -231,6 +234,38 @@ describe("Gmail project workflow", () => {
       bodyText: "Blocked.",
       fetcher: draftFetch as typeof fetch
     })).rejects.toThrow(/headers/i);
+  });
+
+  it("sends automated email only through the administrator-designated service sender", async () => {
+    const connection = await connected();
+    await expect(sendServiceEmail({
+      to: "recipient@example.com",
+      subject: "Not configured",
+      bodyText: "This must not send."
+    })).rejects.toThrow(/service sender/i);
+
+    await setGmailServiceSender(String(connection.id), crypto.randomUUID());
+    let authorization = "";
+    const sendFetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
+      authorization = new Headers(init?.headers).get("authorization") ?? "";
+      const payload = JSON.parse(String(init?.body)) as { raw: string };
+      const decoded = Buffer.from(payload.raw, "base64url").toString("utf8");
+      expect(decoded).toContain("To: recipient@example.com");
+      expect(decoded).toContain("Subject: Report ready");
+      expect(decoded).toContain("The report is ready.");
+      expect(decoded).not.toContain("cached-refresh");
+      return Response.json({ id: "sent-message-1", threadId: "sent-thread-1" });
+    };
+    await expect(sendServiceEmail({
+      to: "recipient@example.com",
+      subject: "Report ready",
+      bodyText: "The report is ready.",
+      fetcher: sendFetch as typeof fetch
+    })).resolves.toMatchObject({
+      gmailMessageId: "sent-message-1",
+      sender: "mailbox@example.com"
+    });
+    expect(authorization).toBe("Bearer cached-access");
   });
 
   it("retrieves only explicitly selected thread IDs", async () => {

@@ -71,6 +71,21 @@ export async function dispatchResearchDiscovery(projectId: string, idempotencyKe
   return { workflowRunId: handle.id, mode: "managed" };
 }
 
+export async function dispatchNotificationDelivery(
+  notificationId: string,
+  idempotencyKey = `notification:${notificationId}`
+): Promise<TriggerDispatch> {
+  if (!process.env.TRIGGER_SECRET_KEY) {
+    const { deliverNotification } = await import("@/lib/notifications");
+    await deliverNotification(notificationId);
+    return { workflowRunId: null, mode: "local" };
+  }
+  const handle = await tasks.trigger("email-notification-delivery", { notificationId }, {
+    idempotencyKey
+  });
+  return { workflowRunId: handle.id, mode: "managed" };
+}
+
 /**
  * Asks Trigger.dev to cancel a run in flight.
  *

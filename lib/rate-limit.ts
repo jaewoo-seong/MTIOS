@@ -4,13 +4,7 @@ import { logger } from "@/lib/observability/logger";
 /**
  * Fixed-window rate limiting on top of the Redis this app already runs.
  *
- * Account lockout (five failed attempts, `lib/auth.ts`) protects one account
- * from being guessed. It does nothing about the shape of attack that matters
- * more here: one client trying one password against many usernames, which never
- * trips any individual account's counter. That is what per-IP limiting is for,
- * and it did not exist.
- *
- * The second purpose is cost. A handful of endpoints each dispatch real spend -
+ * A handful of endpoints each dispatch real spend -
  * a campaign fans out a hundred paid workers, a research query buys provider
  * credits. Those deserve a ceiling per user that is unrelated to authentication.
  *
@@ -75,9 +69,7 @@ return {current, redis.call('TTL', KEYS[1])}
  *
  * Fails open. If Redis is unreachable this returns `allowed` with
  * `degraded: true` rather than rejecting, because a cache outage should not
- * become an authentication outage - and for the login path specifically, account
- * lockout still applies from Postgres, so the most important protection is
- * unaffected. The degradation is logged at warn precisely so that "we were
+ * become an application outage. The degradation is logged at warn precisely so that "we were
  * unprotected for twenty minutes" is discoverable afterwards rather than silent.
  */
 export async function consumeRateLimit(

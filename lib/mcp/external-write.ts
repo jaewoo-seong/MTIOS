@@ -20,7 +20,9 @@ import { requestHash } from "@/lib/mcp/external-credentials";
 import { canAccessProject, ExternalMcpAccessError } from "@/lib/mcp/external-read";
 import { repository } from "@/lib/repository";
 import { activateResearchStrategy, proposeResearchStrategy } from "@/lib/research-workspace";
-import { dispatchResearchDiscovery, dispatchResearchProject } from "@/lib/workflows/trigger";
+import { dispatchNotificationDelivery, dispatchResearchDiscovery, dispatchResearchProject } from "@/lib/workflows/trigger";
+import { queueReportReadyNotification } from "@/lib/notifications";
+import { reportError } from "@/lib/observability/logger";
 
 type WriteToolName = "draft_research_project" | "activate_research_project" | "create_cross_project_report";
 
@@ -175,6 +177,12 @@ async function createCrossProjectReport(
       includedCharacters: source.markdown.length
     }))).onConflictDoNothing({ target: [reportSources.reportId, reportSources.documentRevisionId] });
   });
+  try {
+    const notification = await queueReportReadyNotification(reportId);
+    if (notification.queued) await dispatchNotificationDelivery(notification.id);
+  } catch (error) {
+    reportError("notification.dispatch_failed", error, { reportId, invocationId });
+  }
   return {
     reportDocumentId: reportId,
     status: "ready" as const,

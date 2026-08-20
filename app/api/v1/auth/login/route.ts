@@ -12,17 +12,14 @@ import { parseJson } from "@/lib/http";
 import { logger } from "@/lib/observability/logger";
 
 const schema = z.object({
-  username: z.string().trim().min(1).max(64),
+  username: z.string().trim().min(1).max(254),
   password: z.string()
 });
 
 /**
- * Public by necessity, and rate limited on the `auth` tier by IP.
- *
- * Account lockout already protects a single account from being guessed. It does
- * nothing about one client trying one password against many usernames, because
- * that never trips any individual account's counter. The per-IP limit is what
- * covers that case.
+ * Public by necessity. The operator explicitly requires unlimited password
+ * attempts, so this route opts out of both account lockout and request limits.
+ * Failed attempts are still written to the authentication audit trail.
  */
 export const POST = publicRoute(async (request) => {
   const parsed = await parseJson(request, schema);
@@ -62,4 +59,4 @@ export const POST = publicRoute(async (request) => {
       error: error instanceof Error ? error.message : "Login failed."
     }, { status });
   }
-}, { rateLimit: "auth" });
+}, { rateLimit: false });

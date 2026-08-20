@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowRight, Loader2, LockKeyhole } from "lucide-react";
+import { ArrowRight, Loader2 } from "lucide-react";
+import { BrandLogo } from "@/components/brand-logo";
 
 export function LoginForm() {
-  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -17,7 +18,9 @@ export function LoginForm() {
       const response = await fetch("/api/v1/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password })
+        // The API key remains backwards compatible for the Railway operator;
+        // normal users enter an email address here.
+        body: JSON.stringify({ username: email, password })
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? "Login failed.");
@@ -31,13 +34,13 @@ export function LoginForm() {
 
   return (
     <form className="auth-form" onSubmit={submit}>
-      <div className="auth-mark"><LockKeyhole size={20} /></div>
+      <div className="auth-mark"><BrandLogo alt="" priority /></div>
       <div>
         <span className="auth-brand">MTI Korea</span>
         <h1>Business OS</h1>
-        <p>Sign in with your company account.</p>
+        <p>Sign in with your company email. The break-glass operator account may still use its username.</p>
       </div>
-      <label>Username<input autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} required autoFocus /></label>
+      <label>Email<input type="text" inputMode="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} required autoFocus /></label>
       <label>Password<input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} /></label>
       {error && <div className="auth-error" role="alert">{error}</div>}
       <button className="primary auth-submit" disabled={busy}>

@@ -11,4 +11,4 @@ export const DELETE = guard<{ connectionId: string }>(async (_request, { params 
       error: error instanceof Error ? error.message : "Gmail connection could not be removed."
     }, { status: 404 });
   }
-});
+}, { admin: true });

@@ -64,11 +64,17 @@ Gmail uses server-side Google OAuth on the public `app` service. Configure
 `GOOGLE_GMAIL_CLIENT_ID`, `GOOGLE_GMAIL_CLIENT_SECRET`, and a generated
 base64-encoded 32-byte `GMAIL_TOKEN_ENCRYPTION_KEY`. Register
 `https://<app-domain>/api/v1/integrations/gmail/callback` in Google Cloud.
-The app requests only `gmail.readonly` and `gmail.compose`; refresh tokens are
+The app requests `gmail.readonly`, `gmail.compose`, and `gmail.send`; refresh tokens are
 encrypted in PostgreSQL. Set the same three Gmail variables on the private
-`mcp-tools` service so its Gmail adapters can refresh and decrypt tokens.
+`mcp-tools` service and Trigger.dev environment so Gmail adapters and email
+delivery workers can refresh and decrypt tokens.
 These credentials are separate from `MCP_SERVICE_SECRET` and must not be used
-as MCP transport authentication.
+as MCP transport authentication. Connect the administrator-owned mailbox and
+mark it as the service sender in Settings before enabling automated notifications.
+Deploy the Trigger.dev `email-notification-delivery` and
+`email-notification-outbox-sweep` tasks; the latter recovers queued or stale
+deliveries every minute. The full setup, OAuth verification notes, retry model,
+and incident procedure are in `docs/email-notifications.md`.
 
 Build `document-conversion` from
 `railway/document-conversion/Dockerfile`. Generate
