@@ -1,10 +1,13 @@
 import { and, desc, eq, inArray, lte, or, sql } from "drizzle-orm";
 import { requireDatabase } from "@/lib/db/client";
 import { notificationOutbox, reports, users } from "@/lib/db/schema";
-import { sendServiceEmail } from "@/lib/gmail";
+import { decryptSecret, encryptSecret, sendServiceEmail } from "@/lib/gmail";
 import { MTI_ORGANIZATION_ID } from "@/lib/repository";
 
-export type NotificationEventType = "report.ready" | "system.test";
+export type NotificationEventType = "account.welcome" | "report.ready" | "system.test";
+
+const SEALED_BODY_PREFIX = "sealed:";
+const DELIVERED_SENSITIVE_BODY = "[Sensitive notification body removed after delivery.]";
 
 export async function queueNotification(input: {
   recipientUserId: string;
@@ -71,6 +74,75 @@ export async function queueReportReadyNotification(reportId: string) {
   });
 }
 
+export function createWelcomeEmail(input: {
+  name: string;
+  email: string;
+  initialPassword: string;
+  loginUrl?: string;
+}) {
+  const loginUrl = input.loginUrl ?? `${(process.env.APP_URL ?? "http://localhost:3000").replace(/\/$/, "")}/`;
+  return {
+    subject: "Welcome to MTI Business OS",
+    bodyText: [
+      `Hello ${input.name.trim()},`,
+      "",
+      "Your MTI Business OS account has been created.",
+      "",
+      `Email: ${input.email.trim().toLowerCase()}`,
+      `Initial password: ${input.initialPassword}`,
+      "",
+      `Sign in: ${loginUrl}`,
+      "",
+      "For security, sign in and change your password as soon as possible. Do not share this email or password.",
+      "",
+      "This is an automated notification from MTI Business OS."
+    ].join("\n")
+  };
+}
+
+export async function queueWelcomeNotification(input: {
+  organizationId: string;
+  recipientUserId: string;
+  name: string;
+  email: string;
+  initialPassword: string;
+}) {
+  const db = requireDatabase();
+  const message = createWelcomeEmail({
+    name: input.name,
+    email: input.email,
+    initialPassword: input.initialPassword
+  });
+  const [row] = await db.insert(notificationOutbox).values({
+    organizationId: input.organizationId,
+    recipientUserId: input.recipientUserId,
+    eventType: "account.welcome",
+    dedupeKey: `account.welcome:${input.recipientUserId}`,
+    sourceType: "user",
+    sourceId: input.recipientUserId,
+    toAddress: input.email.trim().toLowerCase(),
+    subject: message.subject,
+    // Initial credentials must never be readable in the database or logs.
+    // The same authenticated-encryption key that protects Gmail tokens seals
+    // this short-lived payload until the delivery worker needs it.
+    bodyText: sealNotificationBody(message.bodyText)
+  }).onConflictDoNothing({ target: notificationOutbox.dedupeKey })
+    .returning({ id: notificationOutbox.id });
+  return row
+    ? { queued: true as const, id: row.id }
+    : { queued: false as const, reason: "duplicate" as const };
+}
+
+export function sealNotificationBody(bodyText: string) {
+  return `${SEALED_BODY_PREFIX}${encryptSecret(bodyText)}`;
+}
+
+export function notificationBodyForDelivery(storedBodyText: string) {
+  return storedBodyText.startsWith(SEALED_BODY_PREFIX)
+    ? decryptSecret(storedBodyText.slice(SEALED_BODY_PREFIX.length))
+    : storedBodyText;
+}
+
 export async function queueTestNotification(toAddress: string, actorId: string) {
   const db = requireDatabase();
   const now = new Date();
@@ -134,15 +206,17 @@ export async function deliverNotification(notificationId: string) {
   )).returning();
   if (!claimed) return { delivered: false as const, reason: "not_available" as const };
   try {
+    const sensitiveBody = claimed.bodyText.startsWith(SEALED_BODY_PREFIX);
     const sent = await sendServiceEmail({
       to: claimed.toAddress,
       subject: claimed.subject,
-      bodyText: claimed.bodyText
+      bodyText: notificationBodyForDelivery(claimed.bodyText)
     });
     await db.update(notificationOutbox).set({
       status: "sent",
       gmailConnectionId: sent.gmailConnectionId,
       gmailMessageId: sent.gmailMessageId,
+      ...(sensitiveBody ? { bodyText: DELIVERED_SENSITIVE_BODY } : {}),
       sentAt: new Date(),
       updatedAt: new Date()
     }).where(eq(notificationOutbox.id, claimed.id));

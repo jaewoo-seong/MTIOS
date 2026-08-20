@@ -99,7 +99,7 @@ export async function createOrganizationUser(input: {
       id: created.id,
       name: created.name,
       username: created.username,
-      email: created.email,
+      email: created.email ?? email,
       role: input.role,
       status: created.status,
       forcePasswordChange: false

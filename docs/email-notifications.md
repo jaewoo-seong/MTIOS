@@ -61,9 +61,14 @@ before production authorization.
 
 ## Delivery lifecycle
 
-The first reusable event is `report.ready`. It is created once when a report
-enters review, including reports produced by the workflow engine and external
-MCP cross-project reporting. The default recipient is `report.createdBy`.
+Reusable events include:
+
+- `account.welcome`, created once after an administrator successfully creates
+  an account. It sends the account email, administrator-supplied initial
+  password, and production login link to the new user's email address.
+- `report.ready`, created once when a report enters review, including reports
+  produced by the workflow engine and external MCP cross-project reporting.
+  The default recipient is `report.createdBy`.
 
 1. The event is inserted into `notification_outbox` with a unique deduplication
    key.
@@ -76,6 +81,13 @@ MCP cross-project reporting. The default recipient is `report.createdBy`.
    explicitly retries an eligible row.
 5. The admin Gmail panel displays recent delivery state without exposing OAuth
    tokens or message bodies.
+
+Welcome-email bodies are authenticated-encrypted while queued because they
+contain an initial credential. The plaintext password is never stored in the
+outbox or written to logs, and the encrypted body is replaced with a redacted
+marker immediately after successful delivery. If delivery infrastructure is
+temporarily unavailable, account creation still succeeds and the outbox retry
+policy handles the email independently.
 
 The queue is idempotent at event creation and safely claims a row once per
 attempt. Gmail's send endpoint does not provide an application idempotency key,
@@ -92,7 +104,9 @@ Use `queueNotification` in `lib/notifications.ts`. A new event must provide:
 - the recipient user's ID rather than a caller-supplied address;
 - a source type and source ID for auditability;
 - plain-text subject and body content containing no credentials or private
-  internal diagnostics.
+  internal diagnostics. Credential-bearing transactional messages are an
+  exception and must use `sealNotificationBody`, then be scrubbed after
+  successful delivery as `account.welcome` is.
 
 Queue the event only after its business transaction commits. Dispatch should
 be best-effort because the scheduled outbox sweep is the recovery mechanism.

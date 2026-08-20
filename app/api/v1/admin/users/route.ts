@@ -6,7 +6,9 @@ import {
 } from "@/lib/admin-users";
 import { guard } from "@/lib/api/guard";
 import { parseJson } from "@/lib/http";
-import { logger } from "@/lib/observability/logger";
+import { logger, reportError } from "@/lib/observability/logger";
+import { queueWelcomeNotification } from "@/lib/notifications";
+import { dispatchNotificationDelivery } from "@/lib/workflows/trigger";
 
 const schema = z.object({
   name: z.string().trim().min(1).max(120),
@@ -29,6 +31,23 @@ export const POST = guard(async (request, { session }) => {
     actorId: session.userId,
     organizationId: session.organizationId
   });
+  try {
+    const welcome = await queueWelcomeNotification({
+      organizationId: session.organizationId,
+      recipientUserId: result.user.id,
+      name: result.user.name,
+      email: result.user.email,
+      initialPassword: parsed.data.password
+    });
+    if (welcome.queued) await dispatchNotificationDelivery(welcome.id);
+  } catch (error) {
+    // The account transaction has already committed. The admin must receive a
+    // successful create response even if notification infrastructure is down.
+    reportError("notification.welcome_dispatch_failed", error, {
+      actorId: session.userId,
+      userId: result.user.id
+    });
+  }
   logger.info("admin.user_created", {
     actorId: session.userId,
     role: parsed.data.role ?? "member"

@@ -56,5 +56,8 @@ describe("email account policy", () => {
     expect(adminUsers).toContain("eq(memberships.organizationId, input.organizationId)");
     expect(adminUsers).toContain("An account with this email already exists.");
     expect(adminUsers).toContain("pg_advisory_xact_lock");
+    expect(createRoute).toContain("queueWelcomeNotification");
+    expect(createRoute).toContain("dispatchNotificationDelivery");
+    expect(createRoute).toContain("notification.welcome_dispatch_failed");
   });
 });
