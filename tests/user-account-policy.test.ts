@@ -35,6 +35,15 @@ describe("email account policy", () => {
     expect(adminUsers).not.toContain("account_unlocked");
   });
 
+  it("keeps the session on top-level OAuth callbacks", () => {
+    for (const route of [
+      "app/api/v1/auth/login/route.ts",
+      "app/api/v1/auth/session/route.ts"
+    ]) {
+      expect(readFileSync(route, "utf8")).toContain('sameSite: "lax"');
+    }
+  });
+
   it("requires email, a non-empty initial password, and organization scoping", () => {
     const createRoute = readFileSync("app/api/v1/admin/users/route.ts", "utf8");
     const resetRoute = readFileSync("app/api/v1/admin/users/[userId]/reset-password/route.ts", "utf8");

@@ -40,7 +40,10 @@ export const POST = publicRoute(async (request) => {
     response.cookies.set(SESSION_COOKIE, result.token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
+      // OAuth providers return through a top-level cross-site GET. Lax keeps
+      // the session on that callback while still withholding it from
+      // cross-site subrequests and mutations.
+      sameSite: "lax",
       path: "/",
       maxAge: Math.floor(SESSION_IDLE_MS / 1000)
     });

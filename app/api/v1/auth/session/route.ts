@@ -33,7 +33,7 @@ export const GET = publicRoute(async () => {
     response.cookies.set(SESSION_COOKIE, session.token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
+      sameSite: "lax",
       path: "/",
       maxAge: Math.floor(SESSION_IDLE_MS / 1000)
     });
