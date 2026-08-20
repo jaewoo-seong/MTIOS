@@ -4,9 +4,11 @@ import type { NextRequest } from "next/server";
 const COOKIE_NAME = "mti_session";
 const PUBLIC_PATHS = new Set([
   "/login",
+  "/icon.png",
   "/api/health",
   "/api/v1/auth/login"
 ]);
+const PUBLIC_PREFIXES = ["/brand/"];
 const ADMIN_API_PREFIXES = [
   "/api/v1/admin/",
   "/api/v1/settings/models",
@@ -52,7 +54,9 @@ export async function middleware(request: NextRequest) {
   const gate = basicAuthGate(request, path);
   if (gate) return gate;
 
-  if (PUBLIC_PATHS.has(path)) return NextResponse.next();
+  if (PUBLIC_PATHS.has(path) || PUBLIC_PREFIXES.some((prefix) => path.startsWith(prefix))) {
+    return NextResponse.next();
+  }
 
   if (path.startsWith("/api/internal/")) {
     const secret = process.env.WORKFLOW_CALLBACK_SECRET;
