@@ -504,14 +504,15 @@ function SettingsView({ onError, role }: {
   // ("is it working", "what is it costing", "who can do what") and mixing them
   // in one column meant scanning past AI internals to change a date format.
   const tabs = role === "admin"
-    ? ["status", "models", "intelligence", "access", "workspace"] as const
+    ? ["status", "models", "intelligence", "tools", "access", "workspace"] as const
     : ["workspace"] as const;
   const [tab, setTab] = useState<(typeof tabs)[number]>(tabs[0]);
   const label: Record<string, string> = {
     status: t("Status"),
     models: t("Models & cost"),
     intelligence: t("AI analysis"),
-    access: t("Tools & access"),
+    tools: t("Tools"),
+    access: t("Access"),
     workspace: t("Workspace")
   };
 
@@ -544,19 +545,39 @@ function SettingsView({ onError, role }: {
         {tab === "status" && <SystemStatusSettings onError={onError} />}
         {tab === "models" && <ModelSettings onError={onError} />}
         {tab === "intelligence" && <AiAnalyticsSettings onError={onError} />}
+        {tab === "tools" && (
+          <>
+            <SettingsSectionIntro
+              eyebrow="Tools"
+              title="Connected capabilities"
+              description="Manage the systems that extend Business OS, the company context they use, and automated notification delivery."
+              items={["Company context", "MCP tool inventory", "Email notifications"]}
+            />
+            <OrganizationProfileSettings onError={onError} />
+            <div className="settings-tool-columns settings-wide">
+              <McpSettings onError={onError} />
+              <GmailSettings onError={onError} />
+            </div>
+          </>
+        )}
         {tab === "access" && (
           <>
-            <OrganizationProfileSettings onError={onError} />
-            <ExternalMcpSettings onError={onError} />
-            <McpSettings onError={onError} />
-            <GmailSettings onError={onError} />
-            <section className="surface settings-wide">
-              <div className="surface-header"><h2>{t("Review policy")}</h2></div>
-              <Setting label={t("External sends")} value={t("Approval required")} />
-              <Setting label={t("Destructive writes")} value={t("Approval required")} />
-              <Setting label={t("High-cost actions")} value={t("Approval required")} />
-            </section>
+            <SettingsSectionIntro
+              eyebrow="Access"
+              title="People, credentials, and permissions"
+              description="Control who can enter the workspace, which external assistants can connect, and which actions require review."
+              items={["Administrators & members", "External MCP credentials", "Approval safeguards"]}
+            />
             <AdminUsersSettings onError={onError} />
+            <ExternalMcpSettings onError={onError} />
+            <section className="surface settings-wide">
+              <div className="surface-header"><div><h2>{t("Review policy")}</h2><span>Safeguards for actions with external or irreversible impact</span></div></div>
+              <div className="access-policy-grid">
+                <Setting label={t("External sends")} value={t("Approval required")} />
+                <Setting label={t("Destructive writes")} value={t("Approval required")} />
+                <Setting label={t("High-cost actions")} value={t("Approval required")} />
+              </div>
+            </section>
           </>
         )}
         {tab === "workspace" && (
@@ -567,6 +588,24 @@ function SettingsView({ onError, role }: {
         )}
       </div>
     </div>
+  );
+}
+
+function SettingsSectionIntro({ eyebrow, title, description, items }: {
+  eyebrow: string;
+  title: string;
+  description: string;
+  items: string[];
+}) {
+  return (
+    <header className="settings-section-intro settings-wide">
+      <div>
+        <span className="eyebrow">{eyebrow}</span>
+        <h2>{title}</h2>
+        <p>{description}</p>
+      </div>
+      <ul>{items.map((item) => <li key={item}>{item}</li>)}</ul>
+    </header>
   );
 }
 
@@ -911,7 +950,7 @@ function McpSettings({ onError }: { onError: (message: string) => void }) {
       .catch((error: Error) => onError(error.message));
   }, [onError]);
   return (
-    <section className="surface settings-wide">
+    <section className="surface">
       <div className="surface-header"><h2>{t("MCP tools")}</h2><span>{formatNumber(tools.length)} {t("allowed")}</span></div>
       {servers.map((server) => (
         <Setting

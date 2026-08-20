@@ -346,6 +346,8 @@ const ko: Record<string, string> = {
   ,"Models & cost": "모델 및 비용"
   ,"AI analysis": "AI 분석"
   ,"Tools & access": "도구 및 접근"
+  ,"Tools": "도구"
+  ,"Access": "접근 관리"
   ,"Workspace": "워크스페이스"
   ,"Service status": "서비스 상태"
   ,"All services reachable": "모든 서비스 정상"
