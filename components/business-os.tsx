@@ -1181,7 +1181,7 @@ function CreateProjectDialog({ onClose, onCreated }: { onClose: () => void; onCr
     setBusy(true);
     setFormError(null);
     try {
-      const payload = await api<{ data: Project }>("/api/v1/projects", {
+      const payload = await api<{ data: Project; strategyBootstrap?: { status: "proposed" | "failed"; error?: string } }>("/api/v1/projects", {
         method: "POST",
         body: JSON.stringify({
           name: form.name,
@@ -1271,7 +1271,7 @@ function CreateProjectDialog({ onClose, onCreated }: { onClose: () => void; onCr
         </div>
         <div className="dialog-actions">
           <button type="button" className="secondary" onClick={onClose}>{t("Cancel")}</button>
-          <button className="primary" disabled={busy}>{busy && <Loader2 size={14} className="spin" aria-hidden />}{t("Create project")}</button>
+          <button className="primary" disabled={busy}>{busy && <Loader2 size={14} className="spin" aria-hidden />}{t(busy ? "Creating project and first strategy…" : "Create project")}</button>
         </div>
       </form>
     </Modal>

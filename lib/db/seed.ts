@@ -1,8 +1,9 @@
-import { agentDefinitions, memberships, organizations, userPreferences, users } from "@/lib/db/schema";
+import { agentDefinitions, memberships, organizationProfileVersions, organizations, userPreferences, users } from "@/lib/db/schema";
 import { requireDatabase } from "@/lib/db/client";
 import { MTI_OPERATOR_ID, MTI_ORGANIZATION_ID } from "@/lib/repository";
 import { and, eq } from "drizzle-orm";
 import { hashPassword } from "@/lib/auth";
+import { MTI_DEFAULT_ORGANIZATION_PROFILE } from "@/lib/organization-profile";
 
 const executiveToolScopes = [
   "project:read", "knowledge:read", "plan:create", "task:delegate",
@@ -47,6 +48,27 @@ export async function seedDefaultWorkspace() {
     eq(memberships.organizationId, MTI_ORGANIZATION_ID),
     eq(memberships.userId, MTI_OPERATOR_ID)
   ));
+  // Install the known MTI baseline only for a genuinely new workspace. Any
+  // draft or approved profile means an operator has taken ownership, so seed
+  // runs must leave it untouched.
+  const [existingProfile] = await database.select({ id: organizationProfileVersions.id })
+    .from(organizationProfileVersions)
+    .where(eq(organizationProfileVersions.organizationId, MTI_ORGANIZATION_ID))
+    .limit(1);
+  if (!existingProfile) {
+    const now = new Date();
+    await database.insert(organizationProfileVersions).values({
+      organizationId: MTI_ORGANIZATION_ID,
+      revision: 1,
+      status: "approved",
+      ...MTI_DEFAULT_ORGANIZATION_PROFILE,
+      createdBy: MTI_OPERATOR_ID,
+      approvedBy: MTI_OPERATOR_ID,
+      approvedAt: now,
+      createdAt: now,
+      updatedAt: now
+    });
+  }
   const bootstrapPassword = process.env.ADMIN_PASSWORD;
   const [operator] = await database.select({
     passwordHash: users.passwordHash

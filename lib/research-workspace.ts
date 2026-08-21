@@ -19,6 +19,7 @@ import {
   projects
 } from "@/lib/db/schema";
 import { MTI_ORGANIZATION_ID } from "@/lib/repository";
+import { getApprovedOrganizationProfile, organizationProfileContext } from "@/lib/organization-profile";
 import { isUiAuditMode } from "@/lib/ui-audit-mode";
 import { defaultDossierEvidenceCapabilities, evidenceCapabilities } from "@/lib/research/evidence-capabilities";
 import { buildDossierSummary, dossierSummarySourceLimit } from "@/lib/research/dossier-summary";
@@ -275,6 +276,7 @@ export async function proposeResearchStrategy(input: {
     eq(projects.id, input.projectId), eq(projects.organizationId, organizationId)
   )).limit(1);
   if (!project) throw new Error("Project not found.");
+  const organizationProfile = await getApprovedOrganizationProfile(organizationId);
   await database.insert(projectStrategyMessages).values({
     organizationId, projectId: input.projectId, role: "user",
     content: input.instruction, attachmentDocumentIds: input.attachmentDocumentIds ?? [], createdBy: input.userId
@@ -285,6 +287,7 @@ export async function proposeResearchStrategy(input: {
   const recent = await database.select({ role: projectStrategyMessages.role, content: projectStrategyMessages.content })
     .from(projectStrategyMessages).where(eq(projectStrategyMessages.projectId, input.projectId))
     .orderBy(desc(projectStrategyMessages.createdAt)).limit(20);
+  try {
   const response = await model("executive_reasoning", [
     {
       role: "system",
@@ -310,6 +313,10 @@ export async function proposeResearchStrategy(input: {
     {
       role: "user",
       content: JSON.stringify({
+        organizationProfile: organizationProfile ? {
+          companyName: organizationProfile.companyName,
+          approvedContext: organizationProfileContext(organizationProfile)
+        } : null,
         project: { objective: project.objective, context: project.context, scope: project.scope, constraints: project.constraints },
         activeStrategy: active?.strategy ?? defaultStrategy(project.objective, project.scope),
         conversation: recent.reverse(), instruction: input.instruction
@@ -317,7 +324,7 @@ export async function proposeResearchStrategy(input: {
     }
   ], { structuredOutput: true });
   const proposal = strategyProposalShape.parse(parseModelJson(modelText(response)));
-  return database.transaction(async (tx) => {
+  return await database.transaction(async (tx) => {
     await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`research-strategy:${input.projectId}`}))`);
     const [{ value }] = await tx.select({ value: max(projectStrategyVersions.version) })
       .from(projectStrategyVersions).where(eq(projectStrategyVersions.projectId, input.projectId));
@@ -332,6 +339,14 @@ export async function proposeResearchStrategy(input: {
     }).returning();
     return { message, version };
   });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown strategist error.";
+    await database.insert(projectStrategyMessages).values({
+      organizationId, projectId: input.projectId, role: "error",
+      content: `Strategy generation failed: ${message}`, createdBy: input.userId
+    });
+    throw error;
+  }
 }
 
 export async function activateResearchStrategy(projectId: string, strategyVersionId: string, userId: string, organizationId = MTI_ORGANIZATION_ID) {

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { guard } from "@/lib/api/guard";
 import { parseJson } from "@/lib/http";
 import { repository } from "@/lib/repository";
+import { proposeResearchStrategy } from "@/lib/research-workspace";
 
 const createProjectSchema = z.object({
   name: z.string().trim().min(2).max(120),
@@ -33,8 +34,7 @@ export const GET = guard(async () => {
 export const POST = guard(async (request, { session }) => {
   const parsed = await parseJson(request, createProjectSchema);
   if (parsed.error) return parsed.error;
-  return NextResponse.json({
-    data: await repository.createProject({
+  const project = await repository.createProject({
       name: parsed.data.name,
       objective: parsed.data.objective,
       context: parsed.data.context ?? "",
@@ -46,6 +46,17 @@ export const POST = guard(async (request, { session }) => {
       outputRequirements: parsed.data.outputRequirements ?? [],
       outputLanguage: parsed.data.outputLanguage,
       permissions: parsed.data.permissions
-    }, session.userId)
-  }, { status: 201 });
+    }, session.userId);
+  let strategyBootstrap: { status: "proposed" | "failed"; error?: string };
+  try {
+    await proposeResearchStrategy({
+      projectId: project.id,
+      userId: session.userId,
+      instruction: "Create the first complete research strategy from this project brief. Extract the target market, geography, company profile, qualification rules, exclusions, evidence plan, dossier requirements, and a justified company target. Do not invent requirements that are absent; call out important gaps in your response."
+    });
+    strategyBootstrap = { status: "proposed" };
+  } catch (error) {
+    strategyBootstrap = { status: "failed", error: error instanceof Error ? error.message : "The initial strategy could not be generated." };
+  }
+  return NextResponse.json({ data: project, strategyBootstrap }, { status: 201 });
 });

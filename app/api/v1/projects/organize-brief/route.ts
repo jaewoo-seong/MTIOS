@@ -3,6 +3,7 @@ import { z } from "zod";
 import { guard } from "@/lib/api/guard";
 import { parseJson } from "@/lib/http";
 import { extractModelContent, requestModel } from "@/lib/ai/litellm";
+import { parseModelJson } from "@/lib/ai/model-json";
 
 const inputSchema = z.object({ brief: z.string().trim().min(10).max(20000) });
 const organizedSchema = z.object({
@@ -33,7 +34,6 @@ export const POST = guard(async (request) => {
       factuality: "high"
     }
   });
-  const content = extractModelContent(response).trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
-  const organized = organizedSchema.parse(JSON.parse(content));
+  const organized = organizedSchema.parse(parseModelJson(extractModelContent(response)));
   return NextResponse.json({ data: organized });
 }, { rateLimit: "expensive" });

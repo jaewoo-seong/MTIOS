@@ -28,6 +28,7 @@ type Settings = {
   dossierWorkerLimit: number; revisionWorkerLimit: number; queueBufferTarget: number;
   queueBufferAutomatic: boolean;
   discoveryEnabled: boolean; researchPaused: boolean; activeStrategyVersionId: string | null;
+  lastDiscoveryAt?: string | null;
 };
 type Candidate = {
   id: string; campaignId: string; data: Record<string, unknown>; priority: number;
@@ -80,11 +81,11 @@ export function ResearchProjectWorkspace({
   }, [load, onError]);
 
   useEffect(() => {
-    // Each poll re-runs the full workspace read. Dossier work takes minutes,
-    // so a slower cadence loses nothing an operator would notice.
+    // This is the operator's live view. The payload is summary-only, so keep
+    // it fresh enough to expose claims, completions, and failures promptly.
     const refresh = window.setInterval(() => {
       if (document.visibilityState === "visible") void load().catch(() => undefined);
-    }, 15000);
+    }, 4000);
     return () => window.clearInterval(refresh);
   }, [load]);
 
@@ -98,6 +99,15 @@ export function ResearchProjectWorkspace({
   // The active strategy governs every worker, so it stays visible from the
   // header rather than only inside the strategy tab.
   const activeStrategy = workspace.strategies.find((item) => item.status === "active");
+  const failedCount = workspace.candidates.filter((item) => item.dossierStatus === "failed").length
+    + workspace.revisionRequests.filter((item) => item.status === "failed").length
+    + workspace.messages.filter((item) => item.role === "error").length;
+  const projectState = !activeStrategy
+    ? (workspace.strategies.some((item) => item.status === "proposed") ? "Waiting for strategy approval" : "Building strategy")
+    : workspace.settings.researchPaused ? "Paused"
+    : activeCount > 0 ? `Researching ${activeCount} dossier${activeCount === 1 ? "" : "s"}`
+    : queuedCount > 0 ? "Dispatching queued research"
+    : "Discovering companies";
 
   return (
     <div className="research-workspace">
@@ -108,8 +118,8 @@ export function ResearchProjectWorkspace({
           <p>{project.objective}</p>
         </div>
         <div className="research-head-status">
-          <span className={`pill ${workspace.settings.researchPaused ? "warn" : "good"}`}>
-            {workspace.settings.researchPaused ? "Paused" : "Running"}
+          <span className={`pill ${failedCount ? "crit" : workspace.settings.researchPaused || !activeStrategy ? "warn" : "good"}`}>
+            {projectState}
           </span>
           <button
             className="secondary"
@@ -151,7 +161,10 @@ export function ResearchProjectWorkspace({
         <Summary label="Dossiers" value={String(readyCount)} />
         <Summary label="Company target" value={String(activeStrategy?.strategy.targetCompanyCount ?? "Not set")} />
         <Summary label="Strategy" value={activeStrategy ? `v${activeStrategy.version}` : "Not approved"} />
+        <Summary label="Errors" value={String(failedCount)} />
       </div>
+
+      <ResearchActivity workspace={workspace} state={projectState} />
 
       <nav className="research-tabs" aria-label="Research project views" data-help-anchor="research-tabs">
         <TabButton active={tab === "strategy"} onClick={() => setTab("strategy")} icon={MessageSquareText} label="Strategy" />
@@ -164,6 +177,31 @@ export function ResearchProjectWorkspace({
       {tab === "dossiers" && <DossiersView projectId={project.id} workspace={workspace} load={load} busy={busy} setBusy={setBusy} onError={onError} onOpenDocument={onOpenDocument} />}
     </div>
   );
+}
+
+function ResearchActivity({ workspace, state }: { workspace: Workspace; state: string }) {
+  const events = [
+    ...workspace.messages.filter((item) => item.role === "error").map((item) => ({
+      id: `message-${item.id}`, tone: "crit", title: "Strategist error", detail: item.content, at: item.createdAt
+    })),
+    ...workspace.candidates.filter((item) => item.dossierStatus === "researching" || item.dossierStatus === "failed").map((item) => ({
+      id: `candidate-${item.id}`, tone: item.dossierStatus === "failed" ? "crit" : "active",
+      title: item.dossierStatus === "failed" ? "Dossier failed" : "Dossier research in progress",
+      detail: `${String(item.data.legalName ?? item.data.name ?? "Company")} · ${item.dossierReason ?? (item.dossierStatus === "researching" ? "Gathering and verifying evidence" : "No error detail was recorded")}`,
+      at: item.updatedAt
+    })),
+    ...workspace.revisionRequests.filter((item) => item.status === "working" || item.status === "failed").map((item) => ({
+      id: `revision-${item.id}`, tone: item.status === "failed" ? "crit" : "active",
+      title: item.status === "failed" ? "Revision failed" : "Dossier revision in progress",
+      detail: item.instruction, at: item.createdAt
+    }))
+  ].sort((a, b) => b.at.localeCompare(a.at)).slice(0, 8);
+  const spinning = state !== "Paused" && !state.startsWith("Waiting");
+  return <section className="surface research-activity" aria-live="polite">
+    <div className="surface-header"><h2>Live activity</h2><span>Refreshes every 4 seconds</span></div>
+    <div className="research-activity-current"><Loader2 className={spinning ? "spin" : ""} size={16} /><div><strong>{state}</strong><small>{workspace.settings.lastDiscoveryAt ? `Last discovery ${new Date(workspace.settings.lastDiscoveryAt).toLocaleString()}` : "No discovery cycle has completed yet"}</small></div></div>
+    {events.length > 0 ? <div className="research-activity-events">{events.map((event) => <article key={event.id} className={event.tone}><span>{event.title}</span><p>{event.detail}</p><time>{new Date(event.at).toLocaleString()}</time></article>)}</div> : <p className="research-activity-empty">No worker events yet. Strategy and research progress—or the exact recorded error—will appear here.</p>}
+  </section>;
 }
 
 function Summary({ label, value }: { label: string; value: string }) {
@@ -223,7 +261,7 @@ function StrategyView({ projectId, workspace, load, busy, setBusy, onError }: {
             </div>
           ) : workspace.messages.map((message) => (
             <article key={message.id} className={`strategy-message ${message.role}`}>
-              <span>{message.role === "user" ? "You" : "Strategist"}</span>
+              <span>{message.role === "user" ? "You" : message.role === "error" ? "Error" : "Strategist"}</span>
               <p>{message.content}</p>
             </article>
           ))}
